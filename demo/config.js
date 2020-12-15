@@ -7,6 +7,16 @@
 
 goog.provide('shakaDemo.Config');
 
+goog.require('goog.asserts');
+goog.require('shakaDemo.BoolInput');
+goog.require('shakaDemo.DatalistInput');
+goog.require('shakaDemo.InputContainer');
+goog.require('shakaDemo.Main');
+goog.require('shakaDemo.MessageIds');
+goog.require('shakaDemo.NumberInput');
+goog.require('shakaDemo.SelectInput');
+goog.require('shakaDemo.TextInput');
+goog.requireType('shakaDemo.Input');
 
 /** @type {?shakaDemo.Config} */
 let shakaDemoConfig;
@@ -108,18 +118,6 @@ shakaDemo.Config = class {
     componentHandler.upgradeDom();
   }
 
-  /** @return {!shaka.extern.AdvancedDrmConfiguration} */
-  static emptyAdvancedConfiguration() {
-    return {
-      distinctiveIdentifierRequired: false,
-      persistentStateRequired: false,
-      videoRobustness: '',
-      audioRobustness: '',
-      serverCertificate: new Uint8Array(0),
-      individualizationServer: '',
-    };
-  }
-
   /** @private */
   addDrmSection_() {
     const MessageIds = shakaDemo.MessageIds;
@@ -148,7 +146,7 @@ shakaDemo.Config = class {
         // Add in any common drmSystem not currently in advanced.
         for (const drmSystem of shakaDemo.Main.commonDrmSystems) {
           if (!(drmSystem in advanced)) {
-            advanced[drmSystem] = shakaDemo.Config.emptyAdvancedConfiguration();
+            advanced[drmSystem] = shakaDemo.Main.defaultAdvancedDrmConfig();
           }
         }
         // Set the robustness.
@@ -194,7 +192,6 @@ shakaDemo.Config = class {
             /* canBeZero= */ false,
             /* canBeUnset= */ true)
         .addTextInput_(MessageIds.CLOCK_SYNC_URI, 'manifest.dash.clockSyncUri')
-        .addBoolInput_(MessageIds.IGNORE_DRM, 'manifest.dash.ignoreDrmInfo')
         .addNumberInput_(MessageIds.DEFAULT_PRESENTATION_DELAY,
             'manifest.defaultPresentationDelay')
         .addBoolInput_(MessageIds.IGNORE_MIN_BUFFER_TIME,

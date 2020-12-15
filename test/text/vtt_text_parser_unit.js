@@ -4,6 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+goog.require('shaka.log');
+goog.require('shaka.test.Util');
+goog.require('shaka.text.Cue');
+goog.require('shaka.text.CueRegion');
+goog.require('shaka.text.VttTextParser');
+goog.require('shaka.util.BufferUtils');
+goog.require('shaka.util.Error');
+goog.require('shaka.util.StringUtils');
+
 describe('VttTextParser', () => {
   const Cue = shaka.text.Cue;
   const CueRegion = shaka.text.CueRegion;
@@ -575,6 +584,16 @@ describe('VttTextParser', () => {
         {periodStart: 0, segmentStart: 0, segmentEnd: 0});
   });
 
+  it('supports only two digits in the timestamp', () => {
+    verifyHelper(
+        [
+          {startTime: 20, endTime: 40, payload: 'Test'},
+        ],
+        'WEBVTT\n\n' +
+        '00:00:20.00 --> 00:00:40.00\n' +
+        'Test',
+        {periodStart: 0, segmentStart: 0, segmentEnd: 0});
+  });
 
   /**
    * @param {!Array} cues

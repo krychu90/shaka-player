@@ -7,6 +7,11 @@
 
 goog.provide('shakaDemo.Main');
 
+goog.require('ShakaDemoAssetInfo');
+goog.require('goog.asserts');
+goog.require('shakaDemo.CloseButton');
+goog.require('shakaDemo.MessageIds');
+goog.require('shakaDemo.Utils');
 
 /**
  * Shaka Player demo, main section.
@@ -110,7 +115,7 @@ shakaDemo.Main = class {
    * Set up the application with errors to show that load failed.
    * This does not dispatch the shaka-main-loaded event, so it will not cause
    * the nav bar buttons to be set up.
-   * @param {!shaka.ui.FailReasonCode} reasonCode
+   * @param {!shaka.ui.Overlay.FailReasonCode} reasonCode
    * @return {!Promise}
    */
   async initFailed(reasonCode) {
@@ -155,13 +160,13 @@ shakaDemo.Main = class {
     let href = '';
     let message = '';
     switch (reasonCode) {
-      case shaka.ui.FailReasonCode.NO_BROWSER_SUPPORT:
+      case shaka.ui.Overlay.FailReasonCode.NO_BROWSER_SUPPORT:
         message = this.getLocalizedString(
             shakaDemo.MessageIds.FAILURE_NO_BROWSER_SUPPORT);
         href = 'https://github.com/google/shaka-player#' +
                 'platform-and-browser-support-matrix';
         break;
-      case shaka.ui.FailReasonCode.PLAYER_FAILED_TO_LOAD:
+      case shaka.ui.Overlay.FailReasonCode.PLAYER_FAILED_TO_LOAD:
         message = this.getLocalizedString(shakaDemo.MessageIds.FAILURE_MISC);
         break;
     }
@@ -396,9 +401,21 @@ shakaDemo.Main = class {
     // are pressed also.
     const drawerButton = document.querySelector('.mdl-layout__drawer-button');
     goog.asserts.assert(drawerButton, 'There should be a drawer button.');
-    drawerButton.addEventListener('click', () => {
+    const openDrawer = () => {
       this.dispatchEventWithName_('shaka-main-drawer-state-change');
       this.showElement_(drawerCloseButton);
+    };
+    // Listen to both the "click" and "keydown" events on the drawer button,
+    // since the element is actually a div rather than a button, which means
+    // that it doesn't fire "click" events when activated by keyboard input.
+    drawerButton.addEventListener('click', openDrawer);
+    drawerButton.addEventListener('keydown', (event) => {
+      const key = (/** @type {!KeyboardEvent} */ (event)).key;
+      // Ignore "keydown" input for keys that won't trigger the button (i.e.
+      // anything besides spacebar or enter).
+      if (key == ' ' || key == 'Spacebar' || key == 'Enter') {
+        openDrawer();
+      }
     });
     const obfuscator = document.querySelector('.mdl-layout__obfuscator');
     goog.asserts.assert(obfuscator, 'There should be an obfuscator.');
@@ -898,7 +915,7 @@ shakaDemo.Main = class {
       if (advanced) {
         for (const drmSystem of shakaDemo.Main.commonDrmSystems) {
           if (!advanced[drmSystem]) {
-            advanced[drmSystem] = shakaDemo.Config.emptyAdvancedConfiguration();
+            advanced[drmSystem] = shakaDemo.Main.defaultAdvancedDrmConfig();
           }
           if ('videoRobustness' in params) {
             advanced[drmSystem].videoRobustness = params['videoRobustness'];
@@ -1701,6 +1718,18 @@ shakaDemo.Main = class {
       this.showPlayer_();
     }
   }
+
+  /** @return {!shaka.extern.AdvancedDrmConfiguration} */
+  static defaultAdvancedDrmConfig() {
+    return {
+      distinctiveIdentifierRequired: false,
+      persistentStateRequired: false,
+      videoRobustness: '',
+      audioRobustness: '',
+      serverCertificate: new Uint8Array(0),
+      individualizationServer: '',
+    };
+  }
 };
 
 
@@ -1755,7 +1784,7 @@ document.addEventListener('shaka-ui-loaded', () => {
 });
 document.addEventListener('shaka-ui-load-failed', (event) => {
   shakaDemo.Main.initWrapper(() => {
-    const reasonCode = /** @type {!shaka.ui.FailReasonCode} */ (
+    const reasonCode = /** @type {!shaka.ui.Overlay.FailReasonCode} */ (
       event['detail']['reasonCode']);
     shakaDemoMain.initFailed(reasonCode);
   });

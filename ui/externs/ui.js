@@ -37,6 +37,7 @@ shaka.extern = {};
  * @property {string} adBreaks
  *   The CSS background color applied to the portion of the seek bar showing
  *   when the ad breaks are scheduled to occur on the timeline.
+ * @exportDoc
  */
 shaka.extern.UISeekBarColors;
 
@@ -52,10 +53,14 @@ shaka.extern.UISeekBarColors;
  * @property {string} level
  *   The CSS background color applied to the portion of the volume bar showing
  *   the volume level.
+ * @exportDoc
  */
 shaka.extern.UIVolumeBarColors;
 
 /**
+ * @description
+ * The UI's configuration options.
+ *
  * @typedef {{
  *   controlPanelElements: !Array.<string>,
  *   overflowMenuButtons: !Array.<string>,
@@ -66,7 +71,7 @@ shaka.extern.UIVolumeBarColors;
  *   showUnbufferedStart: boolean,
  *   seekBarColors: shaka.extern.UISeekBarColors,
  *   volumeBarColors: shaka.extern.UIVolumeBarColors,
- *   trackLabelFormat: shaka.ui.TrackLabelFormat,
+ *   trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat,
  *   fadeDelay: number,
  *   doubleClickForFullscreen: boolean,
  *   enableKeyboardPlaybackControls: boolean,
@@ -111,7 +116,7 @@ shaka.extern.UIVolumeBarColors;
  *   The CSS colors applied to the volume bar.  This allows you to override the
  *   colors used in the linear gradient constructed in JavaScript, since you
  *   cannot do this in pure CSS.
- * @property {shaka.ui.TrackLabelFormat} trackLabelFormat
+ * @property {shaka.ui.Overlay.TrackLabelFormat} trackLabelFormat
  *   An enum that determines what is shown in the labels for text track and
  *   audio variant selection.
  *   LANGUAGE means that only the language of the item is shown.
@@ -134,6 +139,7 @@ shaka.extern.UIVolumeBarColors;
  * @property {boolean} enableFullscreenOnRotation
  *   Whether or not to enter/exit fullscreen mode when the screen is rotated.
  *   Defaults to true.
+ * @exportDoc
  */
 shaka.extern.UIConfiguration;
 
@@ -223,4 +229,128 @@ shaka.extern.IUIElement.Factory = class {
    * @return {!shaka.extern.IUIElement}
    */
   create(rootElement, controls) {}
+};
+
+
+/**
+ * Interface for UI range elements.  UI range elements should inherit from the
+ * concrete base class shaka.ui.RangeElement.  The members defined in this
+ * extern's constructor are all available from the base class, and are defined
+ * here to keep the compiler from renaming them.
+ *
+ * @extends {shaka.extern.IUIElement}
+ * @interface
+ * @exportDoc
+ */
+shaka.extern.IUIRangeElement = class {
+  /**
+   * @param {!HTMLElement} parent
+   * @param {!shaka.ui.Controls} controls
+   * @param {!Array.<string>} containerClassNames
+   * @param {!Array.<string>} barClassNames
+   */
+  constructor(parent, controls, containerClassNames, barClassNames) {
+    /**
+     * @protected {!HTMLElement}
+     * @exportDoc
+     */
+    this.container;
+
+    /**
+     * @protected {!HTMLInputElement}
+     * @exportDoc
+     */
+    this.bar;
+  }
+
+  /**
+   * @param {number} min
+   * @param {number} max
+   */
+  setRange(min, max) {}
+
+  /**
+   * Called when user interaction begins.
+   * To be overridden by subclasses.
+   */
+  onChangeStart() {}
+
+  /**
+   * Called when a new value is set by user interaction.
+   * To be overridden by subclasses.
+   */
+  onChange() {}
+
+  /**
+   * Called when user interaction ends.
+   * To be overridden by subclasses.
+   */
+  onChangeEnd() {}
+
+  /** @return {number} */
+  getValue() {}
+
+  /** @param {number} value */
+  setValue(value) {}
+};
+
+/**
+ * Interface for UI settings menus.  UI settings menus should inherit from the
+ * concrete base class shaka.ui.SettingsMenu.  The members defined in this
+ * extern's constructor are all available from the base class, and are defined
+ * here to keep the compiler from renaming them.
+ *
+ * @extends {shaka.extern.IUIElement}
+ * @interface
+ * @exportDoc
+ */
+shaka.extern.IUISettingsMenu = class {
+  /**
+   * @param {!HTMLElement} parent
+   * @param {!shaka.ui.Controls} controls
+   * @param {string} iconText
+   */
+  constructor(parent, controls, iconText) {
+    /**
+     * @protected {!HTMLButtonElement}
+     * @exportDoc
+     */
+    this.button;
+
+    /**
+     * @protected {!HTMLElement}
+     * @exportDoc
+     */
+    this.icon;
+
+    /**
+     * @protected {!HTMLElement}
+     * @exportDoc
+     */
+    this.nameSpan;
+
+    /**
+     * @protected {!HTMLElement}
+     * @exportDoc
+     */
+    this.currentSelection;
+
+    /**
+     * @protected {!HTMLElement}
+     * @exportDoc
+     */
+    this.menu;
+
+    /**
+     * @protected {!HTMLButtonElement}
+     * @exportDoc
+     */
+    this.backButton;
+
+    /**
+     * @protected {!HTMLElement}
+     * @exportDoc
+     */
+    this.backSpan;
+  }
 };

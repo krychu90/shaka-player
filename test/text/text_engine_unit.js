@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+goog.require('shaka.test.FakeTextDisplayer');
+goog.require('shaka.text.TextEngine');
+goog.require('shaka.util.MimeUtils');
+
 describe('TextEngine', () => {
   const TextEngine = shaka.text.TextEngine;
 

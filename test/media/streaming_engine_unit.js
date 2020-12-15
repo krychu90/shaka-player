@@ -4,6 +4,30 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+goog.require('goog.asserts');
+goog.require('shaka.log');
+goog.require('shaka.media.InitSegmentReference');
+goog.require('shaka.media.SegmentReference');
+goog.require('shaka.media.StreamingEngine');
+goog.require('shaka.net.NetworkingEngine');
+goog.require('shaka.net.NetworkingEngine.PendingRequest');
+goog.require('shaka.test.FakeNetworkingEngine');
+goog.require('shaka.test.FakeMediaSourceEngine');
+goog.require('shaka.test.ManifestGenerator');
+goog.require('shaka.test.StreamingEngineUtil');
+goog.require('shaka.test.Util');
+goog.require('shaka.util.AbortableOperation');
+goog.require('shaka.util.Error');
+goog.require('shaka.util.Iterables');
+goog.require('shaka.util.ManifestParserUtils');
+goog.require('shaka.util.MimeUtils');
+goog.require('shaka.util.PlayerConfiguration');
+goog.require('shaka.util.PublicPromise');
+goog.require('shaka.util.Uint8ArrayUtils');
+goog.requireType('shaka.media.PresentationTimeline');
+goog.requireType('shaka.test.FakeNetworkingEngine');
+goog.requireType('shaka.test.FakePresentationTimeline');
+
 describe('StreamingEngine', () => {
   const Util = shaka.test.Util;
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
@@ -118,7 +142,8 @@ describe('StreamingEngine', () => {
     segmentData = {
       audio: {
         initSegments: [
-          makeBuffer(initSegmentSizeAudio), makeBuffer(initSegmentSizeAudio),
+          makeBuffer(initSegmentSizeAudio),
+          makeBuffer(initSegmentSizeAudio),
         ],
         segments: [
           makeBuffer(segmentSizes[ContentType.AUDIO]),
@@ -131,7 +156,8 @@ describe('StreamingEngine', () => {
       },
       video: {
         initSegments: [
-          makeBuffer(initSegmentSizeVideo), makeBuffer(initSegmentSizeVideo),
+          makeBuffer(initSegmentSizeVideo),
+          makeBuffer(initSegmentSizeVideo),
         ],
         segments: [
           makeBuffer(segmentSizes[ContentType.VIDEO]),
@@ -157,7 +183,8 @@ describe('StreamingEngine', () => {
     if (trickMode) {
       segmentData.trickvideo = {
         initSegments: [
-          makeBuffer(initSegmentSizeVideo), makeBuffer(initSegmentSizeVideo),
+          makeBuffer(initSegmentSizeVideo),
+          makeBuffer(initSegmentSizeVideo),
         ],
         segments: [
           makeBuffer(segmentSizes[ContentType.VIDEO]),
@@ -787,12 +814,14 @@ describe('StreamingEngine', () => {
     let initialVariant;
     let sameAudioVariant;
     let sameVideoVariant;
+    let differentVariant;
     let initialTextStream;
     let newTextStream;
 
     beforeEach(() => {
       // Set up a manifest with multiple variants and a text stream.
       manifest = shaka.test.ManifestGenerator.generate((manifest) => {
+        manifest.presentationTimeline.setDuration(60);
         manifest.addVariant(0, (variant) => {
           variant.addAudio(10, (stream) => {
             stream.useSegmentTemplate('audio-10-%d.mp4', 10);
@@ -813,6 +842,14 @@ describe('StreamingEngine', () => {
           });
           variant.addExistingStream(12);  // video
         });
+        manifest.addVariant(3, (variant) => {
+          variant.addVideo(14, (stream) => {
+            stream.useSegmentTemplate('video-14-%d.mp4', 10);
+          });
+          variant.addAudio(15, (stream) => {
+            stream.useSegmentTemplate('audio-15-%d.mp4', 10);
+          });
+        });
         manifest.addTextStream(20, (stream) => {
           stream.useSegmentTemplate('text-20-%d.mp4', 10);
         });
@@ -824,17 +861,14 @@ describe('StreamingEngine', () => {
       initialVariant = manifest.variants[0];
       sameAudioVariant = manifest.variants[1];
       sameVideoVariant = manifest.variants[2];
+      differentVariant = manifest.variants[3];
       initialTextStream = manifest.textStreams[0];
       newTextStream = manifest.textStreams[1];
 
       // For these tests, we don't care about specific data appended.
       // Just return any old ArrayBuffer for any requested segment.
-      netEngine.request.and.callFake((requestType, request) => {
-        const buffer = new ArrayBuffer(0);
-        /** @type {shaka.extern.Response} */
-        const response = {uri: request.uris[0], data: buffer, headers: {}};
-        return shaka.util.AbortableOperation.completed(response);
-      });
+      netEngine = new shaka.test.FakeNetworkingEngine();
+      netEngine.setDefaultValue(new ArrayBuffer(0));
 
       // For these tests, we also don't need FakeMediaSourceEngine to verify
       // its input data.
@@ -904,6 +938,34 @@ describe('StreamingEngine', () => {
       await Util.fakeEventLoop(1);
       expect(mediaSourceEngine.clear).toHaveBeenCalled();
       expect(mediaSourceEngine.resetCaptionParser).not.toHaveBeenCalled();
+    });
+
+    // See https://github.com/google/shaka-player/issues/2956
+    it('works with fast stream switches during update', async () => {
+      // Delay the appendBuffer call until later so we are waiting for this to
+      // finish when we switch.
+      const Util = shaka.test.Util;
+      const p = new shaka.util.PublicPromise();
+      const old = mediaSourceEngine.appendBuffer;
+      // Replace the whole spy since we want to call the original.
+      mediaSourceEngine.appendBuffer =
+          jasmine.createSpy('appendBuffer')
+              .and.callFake(async (type, data, start, end) => {
+                await p;
+                return Util.invokeSpy(old, type, data, start, end);
+              });
+
+      await streamingEngine.start();
+      playing = true;
+
+      await Util.fakeEventLoop(1);
+      streamingEngine.switchVariant(differentVariant, /* clearBuffer= */ true);
+      streamingEngine.switchVariant(initialVariant, /* clearBuffer= */ true);
+      p.resolve();
+
+      await Util.fakeEventLoop(5);
+
+      expect(Util.invokeSpy(mediaSourceEngine.bufferEnd, 'video')).toBe(10);
     });
   });
 
@@ -2570,6 +2632,7 @@ describe('StreamingEngine', () => {
 
       // For these tests, we don't care about specific data appended.
       // Just return any old ArrayBuffer for any requested segment.
+      netEngine = new shaka.test.FakeNetworkingEngine();
       netEngine.request.and.callFake((requestType, request) => {
         const buffer = new ArrayBuffer(0);
         const response = {uri: request.uris[0], data: buffer, headers: {}};
@@ -2868,6 +2931,7 @@ describe('StreamingEngine', () => {
 
     beforeEach(() => {
       manifest = shaka.test.ManifestGenerator.generate((manifest) => {
+        manifest.presentationTimeline.setDuration(60);
         manifest.addVariant(0, (variant) => {
           variant.addVideo(1, (stream) => {
             stream.useSegmentTemplate('video-110-%d.mp4', 10);

@@ -42,12 +42,16 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
     this.qualityMark = shaka.util.Dom.createHTMLElement('sup');
     this.qualityMark.classList.add('shaka-current-quality-mark');
 
-    this.overflowQualityMark = shaka.util.Dom.getElementByClassName(
-        'shaka-overflow-quality-mark', this.parent.parentElement
-    );
+    if (this.parent.parentElement) {
+      const parentElement =
+          shaka.util.Dom.asHTMLElement(this.parent.parentElement);
+      this.overflowQualityMark = shaka.util.Dom.getElementByClassName(
+          'shaka-overflow-quality-mark', parentElement
+      );
+    }
 
     const spanWrapper = shaka.util.Dom.createHTMLElement('span');
-    this.button.children[0].appendChild(spanWrapper);
+    this.button.childNodes[0].appendChild(spanWrapper);
     spanWrapper.appendChild(this.currentSelection);
     spanWrapper.appendChild(this.autoQuality);
     spanWrapper.appendChild(this.qualityMark);
@@ -99,13 +103,16 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
       this.autoQuality.style.display = 'none';
     }
 
+    /** @type string */
     const mark = this.getQualityMark_(variant.video.height);
     this.qualityMark.textContent = this.overflowQualityMark.textContent = mark;
     this.qualityMark.style.display = this.overflowQualityMark.style.display =
         mark !== '' ? '' : 'none';
   }
 
-  /** @private */
+  /**
+   * @private
+   * */
   getQualityMark_(height) {
     if (height >= 2160) {
       return '4K';

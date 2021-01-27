@@ -38,9 +38,11 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
 
     this.autoQuality = shaka.util.Dom.createHTMLElement('span');
     this.autoQuality.classList.add('shaka-current-auto-quality');
+    this.autoQuality.style.display = 'none';
 
     this.qualityMark = shaka.util.Dom.createHTMLElement('sup');
     this.qualityMark.classList.add('shaka-current-quality-mark');
+    this.qualityMark.style.display = 'none';
 
     if (this.parent.parentElement) {
       const parentElement =

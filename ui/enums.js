@@ -30,7 +30,7 @@ shaka.ui.Enums.MaterialDesignIcons = {
   'UNMUTE': 'volume_off',
   'CAST': 'cast',
   'EXIT_CAST': 'cast_connected',
-  'OPEN_OVERFLOW': 'more_vert',
+  'OPEN_OVERFLOW': 'settings',
   'REWIND': 'fast_rewind',
   'FAST_FORWARD': 'fast_forward',
   'PLAY': 'play_arrow',

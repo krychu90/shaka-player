@@ -174,11 +174,11 @@ shaka.ui.Overlay = class {
       controlPanelElements: [
         'play_pause',
         'time_and_duration',
-        'spacer',
         'mute',
         'volume',
-        'fullscreen',
+        'spacer',
         'overflow_menu',
+        'fullscreen',
       ],
       overflowMenuButtons: [
         'captions',

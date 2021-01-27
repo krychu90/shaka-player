@@ -720,16 +720,6 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     this.menus_.push(...Array.from(
         this.videoContainer_.getElementsByClassName('shaka-overflow-menu')));
 
-    if (this.config_.addSeekBar) {
-      this.seekBar_ = new shaka.ui.SeekBar(this.bottomControls_, this);
-      this.elements_.push(this.seekBar_);
-    } else {
-      // Settings menus need to be positioned lower if the seekbar is absent.
-      for (const menu of this.menus_) {
-        menu.classList.add('shaka-low-position');
-      }
-    }
-
     this.showOnHoverControls_ = Array.from(
         this.videoContainer_.getElementsByClassName(
             'shaka-show-controls-on-mouse-over'));
@@ -850,6 +840,16 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     });
 
     this.addAdControls_();
+
+    if (this.config_.addSeekBar) {
+      this.seekBar_ = new shaka.ui.SeekBar(this.bottomControls_, this);
+      this.elements_.push(this.seekBar_);
+    } else {
+      // Settings menus need to be positioned lower if the seekbar is absent.
+      for (const menu of this.menus_) {
+        menu.classList.add('shaka-low-position');
+      }
+    }
 
     /** @private {!HTMLElement} */
     this.controlsButtonPanel_ = shaka.util.Dom.createHTMLElement('div');

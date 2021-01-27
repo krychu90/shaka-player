@@ -36,6 +36,22 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
     this.button.classList.add('shaka-resolution-button');
     this.menu.classList.add('shaka-resolutions');
 
+    this.autoQuality = shaka.util.Dom.createHTMLElement('span');
+    this.autoQuality.classList.add('shaka-current-auto-quality');
+
+    this.qualityMark = shaka.util.Dom.createHTMLElement('sup');
+    this.qualityMark.classList.add('shaka-current-quality-mark');
+
+    this.overflowQualityMark = shaka.util.Dom.getElementByClassName(
+        'shaka-overflow-quality-mark', this.parent.parentElement
+    );
+
+    const spanWrapper = shaka.util.Dom.createHTMLElement('span');
+    this.button.children[0].appendChild(spanWrapper);
+    spanWrapper.appendChild(this.currentSelection);
+    spanWrapper.appendChild(this.autoQuality);
+    spanWrapper.appendChild(this.qualityMark);
+
     this.eventManager.listen(
         this.localization, shaka.ui.Localization.LOCALE_UPDATED, () => {
           this.updateLocalizedStrings_();
@@ -49,6 +65,7 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
 
     this.eventManager.listen(this.player, 'variantchanged', () => {
       this.updateResolutionSelection_();
+      this.updateResolutionLabels_();
     });
 
     this.eventManager.listen(this.player, 'trackschanged', () => {
@@ -57,6 +74,11 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
 
     this.eventManager.listen(this.player, 'abrstatuschanged', () => {
       this.updateResolutionSelection_();
+      this.updateResolutionLabels_();
+    });
+
+    this.eventManager.listen(this.player, 'adaptation', () => {
+      this.updateResolutionLabels_();
     });
 
     this.updateResolutionSelection_();
@@ -65,6 +87,35 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
     this.updateLocalizedStrings_();
   }
 
+  /** @private */
+  updateResolutionLabels_() {
+    const variant = this.player.getStreamingEngine().getCurrentVariant();
+    const abrEnabled = this.player.getConfiguration().abr.enabled;
+
+    if (abrEnabled) {
+      this.autoQuality.textContent = variant.video.height + 'p';
+      this.autoQuality.style.display = '';
+    } else {
+      this.autoQuality.style.display = 'none';
+    }
+
+    const mark = this.getQualityMark_(variant.video.height);
+    this.qualityMark.textContent = this.overflowQualityMark.textContent = mark;
+    this.qualityMark.style.display = this.overflowQualityMark.style.display =
+        mark !== '' ? '' : 'none';
+  }
+
+  /** @private */
+  getQualityMark_(height) {
+    if (height >= 2160) {
+      return '4K';
+    } else if (height >= 1440) {
+      return '2K';
+    } else if (height >= 720) {
+      return 'HD';
+    }
+    return '';
+  }
 
   /** @private */
   updateResolutionSelection_() {
@@ -134,6 +185,14 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
       const span = shaka.util.Dom.createHTMLElement('span');
       span.textContent = track.height + 'p';
       button.appendChild(span);
+
+      const mark = this.getQualityMark_(track.height);
+      if (mark !== '') {
+        const markEl = shaka.util.Dom.createHTMLElement('sup');
+        markEl.classList.add('shaka-quality-mark');
+        markEl.textContent = mark;
+        button.appendChild(markEl);
+      }
 
       if (!abrEnabled && track == selectedTrack) {
         // If abr is disabled, mark the selected track's resolution.

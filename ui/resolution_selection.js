@@ -76,6 +76,7 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
 
     this.eventManager.listen(this.player, 'trackschanged', () => {
       this.updateResolutionSelection_();
+      this.updateResolutionLabels_();
     });
 
     this.eventManager.listen(this.player, 'abrstatuschanged', () => {
@@ -95,9 +96,12 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
 
   /** @private */
   updateResolutionLabels_() {
-    const variant = this.player.getStreamingEngine().getCurrentVariant();
-    const abrEnabled = this.player.getConfiguration().abr.enabled;
+    const variant = this.player.getCurrentVariant();
+    if (!variant) {
+      return;
+    }
 
+    const abrEnabled = this.player.getConfiguration().abr.enabled;
     if (abrEnabled) {
       this.autoQuality.textContent = variant.video.height + 'p';
       this.autoQuality.style.display = '';

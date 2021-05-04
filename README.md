@@ -31,7 +31,7 @@ For details on what's coming next, see our [development roadmap](roadmap.md).
 |Chrome¹    |**Y**     |**Y**    |**Y**    |**Y**    |**Native**|**Y**   | -   |
 |Firefox¹   |**Y**     |**Y**    |**Y**    |untested⁵|**Native**| -      | -   |
 |Edge¹      |**Y**     | -       | -       | -       | -        | -      | -   |
-|Edge Chromium|**Y**     |**Y**    | -       |untested⁵|**Native**| -      | -   |
+|Edge Chromium|**Y**     |**Y**    |**Y**     |untested⁵|**Native**| -      | -   |
 |IE ≤ 10    | N        | -       | -       | -       | -        | -      | -   |
 |IE 11      |**Y** ⁴   | -       | -       | -       | -        | -      | -   |
 |Safari¹    | -        |**Y**    | -       | -       |**iPadOS 13<br>Native**| - | - |
@@ -39,7 +39,7 @@ For details on what's coming next, see our [development roadmap](roadmap.md).
 |Chromecast²| -        | -       | -       | -       | -        | -      |**Y**|
 |Tizen TV³  | -        | -       | -       | -       | -        | -      |**Y**|
 |WebOS⁶     | -        | -       | -       | -       | -        | -      |**Y**|
-|Xbox One⁶  | -        | -       | -       | -       | -        | -      |**Y**|
+|Xbox One   | -        | -       | -       | -       | -        | -      |**Y**|
 
 NOTES:
  - ¹: On macOS, only Safari 12+ is supported.  On iOS, only iOS 12+ is
@@ -54,10 +54,10 @@ NOTES:
    https://github.com/google/shaka-player/issues/2339)
  - ⁵: These are expected to work, but are not actively tested by the Shaka
    Player team.
- - ⁶: These are expected to work, WebOS and Xbox One are community supported
-   and untested by us. (Official support for LG WebOS TV:
-   https://github.com/google/shaka-player/issues/1330, Official support for
-   Xbox One: https://github.com/google/shaka-player/issues/1705)
+ - ⁶: These are expected to work, but are community-supported and untested by
+   us.
+     - Official support for LG WebOS TV:
+       https://github.com/google/shaka-player/issues/1330
 
 We support iOS 12+ through Apple's native HLS player.  We provide the same
 top-level API, but we just set the video's `src` element to the manifest/media.
@@ -153,7 +153,7 @@ HLS features **not** supported:
 |Chromecast|**Y**     |**Y**    | -       |untested⁵ |
 |Tizen TV  |**Y**     |**Y**    | -       |untested⁵ |
 |WebOS⁷    |untested⁷ |untested⁷| -       |untested⁷ |
-|Xbox One⁷ | -        |untested⁷| -       | -        |
+|Xbox One  | -        |**Y**    | -       | -        |
 
 Other DRM systems should work out of the box if they are interoperable and
 compliant to the EME spec.
@@ -171,8 +171,8 @@ NOTES:
    Player team.
  - ⁶: ClearKey is a useful tool for debugging, and does not provide actual
    content security.
- - ⁷: These are expected to work, WebOS and Xbox One are community supported
-   and untested by us.
+ - ⁷: These are expected to work, but are community-supported and untested by
+   us.
 
 |Manifest  |Widevine  |PlayReady|FairPlay |ClearKey  |
 |:--------:|:--------:|:-------:|:-------:|:--------:|
@@ -256,6 +256,15 @@ Shaka + ReactJS integrations:
 
 Shaka + Next.js integration:
 - https://github.com/amit08255/shaka-player-react-with-ui-config/tree/master/nextjs-shaka-player
+
+Shaka + Vue.js integrations:
+- https://github.com/davidjamesherzog/shaka-player-vuejs
+
+Shaka + Nuxt.js integration:
+- https://github.com/davidjamesherzog/shaka-player-nuxtjs
+
+Shaka + video.js integration:
+- https://github.com/davidjamesherzog/videojs-shaka
 
 If you have published Shaka Integration code/tutorials, please feel free to submit PRs
 to add them to this list, we will gladly approve!

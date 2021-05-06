@@ -48,7 +48,7 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
       const parentElement =
           shaka.util.Dom.asHTMLElement(this.parent.parentElement);
       this.overflowQualityMark = shaka.util.Dom.getElementByClassName(
-          'shaka-overflow-quality-mark', parentElement
+          'shaka-overflow-quality-mark', parentElement,
       );
     }
 

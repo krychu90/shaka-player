@@ -660,8 +660,6 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     this.menus_.push(...Array.from(
         this.videoContainer_.getElementsByClassName('shaka-overflow-menu')));
 
-    this.addSeekBar_();
-
     this.showOnHoverControls_ = Array.from(
         this.videoContainer_.getElementsByClassName(
             'shaka-show-controls-on-mouse-over'));
@@ -781,6 +779,8 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     });
 
     this.addAdControls_();
+
+    this.addSeekBar_();
 
     /** @private {!HTMLElement} */
     this.controlsButtonPanel_ = shaka.util.Dom.createHTMLElement('div');

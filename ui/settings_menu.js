@@ -51,10 +51,11 @@ shaka.ui.SettingsMenu = class extends shaka.ui.Element {
     this.icon = shaka.util.Dom.createHTMLElement('i');
     this.icon.classList.add('material-icons-round');
     this.icon.textContent = iconText;
-    this.button.appendChild(this.icon);
+    /* this.button.appendChild(this.icon); */
 
     const label = shaka.util.Dom.createHTMLElement('label');
     label.classList.add('shaka-overflow-button-label');
+    label.classList.add('shaka-overflow-button-label--inline');
 
     /** @protected {!HTMLElement}*/
     this.nameSpan = shaka.util.Dom.createHTMLElement('span');

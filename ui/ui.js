@@ -176,14 +176,15 @@ shaka.ui.Overlay = class {
     const config = {
       controlPanelElements: [
         'play_pause',
-        'time_and_duration',
-        'spacer',
         'mute',
         'volume',
-        'fullscreen',
+        'time_and_duration',
+        'spacer',
         'overflow_menu',
+        'fullscreen',
       ],
       overflowMenuButtons: [
+        'statistics',
         'captions',
         'quality',
         'language',
@@ -196,6 +197,8 @@ shaka.ui.Overlay = class {
         'save_video_frame',
       ],
       statisticsList: [
+        'videoCodecs',
+        'audioCodecs',
         'width',
         'height',
         'corruptedFrames',
@@ -262,7 +265,7 @@ shaka.ui.Overlay = class {
       enableKeyboardPlaybackControls: true,
       enableFullscreenOnRotation: true,
       forceLandscapeOnFullscreen: true,
-      enableTooltips: false,
+      enableTooltips: true,
       keyboardSeekDistance: 5,
       keyboardLargeSeekDistance: 60,
       fullScreenElement: this.videoContainer_,

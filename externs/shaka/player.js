@@ -61,6 +61,8 @@ shaka.extern.StateChange;
 
 /**
  * @typedef {{
+ *   videoCodecs: (string|null|undefined),
+ *   audioCodecs: (string|null|undefined),
  *   width: number,
  *   height: number,
  *   streamBandwidth: number,

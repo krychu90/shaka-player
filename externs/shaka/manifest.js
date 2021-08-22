@@ -111,6 +111,7 @@ shaka.extern.InitDataOverride;
  *   audioRobustness: string,
  *   videoRobustness: string,
  *   serverCertificate: Uint8Array,
+ *   serverCertificateUri: string,
  *   sessionType: string,
  *   initData: Array.<!shaka.extern.InitDataOverride>,
  *   keyIds: Set.<string>
@@ -150,6 +151,10 @@ shaka.extern.InitDataOverride;
  *   A key-system-specific server certificate used to encrypt license requests.
  *   Its use is optional and is meant as an optimization to avoid a round-trip
  *   to request a certificate.
+ * @property {string} serverCertificateUri
+ *   <i>Defaults to '', e.g., server certificate will be requested from the
+ *   given URI if serverCertificate is not provided. Can be filled in by
+ *   advanced DRM config.</i>
  * @property {Array.<!shaka.extern.InitDataOverride>} initData
  *   <i>Defaults to [], e.g., no override.</i> <br>
  *   A list of initialization data which override any initialization data found
@@ -328,7 +333,7 @@ shaka.extern.CreateSegmentIndexFunction;
  *   The Stream's label, unique text that should describe the audio/text track.
  * @property {string} type
  *   <i>Required.</i> <br>
- *   Content type (e.g. 'video', 'audio' or 'text')
+ *   Content type (e.g. 'video', 'audio' or 'text', 'image')
  * @property {boolean} primary
  *   <i>Defaults to false.</i> <br>
  *   True indicates that the player should use this Stream over others if user

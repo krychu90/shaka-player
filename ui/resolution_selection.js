@@ -8,6 +8,7 @@
 goog.provide('shaka.ui.ResolutionSelection');
 
 goog.require('goog.asserts');
+goog.require('shaka.ui.Controls');
 goog.require('shaka.ui.Enums');
 goog.require('shaka.ui.Locales');
 goog.require('shaka.ui.Localization');
@@ -33,6 +34,7 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
     super(parent, controls, shaka.ui.Enums.MaterialDesignIcons.RESOLUTION);
 
     this.button.classList.add('shaka-resolution-button');
+    this.button.classList.add('shaka-tooltip-status');
     this.menu.classList.add('shaka-resolutions');
 
     this.autoQuality = shaka.util.Dom.createHTMLElement('span');
@@ -243,6 +245,8 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
           this.localization.resolve(shaka.ui.Locales.Ids.AUTO_QUALITY);
     }
 
+    this.button.setAttribute('shaka-status', this.currentSelection.textContent);
+
     this.menu.appendChild(autoButton);
     shaka.ui.Utils.focusOnTheChosenItem(this.menu);
     this.controls.dispatchEvent(
@@ -298,4 +302,7 @@ shaka.ui.ResolutionSelection.Factory = class {
 };
 
 shaka.ui.OverflowMenu.registerElement(
+    'quality', new shaka.ui.ResolutionSelection.Factory());
+
+shaka.ui.Controls.registerElement(
     'quality', new shaka.ui.ResolutionSelection.Factory());

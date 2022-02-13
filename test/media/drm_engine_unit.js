@@ -2152,6 +2152,50 @@ describe('DrmEngine', () => {
           [drmInfoAudio]);
       expect(returned).toEqual([drmInfoDesired]);
     });
+
+    it('dedupes the merged init data based on keyId matching', () => {
+      const serverCert = new Uint8Array(0);
+      const drmInfoVideo = {
+        keySystem: 'drm.abc',
+        licenseServerUri: 'http://abc.drm/license',
+        distinctiveIdentifierRequired: false,
+        persistentStateRequired: true,
+        videoRobustness: 'really_really_ridiculously_good',
+        serverCertificate: serverCert,
+        serverCertificateUri: '',
+        initData: [{keyId: 'v-init'}],
+        keyIds: new Set(['deadbeefdeadbeefdeadbeefdeadbeef']),
+      };
+      const drmInfoAudio = {
+        keySystem: 'drm.abc',
+        licenseServerUri: undefined,
+        distinctiveIdentifierRequired: true,
+        persistentStateRequired: false,
+        audioRobustness: 'good',
+        serverCertificate: undefined,
+        serverCertificateUri: '',
+        initData: [{keyId: 'v-init'}, {keyId: 'a-init'}],
+        keyIds: new Set(['eadbeefdeadbeefdeadbeefdeadbeefd']),
+      };
+      const drmInfoDesired = {
+        keySystem: 'drm.abc',
+        licenseServerUri: 'http://abc.drm/license',
+        distinctiveIdentifierRequired: true,
+        persistentStateRequired: true,
+        audioRobustness: 'good',
+        videoRobustness: 'really_really_ridiculously_good',
+        serverCertificate: serverCert,
+        serverCertificateUri: '',
+        initData: [{keyId: 'v-init'}, {keyId: 'a-init'}],
+        keyIds: new Set([
+          'deadbeefdeadbeefdeadbeefdeadbeef',
+          'eadbeefdeadbeefdeadbeefdeadbeefd',
+        ]),
+      };
+      const returned = shaka.media.DrmEngine.getCommonDrmInfos([drmInfoVideo],
+          [drmInfoAudio]);
+      expect(returned).toEqual([drmInfoDesired]);
+    });
   }); // describe('getCommonDrmInfos')
 
   describe('configure', () => {
@@ -2284,6 +2328,19 @@ describe('DrmEngine', () => {
           shaka.util.Error.Code.LICENSE_RESPONSE_REJECTED, 'Error'));
       await expectAsync(drmEngine.removeSession('abc'))
           .toBeRejectedWith(expected);
+    });
+
+    // Regression test for #3534
+    it('does not remove the same session again on destroy', async () => {
+      updatePromise.resolve();
+      expect(session1.remove).not.toHaveBeenCalled();
+      await drmEngine.removeSession('abc');
+      expect(session1.remove).toHaveBeenCalled();
+      session1.remove.calls.reset();
+      await drmEngine.destroy();
+      // The session should only be removed ONCE. If it's double-removed, it
+      // will make a (non-fatal) DOMException.
+      expect(session1.remove).not.toHaveBeenCalled();
     });
   });
 

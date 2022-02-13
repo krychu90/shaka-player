@@ -1092,8 +1092,8 @@ describe('Player', () => {
         // Image tracks
         manifest.addImageStream(53, (stream) => {
           stream.originalId = 'thumbnail';
-          stream.width = 100;
-          stream.height = 200;
+          stream.width = 200;
+          stream.height = 400;
           stream.bandwidth = 10;
           stream.mimeType = 'image/jpeg';
           stream.tilesLayout = '1x1';
@@ -1503,8 +1503,8 @@ describe('Player', () => {
           audioBandwidth: null,
           videoBandwidth: null,
           bandwidth: 10,
-          width: 100,
-          height: 200,
+          width: 200,
+          height: 400,
           frameRate: null,
           pixelAspectRatio: null,
           hdr: null,
@@ -3537,29 +3537,39 @@ describe('Player', () => {
 
         await player.load(fakeManifestUri, 0, fakeMimeType);
 
+        expect(player.getImageTracks()[0].width).toBe(100);
+        expect(player.getImageTracks()[0].height).toBe(50);
         const thumbnail0 = await player.getThumbnails(5, 0);
         const thumbnail1 = await player.getThumbnails(5, 11);
         const thumbnail2 = await player.getThumbnails(5, 21);
         const thumbnail5 = await player.getThumbnails(5, 51);
         expect(thumbnail0).toEqual(jasmine.objectContaining({
+          imageHeight: 150,
+          imageWidth: 200,
           positionX: 0,
           positionY: 0,
           width: 100,
           height: 50,
         }));
         expect(thumbnail1).toEqual(jasmine.objectContaining({
+          imageHeight: 150,
+          imageWidth: 200,
           positionX: 100,
           positionY: 0,
           width: 100,
           height: 50,
         }));
         expect(thumbnail2).toEqual(jasmine.objectContaining({
+          imageHeight: 150,
+          imageWidth: 200,
           positionX: 0,
           positionY: 50,
           width: 100,
           height: 50,
         }));
         expect(thumbnail5).toEqual(jasmine.objectContaining({
+          imageHeight: 150,
+          imageWidth: 200,
           positionX: 100,
           positionY: 100,
           width: 100,

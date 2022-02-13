@@ -7,6 +7,7 @@
 
 goog.provide('shaka.ui.AudioLanguageSelection');
 
+goog.require('shaka.ui.Controls');
 goog.require('shaka.ui.Enums');
 goog.require('shaka.ui.LanguageUtils');
 goog.require('shaka.ui.Locales');
@@ -31,6 +32,7 @@ shaka.ui.AudioLanguageSelection = class extends shaka.ui.SettingsMenu {
     super(parent, controls, shaka.ui.Enums.MaterialDesignIcons.LANGUAGE);
 
     this.button.classList.add('shaka-language-button');
+    this.button.classList.add('shaka-tooltip-status');
     this.menu.classList.add('shaka-audio-languages');
 
     this.eventManager.listen(
@@ -71,6 +73,8 @@ shaka.ui.AudioLanguageSelection = class extends shaka.ui.SettingsMenu {
 
     this.controls.dispatchEvent(
         new shaka.util.FakeEvent('languageselectionupdated'));
+
+    this.button.setAttribute('shaka-status', this.currentSelection.innerText);
   }
 
   /** @private */
@@ -117,4 +121,7 @@ shaka.ui.AudioLanguageSelection.Factory = class {
 };
 
 shaka.ui.OverflowMenu.registerElement(
+    'language', new shaka.ui.AudioLanguageSelection.Factory());
+
+shaka.ui.Controls.registerElement(
     'language', new shaka.ui.AudioLanguageSelection.Factory());

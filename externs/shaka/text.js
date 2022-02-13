@@ -298,6 +298,20 @@ shaka.extern.Cue = class {
     this.fontFamily;
 
     /**
+     * Text stroke color as a CSS color, e.g. "#FFFFFF" or "white".
+     * @type {string}
+     * @exportDoc
+     */
+    this.textStrokeColor;
+
+    /**
+     * Text stroke width as a CSS stroke-width value.
+     * @type {string}
+     * @exportDoc
+     */
+    this.textStrokeWidth;
+
+    /**
      * Text letter spacing as a CSS letter-spacing value.
      * @type {string}
      * @exportDoc
@@ -348,6 +362,16 @@ shaka.extern.Cue = class {
      * @exportDoc
      */
     this.nestedCues;
+
+    /**
+     * If true, this represents a container element that is "above" the main
+     * cues. For example, the <body> and <div> tags that contain the <p> tags
+     * in a TTML file. This controls the flow of the final cues; any nested cues
+     * within an "isContainer" cue will be laid out as separate lines.
+     * @type {boolean}
+     * @exportDoc
+     */
+    this.isContainer;
 
     /**
      * Whether or not the cue only acts as a line break between two nested cues.

@@ -16,6 +16,7 @@ goog.require('shaka.log');
 goog.require('shaka.ui.AdCounter');
 goog.require('shaka.ui.AdPosition');
 goog.require('shaka.ui.BigPlayButton');
+goog.require('shaka.ui.ContextMenu');
 goog.require('shaka.ui.Locales');
 goog.require('shaka.ui.Localization');
 goog.require('shaka.ui.SeekBar');
@@ -198,6 +199,10 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
    * @export
    */
   async destroy() {
+    if (document.pictureInPictureElement == this.localVideo_) {
+      await document.exitPictureInPicture();
+    }
+
     if (this.eventManager_) {
       this.eventManager_.release();
       this.eventManager_ = null;
@@ -317,6 +322,10 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
     if (this.playButton_) {
       this.playButton_ = null;
+    }
+
+    if (this.contextMenu_) {
+      this.contextMenu_ = null;
     }
 
     if (this.controlsContainer_) {
@@ -569,9 +578,8 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
           }
         }
       } catch (error) {
-        this.dispatchEvent(new shaka.util.FakeEvent('error', {
-          detail: error,
-        }));
+        this.dispatchEvent(new shaka.util.FakeEvent(
+            'error', (new Map()).set('detail', error)));
       }
     }
   }
@@ -647,6 +655,10 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
       this.addPlayButton_();
     }
 
+    if (this.config_.customContextMenu) {
+      this.addContextMenu_();
+    }
+
     if (!this.spinnerContainer_) {
       this.addBufferingSpinner_();
     }
@@ -704,6 +716,14 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
   }
 
   /** @private */
+  addContextMenu_() {
+    /** @private {shaka.ui.ContextMenu} */
+    this.contextMenu_ =
+        new shaka.ui.ContextMenu(this.controlsButtonPanel_, this);
+    this.elements_.push(this.contextMenu_);
+  }
+
+  /** @private */
   addScrimContainer_() {
     // This is the container that gets styled by CSS to have the
     // black gradient scrim at the end of the controls.
@@ -717,7 +737,8 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     /** @private {!HTMLElement} */
     this.adPanel_ = shaka.util.Dom.createHTMLElement('div');
     this.adPanel_.classList.add('shaka-ad-controls');
-    shaka.ui.Utils.setDisplay(this.adPanel_, this.ad_ != null);
+    const showAdPanel = this.ad_ != null && this.ad_.isLinear();
+    shaka.ui.Utils.setDisplay(this.adPanel_, showAdPanel);
     this.bottomControls_.appendChild(this.adPanel_);
 
     const adPosition = new shaka.ui.AdPosition(this.adPanel_, this);
@@ -774,8 +795,12 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     // on the page. The click event listener on window ensures that.
     // However, clicks on the bottom controls don't propagate to the container,
     // so we have to explicitly hide the menus onclick here.
-    this.eventManager_.listen(this.bottomControls_, 'click', () => {
-      this.hideSettingsMenus();
+    this.eventManager_.listen(this.bottomControls_, 'click', (e) => {
+      // We explicitly deny this measure when clicking on buttons that
+      // open submenus in the control panel.
+      if (!e.target['closest']('.shaka-overflow-button')) {
+        this.hideSettingsMenus();
+      }
     });
 
     this.addAdControls_();
@@ -787,6 +812,9 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     this.controlsButtonPanel_.classList.add('shaka-controls-button-panel');
     this.controlsButtonPanel_.classList.add(
         'shaka-show-controls-on-mouse-over');
+    if (this.config_.enableTooltips) {
+      this.controlsButtonPanel_.classList.add('shaka-tooltips-on');
+    }
     this.bottomControls_.appendChild(this.controlsButtonPanel_);
 
     // Create the elements specified by controlPanelElements
@@ -856,7 +884,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
 
   /**
-   * Adds a container for server side ad UI with IMA SDK.
+   * Adds a container for client side ad UI with IMA SDK.
    *
    * @private
    */
@@ -865,6 +893,9 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     this.clientAdContainer_ = shaka.util.Dom.createHTMLElement('div');
     this.clientAdContainer_.classList.add('shaka-client-side-ad-container');
     shaka.ui.Utils.setDisplay(this.clientAdContainer_, false);
+    this.eventManager_.listen(this.clientAdContainer_, 'click', () => {
+      this.onContainerClick_();
+    });
     this.videoContainer_.appendChild(this.clientAdContainer_);
   }
 
@@ -890,6 +921,12 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
     // Listen for click events to dismiss the settings menus.
     this.eventManager_.listen(window, 'click', () => this.hideSettingsMenus());
+
+    // Avoid having multiple submenus open at the same time.
+    this.eventManager_.listen(
+        this, 'submenuopen', () => {
+          this.hideSettingsMenus();
+        });
 
     this.eventManager_.listen(this.video_, 'play', () => {
       this.onPlayStateChange_();
@@ -1097,7 +1134,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     // recent mouse movement, we're in keyboard navigation, or one of a special
     // class of elements is hovered.
     if (adIsPaused ||
-        (!this.ad_ && videoIsPaused) ||
+        ((!this.ad_ || !this.ad_.isLinear()) && videoIsPaused) ||
         this.recentMouseMovement_ ||
         keyboardNavigationMode ||
         this.isHovered_()) {
@@ -1141,14 +1178,14 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
     if (this.anySettingsMenusAreOpen()) {
       this.hideSettingsMenusTimer_.tickNow();
-    } else {
+    } else if (this.config_.singleClickForPlayAndPause) {
       this.onPlayPauseClick_();
     }
   }
 
   /** @private */
   onPlayPauseClick_() {
-    if (this.ad_) {
+    if (this.ad_ && this.ad_.isLinear()) {
       this.playPauseAd();
     } else {
       this.playPausePresentation();
@@ -1158,9 +1195,8 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
   /** @private */
   onCastStatusChange_() {
     const isCasting = this.castProxy_.isCasting();
-    this.dispatchEvent(new shaka.util.FakeEvent('caststatuschanged', {
-      newStatus: isCasting,
-    }));
+    this.dispatchEvent(new shaka.util.FakeEvent(
+        'caststatuschanged', (new Map()).set('newStatus', isCasting)));
 
     if (isCasting) {
       this.controlsContainer_.setAttribute('casting', 'true');

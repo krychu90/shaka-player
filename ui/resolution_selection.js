@@ -121,7 +121,11 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
    * @private
    * */
   getQualityMark_(height) {
-    if (height >= 2160) {
+    if (height >= 8640) {
+      return height + 'p';
+    } else if (height >= 4320) {
+      return '8K';
+    } else if (height >= 2160) {
       return '4K';
     } else if (height >= 1440) {
       return '2K';

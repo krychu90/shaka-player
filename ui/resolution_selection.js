@@ -104,14 +104,16 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
 
     const abrEnabled = this.player.getConfiguration().abr.enabled;
     if (abrEnabled) {
-      this.autoQuality.textContent = variant.video.height + 'p';
+      if (variant.video) {
+        this.autoQuality.textContent = variant.video.height + 'p';
+      }
       this.autoQuality.style.display = '';
     } else {
       this.autoQuality.style.display = 'none';
     }
 
     /** @type string */
-    const mark = this.getQualityMark_(variant.video.height);
+    const mark = this.getQualityMark_(variant.video ? variant.video.height : 0);
     this.qualityMark.textContent = this.overflowQualityMark.textContent = mark;
     this.qualityMark.style.display = this.overflowQualityMark.style.display =
         mark !== '' ? '' : 'none';

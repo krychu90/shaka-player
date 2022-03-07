@@ -43,10 +43,11 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
     this.icon_.classList.add('material-icons-round');
     this.icon_.textContent =
       shaka.ui.Enums.MaterialDesignIcons.STATISTICS_ON;
-    this.button_.appendChild(this.icon_);
+    // this.button_.appendChild(this.icon_);
 
     const label = shaka.util.Dom.createHTMLElement('label');
     label.classList.add('shaka-overflow-button-label');
+    label.classList.add('shaka-overflow-button-label--inline');
 
     /** @private {!HTMLElement} */
     this.nameSpan_ = shaka.util.Dom.createHTMLElement('span');
@@ -78,7 +79,7 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
     this.skippedStats_ = ['stateHistory', 'switchHistory'];
 
     /** @private {!Object.<string, number>} */
-    this.currentStats_ = this.player.getStats();
+    this.currentStats_ = this.getStats_();
 
     /** @private {!Object.<string, HTMLElement>} */
     this.displayedElements_ = {};
@@ -109,8 +110,14 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
           this.currentStats_[name], false) + ' (m)';
     };
 
+    const noParse = (name) => {
+      return this.currentStats_[name];
+    };
+
     /** @private {!Object.<string, function(string):string>} */
     this.parseFrom_ = {
+      'videoCodecs': noParse,
+      'audioCodecs': noParse,
       'width': parsePx,
       'height': parsePx,
       'completionPercent': parsePercent,
@@ -217,12 +224,22 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
 
   /** @private */
   onTimerTick_() {
-    this.currentStats_ = this.player.getStats();
+    this.currentStats_ = this.getStats_();
 
     for (const name of this.statisticsList_) {
       this.displayedElements_[name].textContent =
           this.parseFrom_[name](name);
     }
+  }
+
+  /** @private */
+  getStats_() {
+    const stats = this.player.getStats();
+    const variant = this.player.getCurrentVariant();
+    stats.videoCodecs = variant && variant.video ? variant.video.codecs : null;
+    stats.audioCodecs = variant && variant.audio ? variant.audio.codecs : null;
+
+    return stats;
   }
 
   /** @override */

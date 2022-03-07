@@ -188,6 +188,8 @@ shaka.ui.Overlay = class {
         'playback_rate',
       ],
       statisticsList: [
+        'videoCodecs',
+        'audioCodecs',
         'width',
         'height',
         'corruptedFrames',

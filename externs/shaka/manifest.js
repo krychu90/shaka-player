@@ -384,3 +384,33 @@ shaka.extern.CreateSegmentIndexFunction;
  * @exportDoc
  */
 shaka.extern.Stream;
+
+
+/**
+ * @typedef {{
+ *   av0_opu: number,
+ *   av1_opu: number,
+ *   av0_mp4: number,
+ *   av1_mp4: number,
+ *   vp0_opu: number,
+ *   vp9_opu: number,
+ *   vp0_mp4: number,
+ *   vp9_mp4: number,
+ *   avc_opu: number,
+ *   avc_mp4: number
+ * }}
+ *
+ * @property {number} av0_opu
+ * @property {number} av1_opu
+ * @property {number} av0_mp4
+ * @property {number} av1_mp4
+ * @property {number} vp0_opu
+ * @property {number} vp9_opu
+ * @property {number} vp0_mp4
+ * @property {number} vp9_mp4
+ * @property {number} avc_opu
+ * @property {number} avc_mp4
+ *
+ * @exportDoc
+ */
+shaka.extern.VariantPriority;

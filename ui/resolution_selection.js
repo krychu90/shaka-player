@@ -54,7 +54,7 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
     }
 
     const spanWrapper = shaka.util.Dom.createHTMLElement('span');
-    this.button.childNodes[0].appendChild(spanWrapper);
+    this.button.childNodes[1].appendChild(spanWrapper);
     spanWrapper.appendChild(this.currentSelection);
     spanWrapper.appendChild(this.autoQuality);
     spanWrapper.appendChild(this.qualityMark);

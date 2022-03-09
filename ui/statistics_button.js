@@ -43,7 +43,7 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
     this.icon_.classList.add('material-icons-round');
     this.icon_.textContent =
       shaka.ui.Enums.MaterialDesignIcons.STATISTICS_ON;
-    // this.button_.appendChild(this.icon_);
+    this.button_.appendChild(this.icon_);
 
     const label = shaka.util.Dom.createHTMLElement('label');
     label.classList.add('shaka-overflow-button-label');

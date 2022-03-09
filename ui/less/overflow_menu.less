@@ -17,8 +17,7 @@
   white-space: nowrap;
 
   /* Styles for the menu itself. */
-  background: white;
-  box-shadow: 0 1px 9px 0 rgba(0, 0, 0, 0.4);
+  background: rgba(28, 28, 28, 0.9);
   border-radius: 2px;
   max-height: 250px;
   min-width: 180px;
@@ -40,12 +39,12 @@
 
   /* The buttons inside the menu. */
   button {
-    font-size: 14px;
+    font-size: 13px;
     background: transparent;
-    color: black;
+    color: #eee;
     border: none;
     min-height: 30px;
-    padding: 10px 20px;
+    padding: 10px;
 
     /* The button itself is a flex container, with children center-aligned. */
     display: flex;
@@ -53,7 +52,7 @@
 
     /* When hovered, the button's background is highlighted. */
     &:hover {
-      background: rgb(224, 224, 224);
+      background: rgba(255, 255, 255, 0.1);
     }
 
     /* The button is clickable, showing cursor pointer */
@@ -65,7 +64,7 @@
     }
 
     .shaka-keyboard-navigation &:focus {
-      background: rgb(224, 224, 224);
+      background: rgba(255, 255, 255, 0.1);
     }
   }
 
@@ -79,6 +78,7 @@
     &.shaka-chosen-item {
       order: -1;
       line-height: 17px;
+      font-size: 18px;
     }
   }
 
@@ -91,7 +91,7 @@
 }
 
 .shaka-overflow-menu {
-  min-width: 300px;
+  min-width: 360px;
 }
 
 /* The span elements inside the top-level overflow menu contain single lines
@@ -115,9 +115,15 @@
 }
 
 .shaka-overflow-button-label--inline {
+  box-sizing: border-box;
   flex-direction: row;
   justify-content: space-between;
-  width: 100%;
+  width: calc(100% - 34px);
+  padding-right: 28px;
+  background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iMjRweCIgdmlld0JveD0iMCAwIDI0IDI0IiB3aWR0aD0iMjRweCIgZmlsbD0iI2VlZWVlZSI+PHBhdGggZD0iTTAgMGgyNHYyNEgwVjB6IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTguNTkgMTYuNTlMMTMuMTcgMTIgOC41OSA3LjQxIDEwIDZsNiA2LTYgNi0xLjQxLTEuNDF6Ii8+PC9zdmc+);
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 24px 24px;
 }
 
 /* This is the specific span element which shows the current selection from some
@@ -125,13 +131,13 @@
  * language, the currently-selected resolution, etc. */
 .shaka-current-selection-span {
   /* This is dimmer than the other span, which is the name of the submenu. */
-  color: rgba(0, 0, 0, 0.54);
+  font-size: 12px;
 }
 
 .shaka-current-auto-quality {
-  color: rgba(0, 0, 0, 0.54);
   margin-left: 5px;
-  font-size: 0.9em;
+  font-size: 11px;
+  color: #ccc;
 }
 
 .shaka-quality-mark,
@@ -163,7 +169,7 @@
 .shaka-settings-menu {
   span {
     /* TODO(b/116651454): eliminate hard-coded offsets */
-    margin-left: 34px;
+    margin-left: 28px;
 
     &.shaka-chosen-item {
       margin-left: 0;
@@ -174,6 +180,9 @@
 /* This is a button within each submenu that takes you back to the main overflow
  * menu. */
 .shaka-back-to-overflow-button {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+  margin-bottom: 5px;
+
   /* The label inside the button, which says something like "back". */
   span {
     /* TODO(b/116651454): eliminate hard-coded offsets */
@@ -184,6 +193,11 @@
   i {
     /* TODO(b/116651454): eliminate hard-coded offsets */
     padding-right: 10px;
+    font-size: 18px !important;
+  }
+
+  &:hover {
+    background: transparent !important;
   }
 }
 

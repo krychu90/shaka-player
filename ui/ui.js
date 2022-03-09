@@ -180,6 +180,7 @@ shaka.ui.Overlay = class {
         'fullscreen',
       ],
       overflowMenuButtons: [
+        'statistics',
         'captions',
         'quality',
         'language',

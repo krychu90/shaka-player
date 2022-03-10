@@ -20,7 +20,7 @@
   background: rgba(28, 28, 28, 0.9);
   border-radius: 2px;
   max-height: 250px;
-  min-width: 180px;
+  min-width: 190px;
   padding: 7px 0;
 
   /* The menus fade out with the other controls. */
@@ -35,7 +35,7 @@
   position: absolute;
   z-index: 2;
   right: 15px;
-  bottom: 50px;
+  bottom: @material-icons-width + 14px;
 
   /* The buttons inside the menu. */
   button {
@@ -159,10 +159,10 @@
   font-size: 8px;
   font-weight: bold;
   text-shadow: 1px 1px 0 #840000;
-  padding: 1px 2px;
+  padding: 1px 2px 1px 1px;
   position: absolute;
-  right: -6px;
-  top: 6px;
+  right: 4px;
+  top: 10px;
 }
 
 /* The submenus have somewhat different margins inside them. */
@@ -181,6 +181,7 @@
  * menu. */
 .shaka-back-to-overflow-button {
   border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+  padding-bottom: 17px !important;
   margin-bottom: 5px;
 
   /* The label inside the button, which says something like "back". */

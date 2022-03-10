@@ -172,9 +172,9 @@ shaka.ui.Overlay = class {
     const config = {
       controlPanelElements: [
         'play_pause',
-        'time_and_duration',
         'mute',
         'volume',
+        'time_and_duration',
         'spacer',
         'overflow_menu',
         'fullscreen',
@@ -240,7 +240,7 @@ shaka.ui.Overlay = class {
       enableKeyboardPlaybackControls: true,
       enableFullscreenOnRotation: true,
       forceLandscapeOnFullscreen: true,
-      enableTooltips: false,
+      enableTooltips: true,
     };
 
     // Check AirPlay support

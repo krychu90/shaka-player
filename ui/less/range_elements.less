@@ -93,6 +93,7 @@
   /* Remove any browser styling of the range element. */
   -webkit-appearance: none;
   background: transparent;
+  cursor: pointer;
 
   /* Overlay and fill the container div. */
   .overlay-child();
@@ -143,7 +144,30 @@
 
 .shaka-seek-bar-container {
   .show-when-controls-shown();
-  top: 1px;
+  top: 5px;
+  height: 5px;
+  margin-bottom: 0;
+  transform: scaleY(0.6);
+  transition:
+    opacity cubic-bezier(0.4, 0, 0.6, 1) 600ms,
+    transform cubic-bezier(0.4, 0, 0.6, 1) 100ms;
+  background-clip: padding-box !important;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+
+  .shaka-seek-bar {
+    transition: opacity cubic-bezier(0.4, 0, 0.6, 1) 100ms;
+    opacity: 0;
+    transform: scale();
+  }
+
+  &:hover {
+    transform: scaleY(1);
+
+    .shaka-seek-bar {
+      opacity: 1;
+    }
+  }
 }
 
 .shaka-ad-markers {

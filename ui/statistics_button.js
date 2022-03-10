@@ -236,8 +236,10 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
   getStats_() {
     const stats = this.player.getStats();
     const variant = this.player.getCurrentVariant();
-    stats.videoCodecs = variant && variant.video ? variant.video.codecs : null;
-    stats.audioCodecs = variant && variant.audio ? variant.audio.codecs : null;
+    stats.videoCodecs = variant && variant.video ?
+      variant.video.codecs + ' (' + variant.video.mimeType + ')' : null;
+    stats.audioCodecs = variant && variant.audio ?
+      variant.audio.codecs + ' (' + variant.audio.mimeType + ')' : null;
 
     return stats;
   }

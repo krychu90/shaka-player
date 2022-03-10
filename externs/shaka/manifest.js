@@ -390,26 +390,26 @@ shaka.extern.Stream;
  * @typedef {{
  *   av0_opu: number,
  *   av1_opu: number,
- *   av0_mp4: number,
- *   av1_mp4: number,
+ *   av0_vor: number,
+ *   av1_vor: number,
  *   vp0_opu: number,
  *   vp9_opu: number,
- *   vp0_mp4: number,
- *   vp9_mp4: number,
+ *   vp0_vor: number,
+ *   vp9_vor: number,
  *   avc_opu: number,
- *   avc_mp4: number
+ *   avc_vor: number
  * }}
  *
  * @property {number} av0_opu
  * @property {number} av1_opu
- * @property {number} av0_mp4
- * @property {number} av1_mp4
+ * @property {number} av0_vor
+ * @property {number} av1_vor
  * @property {number} vp0_opu
  * @property {number} vp9_opu
- * @property {number} vp0_mp4
- * @property {number} vp9_mp4
+ * @property {number} vp0_vor
+ * @property {number} vp9_vor
  * @property {number} avc_opu
- * @property {number} avc_mp4
+ * @property {number} avc_vor
  *
  * @exportDoc
  */

@@ -396,8 +396,8 @@ shaka.extern.Stream;
  *   vp9_opu: number,
  *   vp0_mp4: number,
  *   vp9_mp4: number,
- *   avc_opu: number,
- *   avc_mp4: number
+ *   avc_mp4: number,
+ *   avc_opu: number
  * }}
  *
  * @property {number} av0_opu
@@ -408,8 +408,8 @@ shaka.extern.Stream;
  * @property {number} vp9_opu
  * @property {number} vp0_mp4
  * @property {number} vp9_mp4
- * @property {number} avc_opu
  * @property {number} avc_mp4
+ * @property {number} avc_opu
  *
  * @exportDoc
  */

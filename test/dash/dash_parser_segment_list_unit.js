@@ -4,12 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.test.Dash');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.ManifestParser');
-goog.require('shaka.util.Error');
-
 describe('DashParser SegmentList', () => {
   const Dash = shaka.test.Dash;
   const ManifestParser = shaka.test.ManifestParser;
@@ -308,7 +302,7 @@ describe('DashParser SegmentList', () => {
     });
   });
 
-  // https://github.com/google/shaka-player/issues/3230
+  // https://github.com/shaka-project/shaka-player/issues/3230
   it('works with multi-Period with eviction', async () => {
     const setFormat = [
       '    <AdaptationSet mimeType="video/mp4">',

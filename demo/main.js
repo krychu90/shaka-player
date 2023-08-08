@@ -164,7 +164,7 @@ shakaDemo.Main = class {
       case shaka.ui.Overlay.FailReasonCode.NO_BROWSER_SUPPORT:
         message = this.getLocalizedString(
             shakaDemo.MessageIds.FAILURE_NO_BROWSER_SUPPORT);
-        href = 'https://github.com/google/shaka-player#' +
+        href = 'https://github.com/shaka-project/shaka-player#' +
                 'platform-and-browser-support-matrix';
         break;
       case shaka.ui.Overlay.FailReasonCode.PLAYER_FAILED_TO_LOAD:
@@ -289,7 +289,7 @@ shakaDemo.Main = class {
 
     // Navigate to the github issue opening interface, with the
     // partially-filled template as a preset body.
-    let url = 'https://github.com/google/shaka-player/issues/new?';
+    let url = 'https://github.com/shaka-project/shaka-player/issues/new?';
     url += 'body=' + encodeURIComponent(text);
     // Open in another tab.
     window.open(url, '_blank');
@@ -1227,9 +1227,6 @@ shakaDemo.Main = class {
       // The currently-selected asset changed, so update asset cards.
       this.dispatchEventWithName_('shaka-main-selected-asset-changed');
 
-      await this.drmConfiguration_(asset);
-      this.controls_.getCastProxy().setAppData({'asset': asset});
-
       // Enable the correct set of controls before loading.
       // The video container influences the TextDisplayer used.
       if (this.nativeControlsEnabled_) {
@@ -1243,6 +1240,9 @@ shakaDemo.Main = class {
         // This will force the player to use UITextDisplayer.
         this.player_.setVideoContainer(this.container_);
       }
+
+      await this.drmConfiguration_(asset);
+      this.controls_.getCastProxy().setAppData({'asset': asset});
 
       // Finally, the asset can be loaded.
       let manifestUri = asset.manifestUri;
@@ -1502,6 +1502,20 @@ shakaDemo.Main = class {
         request.contentSourceId = asset.imaContentSrcId;
         request.videoId = asset.imaVideoId;
       }
+      switch (asset.imaManifestType) {
+        case 'DASH':
+        case 'dash':
+        case 'MPD':
+        case 'mpd':
+          request.format = google.ima.dai.api.StreamRequest.StreamFormat.DASH;
+          break;
+        case 'HLS':
+        case 'hls':
+        case 'M3U8':
+        case 'm3u8':
+          request.format = google.ima.dai.api.StreamRequest.StreamFormat.HLS;
+          break;
+      }
 
       const uri = await adManager.requestServerSideStream(
           request, /* backupUri= */ asset.manifestUri);
@@ -1608,7 +1622,7 @@ shakaDemo.Main = class {
 
   /**
    * Sets the "version-string" divs to a version string.
-   * For example, "v2.5.4-master (uncompiled)".
+   * For example, "v2.5.4-main (uncompiled)".
    * @private
    */
   setUpVersionStrings_() {

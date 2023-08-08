@@ -4,12 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.FakeDrmEngine');
-
-goog.require('shaka.media.DrmEngine');
-goog.require('shaka.test.Util');
-
-
 /**
  * A fake DrmEngine.
  *
@@ -87,6 +81,9 @@ shaka.test.FakeDrmEngine = class {
     /** @type {!jasmine.Spy} */
     this.supportsVariant = jasmine.createSpy('supportsVariant');
     this.supportsVariant.and.returnValue(true);
+
+    /** @type {!jasmine.Spy} */
+    this.setSrcEquals = jasmine.createSpy('setSrcEquals');
   }
 
   /**

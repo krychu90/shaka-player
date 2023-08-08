@@ -4,31 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.media.InitSegmentReference');
-goog.require('shaka.media.MediaSourceEngine');
-goog.require('shaka.media.MediaSourcePlayhead');
-goog.require('shaka.media.SegmentIndex');
-goog.require('shaka.media.SegmentReference');
-goog.require('shaka.media.StreamingEngine');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.FakeClosedCaptionParser');
-goog.require('shaka.test.FakeTextDisplayer');
-goog.require('shaka.test.Mp4LiveStreamGenerator');
-goog.require('shaka.test.Mp4VodStreamGenerator');
-goog.require('shaka.test.StreamingEngineUtil');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.ManifestParserUtils');
-goog.require('shaka.util.Platform');
-goog.require('shaka.util.PlayerConfiguration');
-goog.requireType('shaka.media.Playhead');
-goog.requireType('shaka.media.PresentationTimeline');
-goog.requireType('shaka.test.FakeNetworkingEngine');
-goog.requireType('shaka.test.FakePresentationTimeline');
-
 describe('StreamingEngine', () => {
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
   const Util = shaka.test.Util;
@@ -93,6 +68,7 @@ describe('StreamingEngine', () => {
         video,
         new shaka.test.FakeClosedCaptionParser(),
         new shaka.test.FakeTextDisplayer());
+    waiter.setMediaSourceEngine(mediaSourceEngine);
   });
 
   afterEach(async () => {
@@ -114,17 +90,17 @@ describe('StreamingEngine', () => {
 
     segmentAvailability = {
       start: 0,
-      end: 60,
+      end: 40,
     };
 
     timeline = shaka.test.StreamingEngineUtil.createFakePresentationTimeline(
         segmentAvailability,
-        /* presentationDuration= */ 60,
+        /* presentationDuration= */ 40,
         /* maxSegmentDuration= */ metadata.video.segmentDuration,
         /* isLive= */ false);
 
     setupNetworkingEngine(
-        /* presentationDuration= */ 60,
+        /* presentationDuration= */ 40,
         {
           audio: metadata.audio.segmentDuration,
           video: metadata.video.segmentDuration,
@@ -132,8 +108,8 @@ describe('StreamingEngine', () => {
 
     setupManifest(
         /* firstPeriodStartTime= */ 0,
-        /* secondPeriodStartTime= */ 30,
-        /* presentationDuration= */ 60);
+        /* secondPeriodStartTime= */ 20,
+        /* presentationDuration= */ 40);
 
     setupPlayhead();
 
@@ -177,6 +153,19 @@ describe('StreamingEngine', () => {
         /* secondPeriodStartTime= */ 300,
         /* presentationDuration= */ Infinity);
     setupPlayhead();
+
+    // Retry on failure for live streams.
+    config.failureCallback = () => streamingEngine.retry(0.1);
+
+    // Ignore 404 errors in live stream tests.
+    onError.and.callFake((error) => {
+      if (error.code == shaka.util.Error.Code.BAD_HTTP_STATUS &&
+          error.data[1] == 404) {
+        // 404 error
+      } else {
+        fail(error);
+      }
+    });
 
     createStreamingEngine();
   }
@@ -287,7 +276,12 @@ describe('StreamingEngine', () => {
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
       video.play();
-      await waiter.timeoutAfter(90).waitForEnd(video);
+      // The overall test timeout is 120 seconds, and the content is 40
+      // seconds.  It should be possible to complete this test in 100 seconds,
+      // and if not, we want the error thrown to be within the overall test's
+      // timeout window.  Note that we have seen some devices fail to play at
+      // full speed for reasons beyond our control, so we plan for >= 0.5x.
+      await waiter.timeoutAfter(100).waitForEnd(video);
     });
 
     it('plays at high playback rates', async () => {
@@ -308,14 +302,7 @@ describe('StreamingEngine', () => {
       await waiter.timeoutAfter(10).waitForMovement(video);
       video.playbackRate = 10;
 
-      // Something weird happens on some platforms (variously Chromecast, legacy
-      // Edge, and Safari) where the playhead can go past duration.
-      // To cope with this, don't fail on timeout.  If the video never got
-      // flagged as "ended", check for the playhead to be near or past the end.
-      await waiter.timeoutAfter(30).failOnTimeout(false).waitForEnd(video);
-      if (!video.ended) {
-        expect(video.currentTime).toBeGreaterThan(video.duration - 0.1);
-      }
+      await waiter.timeoutAfter(30).waitForEnd(video);
     });
 
     it('can handle buffered seeks', async () => {
@@ -325,9 +312,9 @@ describe('StreamingEngine', () => {
       video.play();
 
       // After 35 seconds seek back 10 seconds into the first Period.
-      await waiter.timeoutAfter(60).waitUntilPlayheadReaches(video, 35);
+      await waiter.timeoutAfter(80).waitUntilPlayheadReaches(video, 35);
       video.currentTime = 25;
-      await waiter.timeoutAfter(60).waitForEnd(video);
+      await waiter.timeoutAfter(80).waitForEnd(video);
     });
 
     it('can handle unbuffered seeks', async () => {
@@ -649,6 +636,7 @@ describe('StreamingEngine', () => {
             width: 600,
             height: 400,
             type: shaka.util.ManifestParserUtils.ContentType.VIDEO,
+            drmInfos: [],
           },
           audio: {
             id: 3,
@@ -658,6 +646,7 @@ describe('StreamingEngine', () => {
             codecs: 'mp4a.40.2',
             bandwidth: 192000,
             type: shaka.util.ManifestParserUtils.ContentType.AUDIO,
+            drmInfos: [],
           },
         }],
       };

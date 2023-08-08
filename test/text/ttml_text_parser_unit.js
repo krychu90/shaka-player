@@ -4,15 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.test.TtmlUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.text.Cue');
-goog.require('shaka.text.CueRegion');
-goog.require('shaka.text.TtmlTextParser');
-goog.require('shaka.util.BufferUtils');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.StringUtils');
-
 describe('TtmlTextParser', () => {
   const Cue = shaka.text.Cue;
   const CueRegion = shaka.text.CueRegion;
@@ -22,14 +13,14 @@ describe('TtmlTextParser', () => {
   it('supports no cues', () => {
     verifyHelper([],
         '<tt></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {});
   });
 
   it('supports empty text string', () => {
     verifyHelper([],
         '',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {});
   });
 
@@ -37,7 +28,7 @@ describe('TtmlTextParser', () => {
     verifyHelper(
         [],
         '<tt><body><div>  \r\n </div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {});
   });
 
@@ -64,7 +55,7 @@ describe('TtmlTextParser', () => {
           },
         ],
         '<tt xml:space="default">' + ttBody + '</tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 70},
         {startTime: 62.03, endTime: 62.05});
     // When xml:space="preserve", take them into account.
     verifyHelper(
@@ -90,7 +81,7 @@ describe('TtmlTextParser', () => {
           },
         ],
         '<tt xml:space="preserve">' + ttBody + '</tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 70},
         {startTime: 62.03, endTime: 62.05});
     // The default value for xml:space is "default".
     verifyHelper(
@@ -106,7 +97,7 @@ describe('TtmlTextParser', () => {
           },
         ],
         '<tt>' + ttBody + '</tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 70},
         {startTime: 62.03, endTime: 62.05});
 
     // Any other value is rejected as an error.
@@ -137,7 +128,7 @@ describe('TtmlTextParser', () => {
           },
         ],
         '<tt>' + ttBody + '</tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 70},
         {startTime: 62.03, endTime: 62.05});
   });
 
@@ -207,7 +198,7 @@ describe('TtmlTextParser', () => {
         '<span>First cue</span><br /><span>Second cue</span>' +
         '</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -243,7 +234,7 @@ describe('TtmlTextParser', () => {
         'First cue<br />Second cue' +
         '</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -302,7 +293,7 @@ describe('TtmlTextParser', () => {
         '</span>' +
         '</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -321,7 +312,7 @@ describe('TtmlTextParser', () => {
         '<div><p begin="01:02.05" end="01:02:03.200">' +
         '<span>Test</span></p></div>' +
         '</body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -351,7 +342,7 @@ describe('TtmlTextParser', () => {
         '<p><div begin="01:02.05" end="01:02:03.200" ' +
         'smpte:backgroundImage="#img_0"></div></p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -363,7 +354,7 @@ describe('TtmlTextParser', () => {
         '<tt><body><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -375,7 +366,7 @@ describe('TtmlTextParser', () => {
         '<tt><body><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 7, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 7, segmentStart: 60, segmentEnd: 3740},
         {startTime: 69.05, endTime: 3730.2});
   });
 
@@ -398,7 +389,7 @@ describe('TtmlTextParser', () => {
         '<tt><body><div>' +
         '<p begin="01:02.05" end="01:02:03.200"><span>Nested cue</span></p>' +
         '</div></body></tt>',
-        {periodStart: 7, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 7, segmentStart: 60, segmentEnd: 3740},
         {startTime: 69.05, endTime: 3730.2});
   });
 
@@ -410,7 +401,7 @@ describe('TtmlTextParser', () => {
         '<tt><body><div>' +
         '<p begin="59.45m30ms" end="1.5h2.3s">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 3560, segmentEnd: 5410},
         {startTime: 3567.03, endTime: 5402.3});
   });
 
@@ -424,7 +415,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="00:10:15:15" end="00:11:02:30">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 610, segmentEnd: 670},
         {startTime: 615.5, endTime: 663});
   });
 
@@ -438,7 +429,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="00:10:15:15" end="00:11:02:30">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 610, segmentEnd: 670},
         {startTime: 615.5, endTime: 663});
   });
 
@@ -456,7 +447,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="00:10:15:15.1" end="00:11:02:29.2">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 610, segmentEnd: 670},
         {startTime: Util.closeTo(615.5 + 1 / 60), endTime: 663});
   });
 
@@ -470,7 +461,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="75f" end="300.3f">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 20},
         {startTime: 2.5, endTime: Util.closeTo(10.01)});
   });
 
@@ -484,7 +475,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="50t" end="60.2t">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 5, endTime: Util.closeTo(6.02)});
   });
 
@@ -496,7 +487,7 @@ describe('TtmlTextParser', () => {
         '<tt><body><div>' +
         '<p begin="01:02.05" dur="5s">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 70},
         {startTime: 62.05, endTime: 67.05});
   });
 
@@ -506,7 +497,7 @@ describe('TtmlTextParser', () => {
         '<tt><body><div>' +
         '<!-- text-based TTML -->' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {});
   });
 
@@ -526,7 +517,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -548,7 +539,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -570,7 +561,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -595,7 +586,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -620,7 +611,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -641,7 +632,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -670,7 +661,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             viewportAnchorX: 50,
@@ -698,7 +689,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             viewportAnchorX: 50,
@@ -727,7 +718,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -763,7 +754,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -799,7 +790,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -836,7 +827,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -873,7 +864,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -911,7 +902,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -948,7 +939,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -977,7 +968,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             viewportAnchorX: 50,
@@ -1005,7 +996,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             viewportAnchorX: 50,
@@ -1035,7 +1026,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {
           region: {
             id: 'subtitleArea',
@@ -1067,7 +1058,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
 
@@ -1088,7 +1079,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
 
@@ -1109,7 +1100,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
 
@@ -1130,7 +1121,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
 
@@ -1151,7 +1142,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -1169,7 +1160,7 @@ describe('TtmlTextParser', () => {
         '<div></div>' +
         '</body>' +
         '</tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
 
     verifyHelper(
@@ -1184,7 +1175,7 @@ describe('TtmlTextParser', () => {
         '</div>' +
         '</body>' +
         '</tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
 
     verifyHelper(
@@ -1197,7 +1188,7 @@ describe('TtmlTextParser', () => {
         '<div></div>' +
         '</body>' +
         '</tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {});
   });
 
@@ -1214,7 +1205,7 @@ describe('TtmlTextParser', () => {
         '</div>' +
         '</body>' +
         '</tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -1237,7 +1228,7 @@ describe('TtmlTextParser', () => {
         '<body><div smpte:backgroundImage="#img_0">' +
         '<p begin="01:02.05" end="01:02:03.200"></p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2},
         {
           startTime: 62.05,
@@ -1260,7 +1251,7 @@ describe('TtmlTextParser', () => {
         '<body><div begin="00:00.00" end="01:02.05" '+
         'smpte:backgroundImage="#img_0"></div>' +
         '</body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 70},
         {startTime: 0, endTime: 62.05},
         {
           startTime: 0,
@@ -1291,7 +1282,7 @@ describe('TtmlTextParser', () => {
         '<p begin="01:02.05" end="01:02:03.200" ' +
         'smpte:backgroundImage="#img_0" />' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -1320,7 +1311,7 @@ describe('TtmlTextParser', () => {
         '<tt><body><div>' +
         '<p begin="01:02.05" end="01:02:03.200">Line1<br/>Line2</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
 
     verifyHelper(
@@ -1354,7 +1345,7 @@ describe('TtmlTextParser', () => {
         '<span>Line1<br/>Line2</span>' +
         '</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -1382,7 +1373,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="00:01.00" end="00:02.00" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 2});
   });
 
@@ -1408,7 +1399,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -1456,7 +1447,7 @@ describe('TtmlTextParser', () => {
         '<p begin="00:01.00" end="00:02.00" style="s1">Test</p>' +
         '<p begin="00:02.00" end="00:04.00" style="s2">Test 2</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 4, region: {id: 'subtitleArea'}},
         {startTime: 1, endTime: 4});
   });
@@ -1481,7 +1472,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="00:01.00" end="00:02.00" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 2});
   });
 
@@ -1503,7 +1494,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="00:01.00" end="00:02.00" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 2});
   });
 
@@ -1540,8 +1531,54 @@ describe('TtmlTextParser', () => {
         '<span style="s1">Test</span>' +
         '</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 2});
+  });
+
+  // Regression test for #4468
+  it('defaults the body background to transparent', () => {
+    verifyHelper(
+        // One cue, don't care about the details
+        [{}],
+        '<tt xmlns:tts="http://www.w3.org/ns/ttml#styling">' +
+        '<head>' +
+        '<styling>' +
+        '<style xml:id="s1" tts:backgroundColor="black" />' +
+        '</styling>' +
+        '</head>' +
+        '<body><div>' +
+        '<p begin="00:01.00" end="00:02.00">' +
+        '<span style="s1">Test</span>' +
+        '</p>' +
+        '</div></body></tt>',
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
+        // The body must have these properties:
+        {backgroundColor: 'transparent'},
+        // The div must have these properties:
+        {});  // don't care
+  });
+
+  // Regression test for #4468
+  it('allows the body background color to be set', () => {
+    verifyHelper(
+        // One cue, don't care about the details
+        [{}],
+        '<tt xmlns:tts="http://www.w3.org/ns/ttml#styling">' +
+        '<head>' +
+        '<styling>' +
+        '<style xml:id="s1" tts:backgroundColor="black" />' +
+        '</styling>' +
+        '</head>' +
+        '<body style="s1"><div>' +
+        '<p begin="00:01.00" end="00:02.00">' +
+        '<span>Test</span>' +
+        '</p>' +
+        '</div></body></tt>',
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
+        // The body must have these properties:
+        {backgroundColor: 'black'},
+        // The div must have these properties:
+        {});  // don't care
   });
 
   it('parses wrapping option', () => {
@@ -1564,7 +1601,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -1592,7 +1629,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200" style="s2">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -1617,7 +1654,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="00:01.00" end="00:02.00" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 2});
   });
 
@@ -1645,7 +1682,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="00:01.00" end="00:02.00" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 2});
   });
 
@@ -1674,7 +1711,7 @@ describe('TtmlTextParser', () => {
         '<body><div>' +
         '<p begin="00:01.00" end="00:02.00" style="s1">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 2});
   });
 
@@ -1699,7 +1736,7 @@ describe('TtmlTextParser', () => {
         '<body region="subtitleArea"><div>' +
         '<p begin="01:02.05" end="01:02:03.200" style="s2">Test</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2, region: {id: 'subtitleArea'}},
         {startTime: 62.05, endTime: 3723.2});
   });
@@ -1714,11 +1751,11 @@ describe('TtmlTextParser', () => {
         '<p begin="00:01.00" end="00:02.00">First cue</p>' +
         '<p begin="00:03.00" end="00:04.00">Second cue</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
         {startTime: 1, endTime: 4});
   });
 
-  // Regression test for https://github.com/google/shaka-player/issues/2478
+  // Regression test for https://github.com/shaka-project/shaka-player/issues/2478
   it('supports nested cues with only non-ASCII characters', () => {
     verifyHelper(
         [
@@ -1738,7 +1775,7 @@ describe('TtmlTextParser', () => {
         '<tt><body><div>' +
         '<p begin="01:02.05" end="01:02:03.200"><span>äöü</span></p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 60, segmentEnd: 3730},
         {startTime: 62.05, endTime: 3723.2});
   });
 
@@ -1755,9 +1792,10 @@ describe('TtmlTextParser', () => {
         '<p begin="3s" end="4s">First cue</p>' +
         '<p begin="4s" end="5s">Second cue</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
-        {startTime: 1, endTime: Infinity},
-        {startTime: 3, endTime: Infinity});
+        {periodStart: 0, segmentStart: 0, segmentEnd: 10},
+        // Capped to segment end time.
+        {startTime: 1, endTime: 10},
+        {startTime: 3, endTime: 10});
 
     verifyHelper(
         [{
@@ -1780,9 +1818,10 @@ describe('TtmlTextParser', () => {
         '<span begin="5s" end="6s">Second cue</span>' +
         '</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
-        {startTime: 1, endTime: Infinity},
-        {startTime: 3, endTime: Infinity});
+        {periodStart: 0, segmentStart: 0, segmentEnd: 20},
+        // Capped to segment end time.
+        {startTime: 1, endTime: 20},
+        {startTime: 3, endTime: 20});
   });
 
   it('gets end time from parent directly if missing', () => {
@@ -1796,7 +1835,7 @@ describe('TtmlTextParser', () => {
         '<p begin="3s" end="4s">First cue</p>' +
         '<p begin="4s">Second cue</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 30},
         {startTime: 1, endTime: 30},
         {startTime: 3, endTime: 30});
   });
@@ -1804,15 +1843,17 @@ describe('TtmlTextParser', () => {
   it('supports never-ending cues', () => {
     verifyHelper(
         [
-          {startTime: 1, endTime: Infinity, payload: 'First cue'},
-          {startTime: 2, endTime: Infinity, payload: 'Second cue'},
+          // Capped to segment end time.
+          {startTime: 1, endTime: 9000, payload: 'First cue'},
+          {startTime: 2, endTime: 9000, payload: 'Second cue'},
         ],
         '<tt><body><div>' +
         '<p begin="1s">First cue</p>' +
         '<p begin="2s">Second cue</p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
-        {startTime: 1, endTime: Infinity});
+        {periodStart: 0, segmentStart: 0, segmentEnd: 9000},
+        // Capped to segment end time.
+        {startTime: 1, endTime: 9000});
   });
 
   // Regression test for b/159050711
@@ -1883,7 +1924,7 @@ describe('TtmlTextParser', () => {
         '    <span style="spanStyle">Test with spanStyle</span>' +
         '  </p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 60},
         {startTime: 0, endTime: 60});
   });
 
@@ -1915,12 +1956,12 @@ describe('TtmlTextParser', () => {
         '<body><div><p begin="00:00" end="01:00" region="r1">' +
         '<span>Hello!</span>' +
         '</p></div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 60},
         {startTime: 0, endTime: 60},
     );
   });
 
-  // Regression test for https://github.com/google/shaka-player/issues/3743
+  // Regression test for https://github.com/shaka-project/shaka-player/issues/3743
   it('inherits styles from other styles on nestedCues', () => {
     verifyHelper(
         [
@@ -1977,8 +2018,37 @@ describe('TtmlTextParser', () => {
         '    A<br/>B' +
         '  </p>' +
         '</div></body></tt>',
-        {periodStart: 0, segmentStart: 0, segmentEnd: 0},
+        {periodStart: 0, segmentStart: 0, segmentEnd: 60},
         {startTime: 0, endTime: 60});
+  });
+
+  // Test for https://github.com/shaka-project/shaka-player/issues/4631
+  it('trims cues to segment boundaries', () => {
+    verifyHelper(
+        [
+          // Capped to segment end time.
+          {startTime: 168, endTime: 170},
+        ],
+        '<tt><body><div>' +
+        '  <p begin="00:02:48.00" end="00:02:50.92" xml:id="sub22">' +
+        '    <span style="s1">Emo look.<br/>I mean listen.</span>' +
+        '  </p>' +
+        '</div></body></tt>',
+        {periodStart: 0, segmentStart: 160, segmentEnd: 170},
+        {});
+
+    verifyHelper(
+        [
+          // Capped to segment start time.
+          {startTime: 170, endTime: Util.closeTo(170.92)},
+        ],
+        '<tt><body><div>' +
+        '  <p begin="00:02:48.00" end="00:02:50.92" xml:id="sub22">' +
+        '    <span style="s1">Emo look.<br/>I mean listen.</span>' +
+        '  </p>' +
+        '</div></body></tt>',
+        {periodStart: 0, segmentStart: 170, segmentEnd: 180},
+        {});
   });
 
   /**
@@ -2018,7 +2088,7 @@ describe('TtmlTextParser', () => {
     expect(() => {
       new shaka.text.TtmlTextParser().parseMedia(
           shaka.util.BufferUtils.toUint8(data),
-          {periodStart: 0, segmentStart: 0, segmentEnd: 0});
+          {periodStart: 0, segmentStart: 0, segmentEnd: 10});
     }).toThrow(error);
   }
 });

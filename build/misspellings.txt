@@ -5,6 +5,7 @@
     r'(?i)arti?fi?ci?ai?l': 'artificial',
     r'(?i)cur+ent': 'current',
     r"(?i)doens?'t": "doesn't",
+    r'(?i)droping': 'dropping',
     r'(?i)ful+screen': 'fullscreen',
     r'(?i)futher': 'further',
     r'(?i)gene?ra?tor': 'generator',
@@ -35,4 +36,6 @@
     r'(?i)varint': 'variant',
     r'(?i)asynchronus': 'asynchronous',
     r'(?i)deafult': 'default',
+    r'(?i)evication': 'eviction',
+    r'(?i)immidiately': 'immediately',
 }

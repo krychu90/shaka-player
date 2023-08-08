@@ -55,6 +55,7 @@
 +../../lib/text/simple_text_displayer.js
 +../../lib/text/text_engine.js
 +../../lib/text/ui_text_displayer.js
++../../lib/text/web_vtt_generator.js
 
 +../../lib/util/abortable_operation.js
 +../../lib/util/array_utils.js
@@ -84,7 +85,6 @@
 +../../lib/util/mp4_box_parsers.js
 +../../lib/util/mp4_parser.js
 +../../lib/util/multi_map.js
-+../../lib/util/mutex.js
 +../../lib/util/networking.js
 +../../lib/util/object_utils.js
 +../../lib/util/operation_manager.js

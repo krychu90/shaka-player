@@ -4,11 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.test.FakeDrmEngine');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.StreamUtils');
-
 describe('StreamUtils', () => {
   const StreamUtils = shaka.util.StreamUtils;
 
@@ -184,7 +179,7 @@ describe('StreamUtils', () => {
     });
 
     it('chooses only one role, even if none is preferred', () => {
-      // Regression test for https://github.com/google/shaka-player/issues/949
+      // Regression test for https://github.com/shaka-project/shaka-player/issues/949
       manifest = shaka.test.ManifestGenerator.generate((manifest) => {
         manifest.addTextStream(0, (stream) => {
           stream.language = 'en';
@@ -223,7 +218,7 @@ describe('StreamUtils', () => {
     });
 
     it('chooses only one role, even if all are primary', () => {
-      // Regression test for https://github.com/google/shaka-player/issues/949
+      // Regression test for https://github.com/shaka-project/shaka-player/issues/949
       manifest = shaka.test.ManifestGenerator.generate((manifest) => {
         manifest.addTextStream(0, (stream) => {
           stream.language = 'en';
@@ -269,7 +264,7 @@ describe('StreamUtils', () => {
     });
 
     it('chooses only one language, even if all are primary', () => {
-      // Regression test for https://github.com/google/shaka-player/issues/918
+      // Regression test for https://github.com/shaka-project/shaka-player/issues/918
       manifest = shaka.test.ManifestGenerator.generate((manifest) => {
         manifest.addTextStream(0, (stream) => {
           stream.language = 'en';
@@ -697,6 +692,24 @@ describe('StreamUtils', () => {
         manifest.addVariant(0, (variant) => {
           variant.addVideo(1, (stream) => {
             stream.mime('video/webm', 'vp9');
+          });
+        });
+      });
+
+      await shaka.util.StreamUtils.filterManifest(
+          fakeDrmEngine, /* currentVariant= */ null, manifest);
+
+      expect(manifest.variants.length).toBe(1);
+    });
+
+    it('supports legacy AVC1 codec', async () => {
+      if (!MediaSource.isTypeSupported('video/mp4; codecs="avc1.42001e"')) {
+        pending('Codec avc1.42001e is not supported by the platform.');
+      }
+      manifest = shaka.test.ManifestGenerator.generate((manifest) => {
+        manifest.addVariant(0, (variant) => {
+          variant.addVideo(1, (stream) => {
+            stream.mime('video/mp4', 'avc1.66.30');
           });
         });
       });

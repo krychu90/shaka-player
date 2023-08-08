@@ -12,7 +12,6 @@ goog.require('ShakaDemoAssetInfo');
 goog.require('shakaDemo.AssetCard');
 goog.require('shakaDemo.Input');
 goog.require('shakaDemo.InputContainer');
-goog.require('shakaDemo.Main');
 goog.require('shakaDemo.MessageIds');
 goog.require('shakaDemo.TextInput');
 
@@ -328,6 +327,25 @@ shakaDemo.Custom = class {
         shakaDemo.MessageIds.IMA_ASSET_KEY);
     this.makeField_(
         container, assetKeyName, assetKeySetup, assetKeyChange);
+
+    // Make the manifest type field.
+    const manifestTypeSetup = (input, container) => {
+      if (assetInProgress.imaManifestType) {
+        input.value = assetInProgress.imaManifestType;
+      }
+
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const manifestTypeChange = (input) => {
+      assetInProgress.imaManifestType = input.value;
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const manifestTypeName = shakaDemoMain.getLocalizedString(
+        shakaDemo.MessageIds.IMA_MANIFEST_TYPE);
+    this.makeField_(
+        container, manifestTypeName, manifestTypeSetup, manifestTypeChange);
 
     return adsDiv;
   }

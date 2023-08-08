@@ -4,19 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.Player');
-goog.require('shaka.cast.CastUtils');
-goog.require('shaka.media.MediaSourceEngine');
-goog.require('shaka.media.TimeRangesUtils');
-goog.require('shaka.test.FakeClosedCaptionParser');
-goog.require('shaka.test.FakeTextDisplayer');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.FakeEvent');
-goog.require('shaka.util.FakeEventTarget');
-goog.require('shaka.util.ManifestParserUtils');
-
 describe('CastUtils', () => {
   const CastUtils = shaka.cast.CastUtils;
   const FakeEvent = shaka.util.FakeEvent;
@@ -47,6 +34,7 @@ describe('CastUtils', () => {
     const castMembers = CastUtils.PlayerVoidMethods
         .concat(CastUtils.PlayerPromiseMethods)
         .concat(Object.keys(CastUtils.PlayerGetterMethods))
+        .concat(Object.keys(CastUtils.LargePlayerGetterMethods))
         .concat(Object.keys(CastUtils.PlayerGetterMethodsThatRequireLive));
     // eslint-disable-next-line no-restricted-syntax
     const allPlayerMembers = Object.getOwnPropertyNames(shaka.Player.prototype);
@@ -202,6 +190,7 @@ describe('CastUtils', () => {
         const fakeVideoStream = {
           mimeType: 'video/mp4',
           codecs: 'avc1.42c01e',
+          drmInfos: [],
         };
         const initSegmentUrl = '/base/test/test/assets/sintel-video-init.mp4';
         const videoSegmentUrl =

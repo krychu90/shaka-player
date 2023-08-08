@@ -4,22 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.Uri');
-goog.require('shaka.Player');
-goog.require('shaka.log');
-goog.require('shaka.media.DrmEngine');
-goog.require('shaka.media.TimeRangesUtils');
-goog.require('shaka.test.FakeAbrManager');
-goog.require('shaka.test.FakeTextDisplayer');
-goog.require('shaka.test.Loader');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.Functional');
-goog.require('shaka.util.Iterables');
-
 describe('Player', () => {
   /** @type {!jasmine.Spy} */
   let onErrorSpy;
@@ -53,6 +37,7 @@ describe('Player', () => {
     // Grab event manager from the uncompiled library:
     eventManager = new shaka.util.EventManager();
     waiter = new shaka.test.Waiter(eventManager);
+    waiter.setPlayer(player);
 
     onErrorSpy = jasmine.createSpy('onError');
     onErrorSpy.and.callFake((event) => {
@@ -86,6 +71,33 @@ describe('Player', () => {
       await player.load('test:sintel_compiled');
     });
   });  // describe('attach')
+
+  describe('destroy', () => {
+    // Regression test for:
+    // https://github.com/shaka-project/shaka-player/issues/4850
+    it('does not leave any lingering timers', async () => {
+      shaka.util.Timer.activeTimers.clear();
+
+      // Unlike the other tests in this file, this uses an uncompiled build of
+      // Shaka, so that we don't need to expose shaka.util.Timer.activeTimers.
+      player = new shaka.Player(video);
+      waiter.setPlayer(player);
+
+      // Play the video for a little while.
+      await player.load('test:sintel');
+      video.play();
+      await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
+
+      // Destroy the player.
+      await player.destroy();
+
+      // Are there any timers left?
+      for (const timer of shaka.util.Timer.activeTimers.keys()) {
+        const stackTrace = shaka.util.Timer.activeTimers.get(timer);
+        fail('Lingering timer exists! Stack trace of creation: ' + stackTrace);
+      }
+    });
+  });
 
   describe('updateStartTime() in manifestparsed event handler', () => {
     it('does not get segments prior to startTime', async () => {
@@ -299,7 +311,7 @@ describe('Player', () => {
       expect(variantTrack.language).toBe(textTrack.language);
     });
 
-    // Repro for https://github.com/google/shaka-player/issues/1879.
+    // Repro for https://github.com/shaka-project/shaka-player/issues/1879.
     it('appends cues when enabled initially', async () => {
       let cues = [];
       /** @const {!shaka.test.FakeTextDisplayer} */
@@ -356,7 +368,7 @@ describe('Player', () => {
       expect(cues.length).toBeGreaterThan(0);
     });
 
-    // https://github.com/google/shaka-player/issues/2553
+    // https://github.com/shaka-project/shaka-player/issues/2553
     it('does not change the selected track', async () => {
       player.configure('streaming.alwaysStreamText', false);
       await player.load('test:forced_subs_simulation_compiled');
@@ -385,6 +397,45 @@ describe('Player', () => {
       expect(getTracksActive()).toEqual([false, true]);
       player.setTextTrackVisibility(true);
       expect(getTracksActive()).toEqual([false, true]);
+    });
+
+    // https://github.com/shaka-project/shaka-player/issues/4821
+    it('loads a single text stream', async () => {
+      player.configure({preferredTextLanguage: 'en'});
+      await player.load('test:sintel_no_text_compiled');
+
+      // Add preferred language text track.
+      const locationUri = new goog.Uri(location.href);
+      const partialUri = new goog.Uri('/base/test/test/assets/text-clip.vtt');
+      const absoluteUri = locationUri.resolve(partialUri);
+      await player.addTextTrackAsync(
+          absoluteUri.toString(), 'en', 'subtitles', 'text/vtt');
+
+      // Add alternate language text track.
+      // Two text tracks with same timings but different text
+      // are necessary for test.
+      const partialUri2 =
+      new goog.Uri('/base/test/test/assets/text-clip-alt.vtt');
+      const absoluteUri2 = locationUri.resolve(partialUri2);
+      await player.addTextTrackAsync(
+          absoluteUri2.toString(), 'fr', 'subtitles', 'text/vtt');
+
+      const textTracks = player.getTextTracks();
+      expect(textTracks.length).toBe(2);
+      expect(textTracks[0].language).toBe('en');
+      expect(textTracks[1].language).toBe('fr');
+
+      // Enable text visibilty and immediately change language.
+      // Only one set of cues should be active.
+      // Cues should be of the selected language track.
+      player.setTextTrackVisibility(true);
+      player.selectTextLanguage('fr');
+      video.currentTime = 5;
+      video.play();
+      await waiter.waitForMovementOrFailOnTimeout(video, 10);
+
+      expect(video.textTracks[0].activeCues.length).toBe(1);
+      expect(player.getTextTracks()[1].active).toBe(true);
     });
   });  // describe('setTextTrackVisibility')
 
@@ -482,7 +533,7 @@ describe('Player', () => {
       expect(configuredTextDisplayer).toBe(textDisplayer);
     });
 
-    // Regression test for https://github.com/google/shaka-player/issues/1187
+    // Regression test for https://github.com/shaka-project/shaka-player/issues/1187
     it('does not throw on destroy', async () => {
       await player.load('test:sintel_compiled');
       video.play();
@@ -513,7 +564,7 @@ describe('Player', () => {
     // and the track selection was ignored.  Because this bug involved
     // interactions between Player and StreamingEngine, it is an integration
     // test and not a unit test.
-    // https://github.com/google/shaka-player/issues/1119
+    // https://github.com/shaka-project/shaka-player/issues/1119
     it('allows early selection of specific tracks', async () => {
       /** @type {!jasmine.Spy} */
       const streamingListener = jasmine.createSpy('listener');
@@ -548,7 +599,7 @@ describe('Player', () => {
     // switchingPeriods_ in Player.  Because this bug involved interactions
     // between Player and StreamingEngine, it is an integration test and not a
     // unit test.
-    // https://github.com/google/shaka-player/issues/1119
+    // https://github.com/shaka-project/shaka-player/issues/1119
     it('allows selection of tracks in subsequent loads', async () => {
       /** @type {!jasmine.Spy} */
       const streamingListener = jasmine.createSpy('listener');
@@ -646,7 +697,9 @@ describe('Player', () => {
       eventManager.listen(video, 'waiting', checkOnEvent);
       eventManager.listen(player, 'trackschanged', checkOnEvent);
 
-      const waiter = (new shaka.test.Waiter(eventManager)).timeoutAfter(10);
+      const waiter = new shaka.test.Waiter(eventManager)
+          .setPlayer(player)
+          .timeoutAfter(10);
       const canPlayThrough = waiter.waitForEvent(video, 'canplaythrough');
 
       await player.load('test:sintel_compiled', 5);
@@ -720,6 +773,7 @@ describe('Player', () => {
       player.addEventListener('mediaqualitychanged',
           Util.spyFunc(onQualityChange));
       waiter = new shaka.test.Waiter(eventManager)
+          .setPlayer(player)
           .timeoutAfter(10)
           .failOnTimeout(true);
     });
@@ -777,7 +831,9 @@ describe('Player', () => {
       eventManager.listen(player, 'error', Util.spyFunc(onErrorSpy));
       /** @type {shaka.test.Waiter} */
       const waiter = new shaka.test.Waiter(eventManager)
-          .timeoutAfter(20).failOnTimeout(true);
+          .setPlayer(player)
+          .timeoutAfter(20)
+          .failOnTimeout(true);
       await waiter.waitForEnd(video);
 
       // The stream should have transitioned to VOD by now.
@@ -785,7 +841,7 @@ describe('Player', () => {
 
       // Check that the final seek range is as expected.
       const seekRange = player.seekRange();
-      expect(seekRange.end).toBe(14);
+      expect(seekRange.end).toBeCloseTo(14);
     });
   });
 
@@ -802,6 +858,7 @@ describe('Player', () => {
       player.addEventListener('buffering', Util.spyFunc(onBuffering));
 
       waiter = new shaka.test.Waiter(eventManager)
+          .setPlayer(player)
           .timeoutAfter(10)
           .failOnTimeout(true);
     });
@@ -888,7 +945,7 @@ describe('Player', () => {
       expect(getBufferedBehind()).toBe(20);  // Buffered to start still.
       video.currentTime = 50;
       await waitUntilBuffered(30);
-      expect(getBufferedBehind()).toBeLessThan(30);
+      expect(getBufferedBehind()).toBeLessThan(40);  // 30 + segment_size
 
       player.configure('streaming.bufferBehind', 10);
       // We only evict content when we append a segment, so increase the
@@ -915,8 +972,7 @@ describe('Player', () => {
     }
 
     async function waitUntilBuffered(amount) {
-      for (const _ of shaka.util.Iterables.range(25)) {
-        shaka.util.Functional.ignored(_);
+      for (let i = 0; i < 50; i++) {
         // We buffer from an internal segment, so this shouldn't take long to
         // buffer.
         await Util.delay(0.1);  // eslint-disable-line no-await-in-loop
@@ -924,7 +980,14 @@ describe('Player', () => {
           return;
         }
       }
-      throw new Error('Timeout waiting to buffer');
+
+      const ranges =
+          shaka.media.TimeRangesUtils.getBufferedInfo(video.buffered);
+      const currentTime = video.currentTime;
+      const target = currentTime + amount;
+
+      throw new Error('Timeout waiting to buffer! ' +
+          JSON.stringify({ranges, currentTime, target}));
     }
   });  // describe('buffering')
 
@@ -993,7 +1056,9 @@ describe('Player', () => {
 
       /** @type {shaka.test.Waiter} */
       const waiter = new shaka.test.Waiter(eventManager)
-          .timeoutAfter(1).failOnTimeout(true);
+          .setPlayer(player)
+          .timeoutAfter(1)
+          .failOnTimeout(true);
 
       await waiter.waitForPromise(abrEnabled, 'AbrManager enabled');
 
@@ -1013,7 +1078,9 @@ describe('Player', () => {
 
       /** @type {shaka.test.Waiter} */
       const waiter = new shaka.test.Waiter(eventManager)
-          .timeoutAfter(1).failOnTimeout(true);
+          .setPlayer(player)
+          .timeoutAfter(1)
+          .failOnTimeout(true);
 
       await waiter.waitForPromise(abrEnabled, 'AbrManager enabled');
 
@@ -1059,16 +1126,16 @@ describe('Player', () => {
     });
   });  // describe('unloading')
 
-  describe('chapters', () => {
-    it('add external chapters in vtt format', async () => {
+  describe('addChaptersTrack', () => {
+    it('adds external chapters in vtt format', async () => {
       await player.load('test:sintel_no_text_compiled');
       const locationUri = new goog.Uri(location.href);
       const partialUri1 = new goog.Uri('/base/test/test/assets/chapters.vtt');
       const absoluteUri1 = locationUri.resolve(partialUri1);
       await player.addChaptersTrack(absoluteUri1.toString(), 'en');
 
-      await shaka.test.Util.delay(1.5);
-
+      // Data should be available as soon as addChaptersTrack resolves.
+      // See https://github.com/shaka-project/shaka-player/issues/4186
       const chapters = player.getChapters('en');
       expect(chapters.length).toBe(3);
       const chapter1 = chapters[0];
@@ -1087,8 +1154,6 @@ describe('Player', () => {
       const partialUri2 = new goog.Uri('/base/test/test/assets/chapters2.vtt');
       const absoluteUri2 = locationUri.resolve(partialUri2);
       await player.addChaptersTrack(absoluteUri2.toString(), 'en');
-
-      await shaka.test.Util.delay(1.5);
 
       const chaptersUpdated = player.getChapters('en');
       expect(chaptersUpdated.length).toBe(6);
@@ -1118,14 +1183,12 @@ describe('Player', () => {
       expect(chapterUpdated6.endTime).toBe(61.349);
     });
 
-    it('add external chapters in srt format', async () => {
+    it('adds external chapters in srt format', async () => {
       await player.load('test:sintel_no_text_compiled');
       const locationUri = new goog.Uri(location.href);
       const partialUri = new goog.Uri('/base/test/test/assets/chapters.srt');
       const absoluteUri = locationUri.resolve(partialUri);
       await player.addChaptersTrack(absoluteUri.toString(), 'es');
-
-      await shaka.test.Util.delay(1.5);
 
       const chapters = player.getChapters('es');
       expect(chapters.length).toBe(3);
@@ -1142,5 +1205,5 @@ describe('Player', () => {
       expect(chapter3.startTime).toBe(30);
       expect(chapter3.endTime).toBe(61.349);
     });
-  });  // describe('chapters')
+  });  // describe('addChaptersTrack')
 });

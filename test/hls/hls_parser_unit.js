@@ -4,19 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.hls.HlsParser');
-goog.require('shaka.log');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.ManifestParser');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.ManifestParserUtils');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.Uint8ArrayUtils');
-
 describe('HlsParser', () => {
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
   const ManifestParser = shaka.test.ManifestParser;
@@ -50,6 +37,7 @@ describe('HlsParser', () => {
 
   afterEach(() => {
     shaka.log.alwaysWarn = originalAlwaysWarn;
+    parser.stop();
   });
 
   beforeEach(() => {
@@ -148,6 +136,80 @@ describe('HlsParser', () => {
       'URI="text2"\n',
       '#EXT-X-STREAM-INF:BANDWIDTH=200,CODECS="avc1,mp4a",',
       'RESOLUTION=960x540,FRAME-RATE=60,AUDIO="aud1"\n',
+      'video\n',
+    ].join('');
+
+    const media = [
+      '#EXTM3U\n',
+      '#EXT-X-PLAYLIST-TYPE:VOD\n',
+      '#EXT-X-MAP:URI="init.mp4",BYTERANGE="616@0"\n',
+      '#EXTINF:5,\n',
+      '#EXT-X-BYTERANGE:121090@616\n',
+      'main.mp4',
+    ].join('');
+
+    const textMedia = [
+      '#EXTM3U\n',
+      '#EXT-X-PLAYLIST-TYPE:VOD\n',
+      '#EXTINF:5,\n',
+      '#EXT-X-BYTERANGE:121090@616\n',
+      'main.vtt',
+    ].join('');
+
+    const manifest = shaka.test.ManifestGenerator.generate((manifest) => {
+      manifest.anyTimeline();
+      manifest.addPartialVariant((variant) => {
+        variant.language = 'en';
+        variant.bandwidth = 200;
+        variant.addPartialStream(ContentType.VIDEO, (stream) => {
+          stream.frameRate = 60;
+          stream.mime('video/mp4', 'avc1');
+          stream.size(960, 540);
+        });
+        variant.addPartialStream(ContentType.AUDIO, (stream) => {
+          stream.language = 'en';
+          stream.channelsCount = 16;
+          stream.spatialAudio = true;
+          stream.mime('audio/mp4', 'mp4a');
+        });
+      });
+      manifest.addPartialTextStream((stream) => {
+        stream.language = 'en';
+        stream.kind = TextStreamKind.SUBTITLE;
+        stream.mime('text/vtt', '');
+      });
+      manifest.addPartialTextStream((stream) => {
+        stream.language = 'es';
+        stream.kind = TextStreamKind.SUBTITLE;
+        stream.mime('text/vtt', '');
+      });
+    });
+
+    fakeNetEngine
+        .setResponseText('test:/master', master)
+        .setResponseText('test:/audio', media)
+        .setResponseText('test:/video', media)
+        .setResponseText('test:/text', textMedia)
+        .setResponseText('test:/text2', textMedia)
+        .setResponseText('test:/main.vtt', vttText)
+        .setResponseValue('test:/init.mp4', initSegmentData)
+        .setResponseValue('test:/main.mp4', segmentData);
+
+    const actual = await parser.start('test:/master', playerInterface);
+    expect(actual).toEqual(manifest);
+  });
+
+  it('parses manifest attributes with space', async () => {
+    const master = [
+      '#EXTM3U\n',
+      '#EXT-X-MEDIA:TYPE=AUDIO, GROUP-ID="aud1", LANGUAGE="eng", ',
+      'CHANNELS="16/JOC", URI="audio"\n',
+      '#EXT-X-MEDIA:TYPE=SUBTITLES, GROUP-ID="sub1", LANGUAGE="eng", ',
+      'URI="text"\n',
+      '#EXT-X-MEDIA:TYPE=SUBTITLES, GROUP-ID="sub2", LANGUAGE="es", ',
+      'URI="text2"\n',
+      '#EXT-X-STREAM-INF:BANDWIDTH=200, CODECS="avc1,mp4a", ',
+      'RESOLUTION=960x540, FRAME-RATE=60, AUDIO="aud1"\n',
       'video\n',
     ].join('');
 
@@ -2870,7 +2932,7 @@ describe('HlsParser', () => {
     expect(audio0).toBe(audio1);
   });
 
-  // https://github.com/google/shaka-player/issues/1664
+  // https://github.com/shaka-project/shaka-player/issues/1664
   it('correctly resolves relative playlist URIs', async () => {
     const master = [
       '#EXTM3U\n',
@@ -2913,7 +2975,7 @@ describe('HlsParser', () => {
     expect(manifest.variants.length).toBe(1);
   });
 
-  // https://github.com/google/shaka-player/issues/1908
+  // https://github.com/shaka-project/shaka-player/issues/1908
   it('correctly pairs variants with multiple video and audio', async () => {
     const master = [
       '#EXTM3U\n',

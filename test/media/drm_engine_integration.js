@@ -4,21 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.media.DrmEngine');
-goog.require('shaka.media.MediaSourceEngine');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.FakeClosedCaptionParser');
-goog.require('shaka.test.FakeTextDisplayer');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.ManifestParserUtils');
-goog.require('shaka.util.Platform');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.PublicPromise');
-
 describe('DrmEngine', () => {
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
 
@@ -89,19 +74,6 @@ describe('DrmEngine', () => {
     onEventSpy = jasmine.createSpy('onEvent');
 
     networkingEngine = new shaka.net.NetworkingEngine();
-    networkingEngine.registerRequestFilter((type, request) => {
-      if (type != shaka.net.NetworkingEngine.RequestType.LICENSE) {
-        return;
-      }
-
-      request.headers['X-AxDRM-Message'] = [
-        'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ2ZXJzaW9uIjoxLCJjb21fa2V5X2lk',
-        'IjoiNjllNTQwODgtZTllMC00NTMwLThjMWEtMWViNmRjZDBkMTRlIiwibWVzc2FnZSI6e',
-        'yJ0eXBlIjoiZW50aXRsZW1lbnRfbWVzc2FnZSIsImtleXMiOlt7ImlkIjoiNmU1YTFkMj',
-        'YtMjc1Ny00N2Q3LTgwNDYtZWFhNWQxZDM0YjVhIn1dfX0.yF7PflOPv9qHnu3ZWJNZ12j',
-        'gkqTabmwXbDWk_47tLNE',
-      ].join('');
-    });
 
     const playerInterface = {
       netEngine: networkingEngine,
@@ -114,22 +86,22 @@ describe('DrmEngine', () => {
     drmEngine = new shaka.media.DrmEngine(playerInterface);
     const config = shaka.util.PlayerConfiguration.createDefault().drm;
     config.servers['com.widevine.alpha'] =
-        'https://drm-widevine-licensing.axtest.net/AcquireLicense';
+        'https://cwip-shaka-proxy.appspot.com/specific_key?blodJidXR9eARuql0dNLWg=GX8m9XLIZNIzizrl0RTqnA';
     config.servers['com.microsoft.playready'] =
-        'https://drm-playready-licensing.axtest.net/AcquireLicense';
+        'https://test.playready.microsoft.com/service/rightsmanager.asmx?cfg=(kid:6e5a1d26-2757-47d7-8046-eaa5d1d34b5a,contentkey:GX8m9XLIZNIzizrl0RTqnA==,sl:150)';
     drmEngine.configure(config);
 
     manifest = shaka.test.ManifestGenerator.generate((manifest) => {
       manifest.addVariant(0, (variant) => {
         variant.addVideo(1, (stream) => {
           stream.encrypted = true;
-          stream.addDrmInfo('com.widevine.alpha');
           stream.addDrmInfo('com.microsoft.playready');
+          stream.addDrmInfo('com.widevine.alpha');
         });
         variant.addAudio(2, (stream) => {
           stream.encrypted = true;
-          stream.addDrmInfo('com.widevine.alpha');
           stream.addDrmInfo('com.microsoft.playready');
+          stream.addDrmInfo('com.widevine.alpha');
         });
       });
     });
@@ -271,6 +243,7 @@ describe('DrmEngine', () => {
       video.play();
 
       const waiter = new shaka.test.Waiter(eventManager).timeoutAfter(15);
+      waiter.setMediaSourceEngine(mediaSourceEngine);
       await waiter.waitForMovement(video);
 
       // Something should have played by now.
@@ -351,6 +324,7 @@ describe('DrmEngine', () => {
       video.play();
 
       const waiter = new shaka.test.Waiter(eventManager).timeoutAfter(15);
+      waiter.setMediaSourceEngine(mediaSourceEngine);
       await waiter.waitForMovement(video);
 
       // Something should have played by now.

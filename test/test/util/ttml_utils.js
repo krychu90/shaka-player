@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.TtmlUtils');
-
 shaka.test.TtmlUtils = class {
   /**
    * @param {!Array} expectedCues
@@ -53,8 +51,6 @@ shaka.test.TtmlUtils = class {
         region,
         nestedCues: jasmine.any(Object),
         payload: '',
-        startTime: 0,
-        endTime: Infinity,
         isContainer: true,
       });
       Object.assign(containerCue, properties);

@@ -254,6 +254,9 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
     this.localization_ = null;
     this.pressedKeys_.clear();
+
+    // FakeEventTarget implements IReleasable
+    super.release();
   }
 
 
@@ -1001,7 +1004,10 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     if (!this.video_ ||
         this.video_.readyState == 0 ||
         this.castProxy_.isCasting() ||
-        !this.config_.enableFullscreenOnRotation) { return; }
+        !this.config_.enableFullscreenOnRotation ||
+        !document.fullscreenEnabled) {
+      return;
+    }
 
     if (screen.orientation.type.includes('landscape') &&
         !document.fullscreenElement) {
@@ -1166,7 +1172,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
       // The controls are hidden, so show them.
       this.onMouseMove_(event);
       // Stop this event from becoming a click event.
-      event.preventDefault();
+      event.cancelable && event.preventDefault();
     }
   }
 

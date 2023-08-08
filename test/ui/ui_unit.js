@@ -4,21 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.media.ManifestParser');
-goog.require('shaka.test.FakeManifestParser');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.ui.OverflowMenu');
-goog.require('shaka.ui.ResolutionSelection');
-goog.require('shaka.util.Functional');
-goog.require('shaka.util.Iterables');
-goog.require('shaka.util.Platform');
-goog.requireType('shaka.Player');
-goog.requireType('shaka.ui.Controls');
-goog.requireType('shaka.ui.Overlay');
-
 describe('UI', () => {
   const UiUtils = shaka.test.UiUtils;
   const Util = shaka.test.Util;
@@ -137,8 +122,7 @@ describe('UI', () => {
         // Four is just a random number I (ismena) came up with to test a
         // multi-video use case. It could be replaces with any other
         // (reasonable) number.
-        for (const _ of shaka.util.Iterables.range(4)) {
-          shaka.util.Functional.ignored(_);
+        for (let i = 0; i < 4; i++) {
           const video = /** @type {!HTMLVideoElement} */
               (document.createElement('video'));
 

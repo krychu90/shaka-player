@@ -4,14 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.cast.CastReceiver');
-goog.require('shaka.cast.CastUtils');
-goog.require('shaka.test.FakeVideo');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.Platform');
-goog.require('shaka.util.PublicPromise');
-
 // The receiver is only meant to run on the Chromecast, so we have the
 // ability to use modern APIs there that may not be available on all of the
 // browsers our library supports.  Because of this, CastReceiver tests will
@@ -253,18 +245,20 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
       const fakeEvent = {type: 'timeupdate'};
       mockVideo.on['timeupdate'](fakeEvent);
 
-      // There are now "update" and "event" messages, in that order.
-      expect(mockShakaMessageBus.messages).toEqual([
-        {
-          type: 'update',
-          update: jasmine.any(Object),
-        },
-        {
-          type: 'event',
-          targetName: 'video',
-          event: jasmine.objectContaining(fakeEvent),
-        },
-      ]);
+      // There are now some number of "update" and "event" messages, in that
+      // order.
+      expect(mockShakaMessageBus.messages).toContain({
+        type: 'update',
+        update: jasmine.any(Object),
+      });
+      expect(mockShakaMessageBus.messages).toContain({
+        type: 'event',
+        targetName: 'video',
+        event: jasmine.objectContaining(fakeEvent),
+      });
+      const eventIndex = mockShakaMessageBus.messages.findIndex(
+          (message) => message.type == 'event');
+      expect(eventIndex).toBe(mockShakaMessageBus.messages.length - 1);
     });
   });
 
@@ -756,7 +750,7 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
       expect(mockGenericMessageBus.broadcast).toHaveBeenCalledTimes(1);
 
       // This covers the lack of scrubber in the Google Home app, as described
-      // in https://github.com/google/shaka-player/issues/2606
+      // in https://github.com/shaka-project/shaka-player/issues/2606
       expectMediaInfo('URI A', 1);
     });
 
@@ -1111,6 +1105,9 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
       player[name] = jasmine.createSpy(name);
     }
     for (const name in CastUtils.PlayerGetterMethods) {
+      player[name] = jasmine.createSpy(name);
+    }
+    for (const name in CastUtils.LargePlayerGetterMethods) {
       player[name] = jasmine.createSpy(name);
     }
     for (const name in CastUtils.PlayerGetterMethodsThatRequireLive) {

@@ -4,32 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.Player');
-goog.require('shaka.media.DrmEngine');
-goog.require('shaka.media.ManifestParser');
-goog.require('shaka.media.SegmentIndex');
-goog.require('shaka.net.NetworkingEngine.RequestType');
-goog.require('shaka.offline.ManifestConverter');
-goog.require('shaka.offline.OfflineUri');
-goog.require('shaka.offline.Storage');
-goog.require('shaka.offline.StorageMuxer');
-goog.require('shaka.test.FakeDrmEngine');
-goog.require('shaka.test.FakeManifestParser');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.Loader');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.AbortableOperation');
-goog.require('shaka.util.BufferUtils');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.PublicPromise');
-goog.require('shaka.util.Uint8ArrayUtils');
-goog.requireType('shaka.media.SegmentReference');
-
 /** @return {boolean} */
 function storageSupport() {
   return shaka.offline.Storage.support();
@@ -1060,6 +1034,36 @@ filterDescribe('Storage', storageSupport, () => {
       }
     });
 
+    /**
+     * In some situations, indexedDB.open() can just hang, and call neither the
+     * 'success' nor the 'error' callbacks.
+     * I'm not sure what causes it, but it seems to happen consistently between
+     * reloads when it does so it might be a browser-based issue.
+     * In that case, we should time out with an error, instead of also hanging.
+     */
+    it('throws an error if indexedDB open times out', async () => {
+      const oldOpen = window.indexedDB.open;
+      window.indexedDB.open = () => {
+        // Just return a dummy object.
+        return /** @type {!IDBOpenDBRequest} */ ({
+          onsuccess: (event) => {},
+          onerror: (error) => {},
+        });
+      };
+
+      /** @type {!shaka.offline.StorageMuxer} */
+      const muxer = new shaka.offline.StorageMuxer();
+      const expectedError = shaka.test.Util.jasmineError(new shaka.util.Error(
+          shaka.util.Error.Severity.CRITICAL,
+          shaka.util.Error.Category.STORAGE,
+          shaka.util.Error.Code.INDEXED_DB_INIT_TIMED_OUT));
+
+      await expectAsync(muxer.init())
+          .toBeRejectedWith(expectedError);
+
+      window.indexedDB.open = oldOpen;
+    });
+
     it('throws an error if the content is a live stream', async () => {
       const expected = Util.jasmineError(new shaka.util.Error(
           shaka.util.Error.Severity.CRITICAL,
@@ -1323,7 +1327,7 @@ filterDescribe('Storage', storageSupport, () => {
     const testSchemeMimeType = 'application/x-test-manifest';
     const manifestUri = 'test:sintel';
 
-    // Regression test for https://github.com/google/shaka-player/issues/2781
+    // Regression test for https://github.com/shaka-project/shaka-player/issues/2781
     it('does not cache failures or cancellations', async () => {
       /** @type {shaka.offline.Storage} */
       const storage = new shaka.offline.Storage();

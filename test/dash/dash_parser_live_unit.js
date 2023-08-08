@@ -4,19 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.dash.DashParser');
-goog.require('shaka.media.SegmentReference');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.ManifestParser');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.AbortableOperation');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.StringUtils');
-goog.requireType('shaka.util.PublicPromise');
-
 describe('DashParser Live', () => {
   const Util = shaka.test.Util;
   const ManifestParser = shaka.test.ManifestParser;
@@ -1228,8 +1215,8 @@ describe('DashParser Live', () => {
       const liveEdge =
           manifest.presentationTimeline.getSegmentAvailabilityEnd();
 
-      // In https://github.com/google/shaka-player/issues/1204, a get on the
-      // final segment failed an assertion and returned endTime == 0.
+      // In https://github.com/shaka-project/shaka-player/issues/1204, a get on
+      // the final segment failed an assertion and returned endTime == 0.
       // Find the last segment by looking just before the live edge.  Looking
       // right on the live edge creates test flake, and the segments are 2
       // seconds in duration.
@@ -1388,6 +1375,49 @@ describe('DashParser Live', () => {
       expect(onTimelineRegionAddedSpy)
           .toHaveBeenCalledWith(
               jasmine.objectContaining({id: '2', startTime: 10, endTime: 25}));
+    });
+
+    it('will not add timeline regions outside the DVR window', async () => {
+      const manifest = [
+        '<MPD type="dynamic" minimumUpdatePeriod="PT' + updateTime + 'S"',
+        '    availabilityStartTime="1970-01-01T00:00:00Z"',
+        '    suggestedPresentationDelay="PT0S"',
+        '    timeShiftBufferDepth="PT30S">',
+        '  <Period id="1">',
+        '    <EventStream schemeIdUri="http://example.com" timescale="1">',
+        '      <Event id="0" presentationTime="0" duration="10"/>',
+        '      <Event id="1" presentationTime="10" duration="10"/>',
+        '      <Event id="2" presentationTime="20" duration="10"/>',
+        '      <Event id="3" presentationTime="30" duration="10"/>',
+        '      <Event id="4" presentationTime="40" duration="10"/>',
+        '    </EventStream>',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <Representation bandwidth="1">',
+        '        <SegmentTemplate startNumber="1" media="s$Number$.mp4"',
+        '                         duration="2" />',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      // 45 seconds after the epoch, which is also 45 seconds after the
+      // presentation started.  Only the last 30 seconds are available, from
+      // time 15 to 45.
+      Date.now = () => 45 * 1000;
+
+      fakeNetEngine.setResponseText('dummy://foo', manifest);
+      await parser.start('dummy://foo', playerInterface);
+
+      expect(onTimelineRegionAddedSpy).toHaveBeenCalledTimes(4);
+      expect(onTimelineRegionAddedSpy).toHaveBeenCalledWith(
+          jasmine.objectContaining({id: '1'}));
+      expect(onTimelineRegionAddedSpy).toHaveBeenCalledWith(
+          jasmine.objectContaining({id: '2'}));
+      expect(onTimelineRegionAddedSpy).toHaveBeenCalledWith(
+          jasmine.objectContaining({id: '3'}));
+      expect(onTimelineRegionAddedSpy).toHaveBeenCalledWith(
+          jasmine.objectContaining({id: '4'}));
     });
   });
 

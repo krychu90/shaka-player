@@ -4,18 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.hls.HlsParser');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.ManifestParser');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.Functional');
-goog.require('shaka.util.Iterables');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.Uint8ArrayUtils');
-goog.requireType('shaka.util.PublicPromise');
-
 describe('HlsParser live', () => {
   const ManifestParser = shaka.test.ManifestParser;
 
@@ -437,8 +425,8 @@ describe('HlsParser live', () => {
       '#EXT-X-MAP:URI="init.mp4",BYTERANGE="616@0"\n',
       '#EXT-X-MEDIA-SEQUENCE:0\n',
     ].join('');
-    for (const _ of shaka.util.Iterables.range(1000)) {
-      shaka.util.Functional.ignored(_);
+
+    for (let i = 0; i < 1000; i++) {
       mediaWithManySegments += '#EXTINF:2,\n';
       mediaWithManySegments += 'main.mp4\n';
     }
@@ -644,11 +632,13 @@ describe('HlsParser live', () => {
       expect(ref.startTime).not.toBeLessThan(rolloverOffset);
     });
 
+    // Test for https://github.com/shaka-project/shaka-player/issues/4223
     it('parses streams with partial and preload hinted segments', async () => {
       playerInterface.isLowLatencyMode = () => true;
       const mediaWithPartialSegments = [
         '#EXTM3U\n',
         '#EXT-X-TARGETDURATION:5\n',
+        '#EXT-X-PART-INF:PART-TARGET=1.5\n',
         '#EXT-X-MAP:URI="init.mp4",BYTERANGE="616@0"\n',
         '#EXT-X-MEDIA-SEQUENCE:0\n',
         // ref includes partialRef, partialRef2
@@ -682,6 +672,11 @@ describe('HlsParser live', () => {
           segmentDataStartTime + 4, /* baseUri= */ '', /* startByte= */ 200,
           /* endByte= */ 429);
 
+      const ref = ManifestParser.makeReference(
+          'test:/main.mp4', segmentDataStartTime, segmentDataStartTime + 4,
+          /* baseUri= */ '', /* startByte= */ 0, /* endByte= */ 429,
+          /* timestampOffset= */ 0, [partialRef, partialRef2]);
+
       const partialRef3 = ManifestParser.makeReference(
           'test:/partial.mp4', segmentDataStartTime + 4,
           segmentDataStartTime + 6,
@@ -691,17 +686,12 @@ describe('HlsParser live', () => {
       // so its startTime and endTime are the same.
       const preloadRef = ManifestParser.makeReference(
           'test:/partial.mp4', segmentDataStartTime + 6,
-          segmentDataStartTime + 6,
+          segmentDataStartTime + 7.5,
           /* baseUri= */ '', /* startByte= */ 210, /* endByte= */ null);
-
-      const ref = ManifestParser.makeReference(
-          'test:/main.mp4', segmentDataStartTime, segmentDataStartTime + 4,
-          /* baseUri= */ '', /* startByte= */ 0, /* endByte= */ 429,
-          /* timestampOffset= */ 0, [partialRef, partialRef2]);
 
       // ref2 is not fully published yet, so it doesn't have a segment uri.
       const ref2 = ManifestParser.makeReference(
-          '', segmentDataStartTime + 4, segmentDataStartTime + 6,
+          '', segmentDataStartTime + 4, segmentDataStartTime + 7.5,
           /* baseUri= */ '', /* startByte= */ 0, /* endByte= */ null,
           /* timestampOffset= */ 0, [partialRef3, preloadRef]);
 
@@ -709,6 +699,83 @@ describe('HlsParser live', () => {
       const video = manifest.variants[0].video;
       await video.createSegmentIndex();
       ManifestParser.verifySegmentIndex(video, [ref, ref2]);
+    });
+
+    // Test for https://github.com/shaka-project/shaka-player/issues/4223
+    it('ignores preload hinted segments without target duration', async () => {
+      playerInterface.isLowLatencyMode = () => true;
+
+      // Missing PART-TARGET, so preload hints are skipped.
+      const mediaWithPartialSegments = [
+        '#EXTM3U\n',
+        '#EXT-X-TARGETDURATION:5\n',
+        '#EXT-X-MAP:URI="init.mp4",BYTERANGE="616@0"\n',
+        '#EXT-X-MEDIA-SEQUENCE:0\n',
+        '#EXTINF:4,\n',
+        // ref1
+        'main.mp4\n',
+        // ref2 includes partialRef, but not preloadRef
+        // partialRef
+        '#EXT-X-PART:DURATION=2,URI="partial.mp4",BYTERANGE=210@0\n',
+        // preloadRef
+        '#EXT-X-PRELOAD-HINT:TYPE=PART,URI="partial.mp4",BYTERANGE-START=210\n',
+      ].join('');
+
+      fakeNetEngine
+          .setResponseText('test:/master', master)
+          .setResponseText('test:/video', mediaWithPartialSegments)
+          .setResponseValue('test:/init.mp4', initSegmentData)
+          .setResponseValue('test:/main.mp4', segmentData)
+          .setResponseValue('test:/partial.mp4', segmentData)
+          .setResponseValue('test:/partial2.mp4', segmentData);
+
+      const ref1 = ManifestParser.makeReference(
+          'test:/main.mp4', segmentDataStartTime, segmentDataStartTime + 4,
+          /* baseUri= */ '', /* startByte= */ 0, /* endByte= */ null,
+          /* timestampOffset= */ 0, []);
+
+      const partialRef = ManifestParser.makeReference(
+          'test:/partial.mp4', segmentDataStartTime + 4,
+          segmentDataStartTime + 6,
+          /* baseUri= */ '', /* startByte= */ 0, /* endByte= */ 209);
+
+      // ref2 is not fully published yet, so it doesn't have a segment uri.
+      const ref2 = ManifestParser.makeReference(
+          '', segmentDataStartTime + 4, segmentDataStartTime + 6,
+          /* baseUri= */ '', /* startByte= */ 0, /* endByte= */ 209,
+          /* timestampOffset= */ 0, [partialRef]);
+
+      const manifest = await parser.start('test:/master', playerInterface);
+      const video = manifest.variants[0].video;
+      await video.createSegmentIndex();
+      ManifestParser.verifySegmentIndex(video, [ref1, ref2]);
+    });
+
+    // Test for https://github.com/shaka-project/shaka-player/issues/4185
+    it('does not fail on preload hints with LL mode off', async () => {
+      // LL mode must be off for this test!
+      playerInterface.isLowLatencyMode = () => false;
+
+      const mediaWithPartialSegments = [
+        '#EXTM3U\n',
+        '#EXT-X-TARGETDURATION:5\n',
+        '#EXT-X-MAP:URI="init.mp4",BYTERANGE="616@0"\n',
+        '#EXT-X-PART-INF:PART-TARGET=1.5\n',
+        '#EXTINF:4,\n',
+        'main.mp4\n',
+        '#EXT-X-PART:DURATION=2,URI="partial.mp4",BYTERANGE=210@0\n',
+        '#EXT-X-PRELOAD-HINT:TYPE=PART,URI="partial.mp4",BYTERANGE-START=210\n',
+      ].join('');
+
+      fakeNetEngine
+          .setResponseText('test:/master', master)
+          .setResponseText('test:/video', mediaWithPartialSegments)
+          .setResponseValue('test:/init.mp4', initSegmentData)
+          .setResponseValue('test:/main.mp4', segmentData)
+          .setResponseValue('test:/partial.mp4', segmentData);
+
+      // If this throws, the test fails.  Otherwise, it passes.
+      await parser.start('test:/master', playerInterface);
     });
 
     describe('update', () => {

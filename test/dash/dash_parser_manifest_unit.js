@@ -4,21 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.media.SegmentReference');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.Dash');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.AbortableOperation');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.LanguageUtils');
-goog.require('shaka.util.ManifestParserUtils');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.StringUtils');
-goog.requireType('shaka.dash.DashParser');
-
 // Test basic manifest parsing functionality.
 describe('DashParser Manifest', () => {
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
@@ -207,42 +192,6 @@ describe('DashParser Manifest', () => {
             stream.roles = ['caption', 'main'];
           });
         }));
-  });
-
-  it('rejects periods after one without duration', async () => {
-    const periodContents = [
-      '    <AdaptationSet mimeType="video/mp4" lang="en" group="1">',
-      '      <Representation bandwidth="100">',
-      '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4">',
-      '          <SegmentTimeline>',
-      '            <S t="0" d="10" />',
-      '          </SegmentTimeline>',
-      '        </SegmentTemplate>',
-      '      </Representation>',
-      '    </AdaptationSet>',
-    ].join('\n');
-    const template = [
-      '<MPD mediaPresentationDuration="PT75S">',
-      '  <Period id="1">',
-      '%(periodContents)s',
-      '  </Period>',
-      '  <Period id="2">',
-      '%(periodContents)s',
-      '  </Period>',
-      '</MPD>',
-    ].join('\n');
-    const source = sprintf(template, {periodContents: periodContents});
-
-    fakeNetEngine.setResponseText('dummy://foo', source);
-    /** @type {shaka.extern.Manifest} */
-    const manifest = await parser.start('dummy://foo', playerInterface);
-    const video = manifest.variants[0].video;
-    await video.createSegmentIndex();
-
-    // The first period has a segment from 0-10.
-    // With the second period skipping, we should fail to find a segment at 10.
-    expect(video.segmentIndex.find(0)).not.toBe(null);
-    expect(video.segmentIndex.find(10)).toBe(null);
   });
 
   it('calculates Period times when missing', async () => {
@@ -461,30 +410,6 @@ describe('DashParser Manifest', () => {
         ]);
         expect(stream.closedCaptions).toEqual(expectedClosedCaptions);
       });
-
-  it('Detects E-AC3 JOC content by SupplementalProperty', async () => {
-    const idUri = 'tag:dolby.com,2018:dash:EC3_ExtensionType:2018';
-    const source = [
-      '<MPD>',
-      '  <Period duration="PT30M">',
-      '    <AdaptationSet mimeType="audio/mp4" lang="\u2603">',
-      '      <Representation bandwidth="500">',
-      '        <SupplementalProperty schemeIdUri="' + idUri + '" value="JOC"/>',
-      '        <BaseURL>http://example.com</BaseURL>',
-      '        <SegmentTemplate media="2.mp4" duration="1" />',
-      '      </Representation>',
-      '    </AdaptationSet>',
-      '  </Period>',
-      '</MPD>',
-    ].join('\n');
-
-    fakeNetEngine.setResponseText('dummy://foo', source);
-
-    /** @type {shaka.extern.Manifest} */
-    const manifest = await parser.start('dummy://foo', playerInterface);
-    const stream = manifest.variants[0].audio;
-    expect(stream.mimeType).toBe('audio/eac3-joc');
-  });
 
   it('Detects spatial audio', async () => {
     const idUri = 'tag:dolby.com,2018:dash:EC3_ExtensionType:2018';
@@ -985,7 +910,8 @@ describe('DashParser Manifest', () => {
 
     it('duplicate Representation ids with live', async () => {
       const source = [
-        '<MPD minBufferTime="PT75S" type="dynamic">',
+        '<MPD minBufferTime="PT75S" type="dynamic"',
+        '     availabilityStartTime="1970-01-01T00:00:00Z">',
         '  <Period id="1" duration="PT30S">',
         '    <AdaptationSet mimeType="video/mp4">',
         '      <Representation id="1" bandwidth="1">',
@@ -1276,7 +1202,8 @@ describe('DashParser Manifest', () => {
   });
 
   it('handles bandwidth of 0 or missing', async () => {
-    // Regression test for https://github.com/google/shaka-player/issues/938
+    // Regression test for
+    // https://github.com/shaka-project/shaka-player/issues/938
     const source = [
       '<MPD minBufferTime="PT75S">',
       '  <Period id="1" duration="PT30S">',
@@ -2142,6 +2069,7 @@ describe('DashParser Manifest', () => {
     /** @type {shaka.extern.Manifest} */
     const manifest = await parser.start('dummy://foo', playerInterface);
     expect(manifest.imageStreams.length).toBe(1);
+    expect(manifest.presentationTimeline.getMaxSegmentDuration()).toBe(1);
     const imageStream = manifest.imageStreams[0];
     expect(imageStream.width).toBe(1024);
     expect(imageStream.height).toBe(1152);

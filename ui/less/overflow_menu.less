@@ -17,7 +17,7 @@
   white-space: nowrap;
 
   /* Styles for the menu itself. */
-  background: rgba(28, 28, 28, 0.9);
+  background: rgba(28 28 28 / 90%);
   border-radius: 2px;
   max-height: 250px;
   min-width: 190px;
@@ -52,7 +52,7 @@
 
     /* When hovered, the button's background is highlighted. */
     &:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255 255 255 / 10%);
     }
 
     /* The button is clickable, showing cursor pointer */
@@ -64,7 +64,7 @@
     }
 
     .shaka-keyboard-navigation &:focus {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255 255 255 / 10%);
     }
   }
 
@@ -114,13 +114,13 @@
   flex-direction: column;
 }
 
-.shaka-overflow-button-label--inline {
+.shaka-overflow-button-label-inline {
   box-sizing: border-box;
   flex-direction: row;
   justify-content: space-between;
   width: calc(100% - 34px);
   padding-right: 28px;
-  background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iMjRweCIgdmlld0JveD0iMCAwIDI0IDI0IiB3aWR0aD0iMjRweCIgZmlsbD0iI2VlZWVlZSI+PHBhdGggZD0iTTAgMGgyNHYyNEgwVjB6IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTguNTkgMTYuNTlMMTMuMTcgMTIgOC41OSA3LjQxIDEwIDZsNiA2LTYgNi0xLjQxLTEuNDF6Ii8+PC9zdmc+);
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iMjRweCIgdmlld0JveD0iMCAwIDI0IDI0IiB3aWR0aD0iMjRweCIgZmlsbD0iI2VlZWVlZSI+PHBhdGggZD0iTTAgMGgyNHYyNEgwVjB6IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTguNTkgMTYuNTlMMTMuMTcgMTIgOC41OSA3LjQxIDEwIDZsNiA2LTYgNi0xLjQxLTEuNDF6Ii8+PC9zdmc+");
   background-repeat: no-repeat;
   background-position: right 5px center;
   background-size: 24px 24px;
@@ -180,7 +180,7 @@
 /* This is a button within each submenu that takes you back to the main overflow
  * menu. */
 .shaka-back-to-overflow-button {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-bottom: 1px solid rgba(255 255 255 / 20%) !important;
   padding-bottom: 17px !important;
   margin-bottom: 5px;
 

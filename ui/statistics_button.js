@@ -47,7 +47,7 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
 
     const label = shaka.util.Dom.createHTMLElement('label');
     label.classList.add('shaka-overflow-button-label');
-    label.classList.add('shaka-overflow-button-label--inline');
+    label.classList.add('shaka-overflow-button-label-inline');
 
     /** @private {!HTMLElement} */
     this.nameSpan_ = shaka.util.Dom.createHTMLElement('span');

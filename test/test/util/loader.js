@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.Loader');
-
-
 /**
  * A stand-in type for the "shaka" namespace.  Used when loading the compiled
  * library or when referencing it in ManifestGenerator or TestScheme.

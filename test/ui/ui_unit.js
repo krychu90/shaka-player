@@ -4,21 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.media.ManifestParser');
-goog.require('shaka.test.FakeManifestParser');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.ui.OverflowMenu');
-goog.require('shaka.ui.ResolutionSelection');
-goog.require('shaka.util.Functional');
-goog.require('shaka.util.Iterables');
-goog.require('shaka.util.Platform');
-goog.requireType('shaka.Player');
-goog.requireType('shaka.ui.Controls');
-goog.requireType('shaka.ui.Overlay');
-
 describe('UI', () => {
   const UiUtils = shaka.test.UiUtils;
   const Util = shaka.test.Util;
@@ -51,14 +36,14 @@ describe('UI', () => {
     /** @type {!HTMLVideoElement} */
     let video;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       videoContainer =
         /** @type {!HTMLElement} */ (document.createElement('div'));
       document.body.appendChild(videoContainer);
 
       video = shaka.test.UiUtils.createVideoElement();
       videoContainer.appendChild(video);
-      UiUtils.createUIThroughAPI(videoContainer, video);
+      await UiUtils.createUIThroughAPI(videoContainer, video);
     });
 
     it('has all the basic elements', () => {
@@ -137,10 +122,8 @@ describe('UI', () => {
         // Four is just a random number I (ismena) came up with to test a
         // multi-video use case. It could be replaces with any other
         // (reasonable) number.
-        for (const _ of shaka.util.Iterables.range(4)) {
-          shaka.util.Functional.ignored(_);
-          const video = /** @type {!HTMLVideoElement} */
-              (document.createElement('video'));
+        for (let i = 0; i < 4; i++) {
+          const video = shaka.test.UiUtils.createVideoElement();
 
           document.body.appendChild(video);
           videos.push(video);
@@ -196,6 +179,10 @@ describe('UI', () => {
     });
 
     it('goes into fullscreen on double click', async () => {
+      if (!document.fullscreenEnabled) {
+        pending('This test requires fullscreen support, which is unavailable.');
+      }
+
       const config = {
         controlPanelElements: [
           'overflow_menu',
@@ -205,7 +192,8 @@ describe('UI', () => {
         ],
         doubleClickForFullscreen: false,
       };
-      const ui = UiUtils.createUIThroughAPI(videoContainer, video, config);
+      const ui = await UiUtils.createUIThroughAPI(
+          videoContainer, video, config);
       const controls = ui.getControls();
 
       const spy = spyOn(controls, 'toggleFullScreen');
@@ -228,8 +216,8 @@ describe('UI', () => {
       /** @type {!HTMLElement} */
       let controlsContainer;
 
-      beforeEach(() => {
-        const ui = UiUtils.createUIThroughAPI(videoContainer, video);
+      beforeEach(async () => {
+        const ui = await UiUtils.createUIThroughAPI(videoContainer, video);
         player = ui.getControls().getLocalPlayer();
         const controlsContainers =
             videoContainer.getElementsByClassName('shaka-controls-container');
@@ -258,13 +246,14 @@ describe('UI', () => {
       /** @type {!HTMLElement} */
       let overflowMenu;
 
-      beforeEach(() => {
+      beforeEach(async () => {
         const config = {
           controlPanelElements: [
             'overflow_menu',
           ],
         };
-        const ui = UiUtils.createUIThroughAPI(videoContainer, video, config);
+        const ui = await UiUtils.createUIThroughAPI(
+            videoContainer, video, config);
         player = ui.getControls().getLocalPlayer();
 
         const overflowMenus =
@@ -335,8 +324,8 @@ describe('UI', () => {
       /** @type {!HTMLElement} */
       let controlsButtonPanel;
 
-      it('has default elements', () => {
-        UiUtils.createUIThroughAPI(videoContainer, video);
+      it('has default elements', async () => {
+        await UiUtils.createUIThroughAPI(videoContainer, video);
         const controlsButtonPanels = videoContainer.getElementsByClassName(
             'shaka-controls-button-panel');
 
@@ -369,7 +358,7 @@ describe('UI', () => {
         }
       });
 
-      it('is accessible', () => {
+      it('is accessible', async () => {
         function confirmAriaLabel(className) {
           const elements =
               controlsButtonPanel.getElementsByClassName(className);
@@ -388,7 +377,7 @@ describe('UI', () => {
           ],
         };
 
-        UiUtils.createUIThroughAPI(videoContainer, video, config);
+        await UiUtils.createUIThroughAPI(videoContainer, video, config);
         const controlsButtonPanels = videoContainer.getElementsByClassName(
             'shaka-controls-button-panel');
         expect(controlsButtonPanels.length).toBe(1);
@@ -405,13 +394,88 @@ describe('UI', () => {
       });
     });
 
+    describe('control panel buttons with submenus', () => {
+      /** @type {!HTMLElement} */
+      let resolutionMenu;
+      /** @type {!Element} */
+      let resolutionMenuButton;
+      /** @type {!HTMLElement} */
+      let languageMenu;
+      /** @type {!Element} */
+      let languageMenuButton;
+
+      beforeEach(async () => {
+        const config = {
+          controlPanelElements: [
+            'quality',
+            'language',
+          ],
+        };
+        const ui = await UiUtils.createUIThroughAPI(
+            videoContainer, video, config);
+        player = ui.getControls().getLocalPlayer();
+
+        const resolutionsMenus =
+        videoContainer.getElementsByClassName('shaka-resolutions');
+        expect(resolutionsMenus.length).toBe(1);
+        resolutionMenu = /** @type {!HTMLElement} */ (resolutionsMenus[0]);
+
+        const resolutionMenuButtons =
+        videoContainer.getElementsByClassName('shaka-resolution-button');
+        expect(resolutionMenuButtons.length).toBe(1);
+        resolutionMenuButton = resolutionMenuButtons[0];
+
+        const languageMenus =
+        videoContainer.getElementsByClassName('shaka-audio-languages');
+        expect(languageMenus.length).toBe(1);
+        languageMenu = /** @type {!HTMLElement} */ (languageMenus[0]);
+
+        const languageMenuButtons =
+        videoContainer.getElementsByClassName('shaka-language-button');
+        expect(languageMenuButtons.length).toBe(1);
+        languageMenuButton = languageMenuButtons[0];
+      });
+
+      it('menus are initially hidden', () => {
+        expect(resolutionMenu.classList.contains('shaka-hidden')).toBe(true);
+        expect(languageMenu.classList.contains('shaka-hidden')).toBe(true);
+      });
+
+      it('a menu becomes visible if the button is clicked', () => {
+        resolutionMenuButton.click();
+
+        expect(resolutionMenu.classList.contains('shaka-hidden')).toBe(false);
+      });
+
+      it('a menu becomes hidden if the "close" button is clicked', () => {
+        resolutionMenuButton.click();
+
+        const backToOverflowButtons =
+        videoContainer.getElementsByClassName('shaka-back-to-overflow-button');
+        expect(backToOverflowButtons.length).toBe(2);
+        const backToOverflowButton =
+        /** @type {!HTMLElement} */ (backToOverflowButtons[0]);
+        backToOverflowButton.click();
+
+        expect(resolutionMenu.classList.contains('shaka-hidden')).toBe(true);
+      });
+
+      it('a menu becomes hidden if another one is opened', () => {
+        resolutionMenuButton.click();
+        languageMenuButton.click();
+
+        expect(resolutionMenu.classList.contains('shaka-hidden')).toBe(true);
+        expect(languageMenu.classList.contains('shaka-hidden')).toBe(false);
+      });
+    });
+
     describe('resolutions menu', () => {
       /** @type {!HTMLElement} */
       let resolutionsMenu;
       /** @type {shaka.ui.Controls} */
       let controls;
 
-      beforeEach(() => {
+      beforeEach(async () => {
         const config = {
           controlPanelElements: [
             'overflow_menu',
@@ -420,7 +484,8 @@ describe('UI', () => {
             'quality',
           ],
         };
-        const ui = UiUtils.createUIThroughAPI(videoContainer, video, config);
+        const ui = await UiUtils.createUIThroughAPI(
+            videoContainer, video, config);
         controls = ui.getControls();
         player = controls.getLocalPlayer();
 
@@ -554,18 +619,9 @@ describe('UI', () => {
         player.configure('abr.enabled', false);
 
         const tracks = player.getVariantTracks();
-        const en2 =
-            tracks.find((t) => t.language == 'en' && t.channelsCount == 2);
         const en1 =
             tracks.find((t) => t.language == 'en' && t.channelsCount == 1);
         const es = tracks.find((t) => t.language == 'es');
-
-        // There are 3 variants with English 2-channel, but one is a duplicate
-        // and shouldn't appear in the list.
-        goog.asserts.assert(en2, 'Unable to find tracks');
-        player.selectVariantTrack(en2, true);
-        await updateResolutionMenu();
-        expect(getResolutions()).toEqual(['240p', '480p']);
 
         // There is 1 variant with English 1-channel.
         goog.asserts.assert(en1, 'Unable to find tracks');
@@ -578,6 +634,35 @@ describe('UI', () => {
         player.selectVariantTrack(es, true);
         await updateResolutionMenu();
         expect(getResolutions()).toEqual(['540p']);
+      });
+
+      it('displays audio quality based on current stream', async () => {
+        const manifest =
+          shaka.test.ManifestGenerator.generate((manifest) => {
+            manifest.addVariant(0, (variant) => {
+              variant.addAudio(0, (stream) => {
+                stream.roles = ['main'];
+              });
+              variant.bandwidth = 100000;
+            });
+            manifest.addVariant(1, (variant) => {
+              variant.addAudio(1);
+              variant.bandwidth = 200000;
+            });
+          });
+
+        shaka.media.ManifestParser.registerParserByMime(
+            fakeMimeType, () => new shaka.test.FakeManifestParser(manifest));
+
+        await player.load(
+            /* uri= */ 'fake', /* startTime= */ 0, fakeMimeType);
+
+        const qualityButtons = videoContainer.querySelectorAll(
+            'button.explicit-resolution > span');
+        const qualityOptions =
+            Array.from(qualityButtons).map((btn) => btn.innerText);
+
+        expect(qualityOptions).toEqual(['200 kbits/s', '100 kbits/s']);
       });
 
       /**
@@ -606,6 +691,200 @@ describe('UI', () => {
         }
         goog.asserts.assert(found, 'Unable to find resolution menu');
       }
+    });
+
+    describe('custom context menu', () => {
+      /** @type {!HTMLElement} */
+      let controlsContainer;
+      /** @type {!HTMLElement} */
+      let contextMenu;
+
+      beforeEach(async () => {
+        const config = {
+          customContextMenu: true,
+          contextMenuElements: [
+            'fakeElement',
+            'statistics',
+            'fakeElement',
+          ],
+        };
+        const ui = await UiUtils.createUIThroughAPI(
+            videoContainer, video, config);
+
+        controlsContainer = ui.getControls().getControlsContainer();
+
+        const contextMenus =
+        videoContainer.getElementsByClassName('shaka-context-menu');
+        expect(contextMenus.length).toBe(1);
+        contextMenu = /** @type {!HTMLElement} */
+            (contextMenus[0]);
+      });
+
+      it('responds to contextmenu event', () => {
+        expect(contextMenu.classList.contains('shaka-hidden')).toBe(true);
+        UiUtils.simulateEvent(controlsContainer, 'contextmenu');
+        expect(contextMenu.classList.contains('shaka-hidden')).toBe(false);
+        UiUtils.simulateEvent(controlsContainer, 'contextmenu');
+        expect(contextMenu.classList.contains('shaka-hidden')).toBe(true);
+      });
+
+      it('hides on click event', () => {
+        UiUtils.simulateEvent(controlsContainer, 'contextmenu');
+        UiUtils.simulateEvent(controlsContainer, 'click');
+        expect(contextMenu.classList.contains('shaka-hidden')).toBe(true);
+        UiUtils.simulateEvent(controlsContainer, 'contextmenu');
+        UiUtils.simulateEvent(window, 'click');
+        expect(contextMenu.classList.contains('shaka-hidden')).toBe(true);
+      });
+
+      it('builds internal elements', () => {
+        expect(contextMenu.childNodes.length).toBe(1);
+
+        expect(contextMenu.childNodes[0]['className'])
+            .toBe('shaka-statistics-button');
+      });
+    });
+
+    describe('statistics context menu', () => {
+      /** @type {!HTMLElement} */
+      let statisticsButton;
+      /** @type {!HTMLElement} */
+      let statisticsContainer;
+
+      beforeEach(async () => {
+        const config = {
+          customContextMenu: true,
+          contextMenuElements: [
+            'statistics',
+          ],
+          statisticsList: Object.keys(new shaka.util.Stats().getBlob()),
+        };
+        const ui = await UiUtils.createUIThroughAPI(
+            videoContainer, video, config);
+        player = ui.getControls().getLocalPlayer();
+
+        const statisticsButtons =
+        videoContainer.getElementsByClassName('shaka-statistics-button');
+        expect(statisticsButtons.length).toBe(1);
+        statisticsButton = /** @type {!HTMLElement} */
+            (statisticsButtons[0]);
+
+        const statisticsContainers =
+        videoContainer.getElementsByClassName('shaka-statistics-container');
+        expect(statisticsContainers.length).toBe(1);
+        statisticsContainer = /** @type {!HTMLElement} */
+            (statisticsContainers[0]);
+      });
+
+      it('appears and disappears on toggle', () => {
+        expect(statisticsContainer.classList.contains('shaka-hidden'))
+            .toBe(true);
+
+        statisticsButton.click();
+        expect(statisticsContainer.classList.contains('shaka-hidden'))
+            .toBe(false);
+
+        statisticsButton.click();
+        expect(statisticsContainer.classList.contains('shaka-hidden'))
+            .toBe(true);
+      });
+
+      it('displays all the available statistics', () => {
+        const skippedStats = ['stateHistory', 'switchHistory'];
+        const nodes = statisticsContainer.childNodes;
+        let nodeIndex = 0;
+
+        for (const statistic in new shaka.util.Stats().getBlob()) {
+          if (!skippedStats.includes(statistic)) {
+            // Text content of label (without ':') is a valid statistic
+            const label = nodes[nodeIndex].childNodes[0].textContent;
+            expect(label.replace(':', '')).toBe(statistic);
+
+            // Value has been parsed and it is not the default 'NaN'
+            const value = nodes[nodeIndex].childNodes[1].textContent;
+            expect(value).not.toBe('NaN');
+
+            nodeIndex += 1;
+          }
+        }
+      });
+
+      it('is updated periodically', async () => {
+        // There is no guaranteed ordering, so fetch by the stat name.
+        function getStatsElementByName(name) {
+          const nodes = statisticsContainer.childNodes;
+          for (const node of nodes) {
+            if (node.hasChildNodes() &&
+                node.childNodes[0].textContent.includes(name)) {
+              return node;
+            }
+          }
+          return null;
+        }
+
+        function getStatsFromContainer() {
+          width = getStatsElementByName(
+              'width').childNodes[1].textContent.replace(' (px)', '');
+          height = getStatsElementByName(
+              'height').childNodes[1].textContent.replace(' (px)', '');
+          bufferingTime = getStatsElementByName(
+              'bufferingTime').childNodes[1].textContent.replace(' (s)', '');
+        }
+
+        /** @type {!string} */
+        let width;
+        /** @type {!string} */
+        let height;
+        /** @type {!string} */
+        let bufferingTime;
+        /** @type {!string} */
+        let lastBufferingTime;
+
+        const manifest = shaka.test.ManifestGenerator.generate((manifest) => {
+          manifest.addVariant(/* id= */ 0, (variant) => {
+            variant.addVideo(1, (stream) => {
+              // Keep this at 720p to pass max-height checks on Chromecast Hub.
+              stream.size(1280, 720);
+            });
+          });
+        });
+
+        shaka.media.ManifestParser.registerParserByMime(
+            fakeMimeType, () => new shaka.test.FakeManifestParser(manifest));
+
+        await player.load(
+            /* uri= */ 'fake', /* startTime= */ 0, fakeMimeType);
+
+        // Placeholder statistics are available before toggle
+        getStatsFromContainer();
+        expect(width).toBe('NaN');
+        expect(height).toBe('NaN');
+        expect(bufferingTime).toBe('NaN');
+
+        // Statistics are displayed on toggle
+        statisticsButton.click();
+        await Util.delay(0.2);
+
+        getStatsFromContainer();
+        expect(width).toBe('1280');
+        expect(height).toBe('720');
+        expect(bufferingTime).toBeGreaterThanOrEqual(0.1);
+
+        // Statistics are updated over time
+        lastBufferingTime = bufferingTime;
+        await Util.delay(0.2);
+
+        getStatsFromContainer();
+        expect(bufferingTime).toBeGreaterThan(lastBufferingTime);
+
+        // Statistics stop updating when the container is hidden
+        statisticsButton.click();
+        lastBufferingTime = bufferingTime;
+        await Util.delay(0.2);
+
+        getStatsFromContainer();
+        expect(bufferingTime).toBe(lastBufferingTime);
+      });
     });
   });
 

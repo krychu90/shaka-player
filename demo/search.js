@@ -8,6 +8,12 @@
 goog.provide('shakaDemo.Search');
 
 
+goog.require('shakaDemo.AssetCard');
+goog.require('shakaDemo.BoolInput');
+goog.require('shakaDemo.InputContainer');
+goog.require('shakaDemo.SelectInput');
+goog.requireType('ShakaDemoAssetInfo');
+
 /** @type {?shakaDemo.Search} */
 let shakaDemoSearch;
 
@@ -52,12 +58,6 @@ shakaDemo.Search = class {
     });
     document.addEventListener('shaka-main-offline-progress', () => {
       this.updateOfflineProgress_();
-    });
-    document.addEventListener('shaka-main-locale-changed', () => {
-      this.remakeSearchDiv_(container);
-      this.remakeResultsDiv_();
-      // Update the componentHandler, to account for any new MDL elements added.
-      componentHandler.upgradeDom();
     });
     document.addEventListener('shaka-main-page-changed', () => {
       if (!this.resultsDiv_.childNodes.length &&
@@ -146,10 +146,7 @@ shakaDemo.Search = class {
       if (unsupportedReason) {
         c.markAsUnsupported(unsupportedReason);
       } else {
-        c.addButton(shakaDemo.MessageIds.PLAY, () => {
-          shakaDemoMain.loadAsset(asset);
-          this.updateSelected_();
-        });
+        c.addBaseButtons();
         c.addStoreButton();
       }
     });
@@ -263,7 +260,7 @@ shakaDemo.Search = class {
    * The term this represents.
    * @param {shakaDemo.Search.TermType} type
    * The type of term that this term is.
-   * @param {?shakaDemo.MessageIds} tooltip
+   * @param {?string} tooltip
    * @private
    */
   makeBooleanInput_(searchContainer, choice, type, tooltip) {
@@ -291,7 +288,7 @@ shakaDemo.Search = class {
    * Creates an input for a group of related but mutually-exclusive search
    * terms.
    * @param {!shakaDemo.InputContainer} searchContainer
-   * @param {!shakaDemo.MessageIds} name
+   * @param {string} name
    * @param {!Array.<!shakaDemo.Search.SearchTerm>} choices
    * An array of the terms in this term group.
    * @param {shakaDemo.Search.TermType} type
@@ -304,7 +301,7 @@ shakaDemo.Search = class {
     const nullOption = '---';
     const valuesObject = {};
     for (const term of choices) {
-      valuesObject[term] = shakaDemoMain.getLocalizedString(term);
+      valuesObject[term] = term;
     }
     valuesObject[nullOption] = nullOption;
     let lastValue = nullOption;
@@ -350,23 +347,19 @@ shakaDemo.Search = class {
     const coreContainer = new shakaDemo.InputContainer(
         container, /* headerText= */ null, shakaDemo.InputContainer.Style.FLEX,
         /* docLink= */ null);
-    this.makeSelectInput_(coreContainer,
-        shakaDemo.MessageIds.MANIFEST_SEARCH,
-        [Feature.DASH, Feature.HLS], FEATURE);
-    this.makeSelectInput_(coreContainer,
-        shakaDemo.MessageIds.CONTAINER_SEARCH,
-        [Feature.MP4, Feature.MP2TS, Feature.WEBM], FEATURE);
-    this.makeSelectInput_(coreContainer,
-        shakaDemo.MessageIds.DRM_SEARCH,
+    this.makeSelectInput_(coreContainer, 'Manifest',
+        [Feature.DASH, Feature.HLS, Feature.MSS], FEATURE);
+    this.makeSelectInput_(coreContainer, 'Container',
+        [Feature.MP4, Feature.MP2TS, Feature.WEBM, Feature.CONTAINERLESS],
+        FEATURE);
+    this.makeSelectInput_(coreContainer, 'DRM',
         Object.values(shakaAssets.KeySystem), DRM);
-    this.makeSelectInput_(coreContainer,
-        shakaDemo.MessageIds.SOURCE_SEARCH,
+    this.makeSelectInput_(coreContainer, 'Source',
         Object.values(shakaAssets.Source).filter((term) => {
           return term != shakaAssets.Source.CUSTOM;
         }), SOURCE);
-    this.makeSelectInput_(coreContainer,
-        shakaDemo.MessageIds.LIVE_SEARCH,
-        [Feature.LIVE, Feature.VOD], FEATURE);
+    this.makeSelectInput_(coreContainer, 'Live',
+        [Feature.LOW_LATENCY, Feature.LIVE, Feature.VOD], FEATURE);
 
     // Special terms.
     const containerStyle = shakaDemo.InputContainer.Style.FLEX;
@@ -374,23 +367,44 @@ shakaDemo.Search = class {
         container, /* headerText= */ null, containerStyle,
         /* docLink= */ null);
     this.makeBooleanInput_(specialContainer, Feature.HIGH_DEFINITION, FEATURE,
-        shakaDemo.MessageIds.HIGH_DEFINITION_SEARCH);
+        'Filters for assets with at least one high-definition video stream.');
+    this.makeBooleanInput_(specialContainer, Feature.ULTRA_HIGH_DEFINITION,
+        FEATURE, 'Filters for assets with at least one ultra-high-definition' +
+        ' video stream.');
     this.makeBooleanInput_(specialContainer, Feature.XLINK, FEATURE,
-        shakaDemo.MessageIds.XLINK_SEARCH);
+        'Filters for assets that have XLINK tags in their manifests, so that ' +
+        'they can be broken into multiple files.');
     this.makeBooleanInput_(specialContainer, Feature.SUBTITLES, FEATURE,
-        shakaDemo.MessageIds.SUBTITLES_SEARCH);
+        'Filters for assets with caption tracks, or embedded captions.');
     this.makeBooleanInput_(specialContainer, Feature.TRICK_MODE, FEATURE,
-        shakaDemo.MessageIds.TRICK_MODE_SEARCH);
+        'Filters for assets that have special video tracks to be used in ' +
+        'trick mode playback (aka fast-forward).');
     this.makeBooleanInput_(specialContainer, Feature.SURROUND, FEATURE,
-        shakaDemo.MessageIds.SURROUND_SEARCH);
+        'Filters for assets with at least one surround sound audio track.');
     this.makeBooleanInput_(specialContainer, Feature.OFFLINE, FEATURE,
-        shakaDemo.MessageIds.OFFLINE_SEARCH);
+        'Filters for assets that can be stored offline.');
     this.makeBooleanInput_(specialContainer, Feature.STORED, FEATURE,
-        shakaDemo.MessageIds.STORED_SEARCH);
+        'Filters for assets that have been stored offline.');
     this.makeBooleanInput_(specialContainer, Feature.ADS, FEATURE,
-        shakaDemo.MessageIds.AD_SEARCH);
+        'Filters for assets that have advertisements.');
     this.makeBooleanInput_(specialContainer, Feature.AUDIO_ONLY, FEATURE,
-        shakaDemo.MessageIds.AUDIO_ONLY_SEARCH);
+        'Filters for assets that do not have video streams.');
+    this.makeBooleanInput_(specialContainer, Feature.THUMBNAILS, FEATURE,
+        'Filters for assets that have a thumbnail track.');
+    this.makeBooleanInput_(specialContainer, Feature.CHAPTERS, FEATURE,
+        'Filters for assets that have a chapters track.');
+    this.makeBooleanInput_(specialContainer, Feature.LCEVC, FEATURE,
+        'Filters for assets that have an LCEVC enhancement layer.');
+    this.makeBooleanInput_(specialContainer, Feature.CONTENT_STEERING, FEATURE,
+        'Filters for assets that use Content Steering.');
+    this.makeBooleanInput_(specialContainer, Feature.MPD_PATCH, FEATURE,
+        'Filters for assets that use MPD Patch.');
+    this.makeBooleanInput_(specialContainer, Feature.VR, FEATURE,
+        'Filters for assets that are VR.');
+    this.makeBooleanInput_(specialContainer, Feature.MPD_CHAINING, FEATURE,
+        'Filters for assets that have MPD Chaining');
+    this.makeBooleanInput_(specialContainer, Feature.CMSD, FEATURE,
+        'Filters for assets that have Common Media Server Data.');
 
     container.appendChild(this.resultsDiv_);
   }

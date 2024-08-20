@@ -56,10 +56,43 @@ particular key system at all, but instead state that any CENC system will do:
 ```
 
 If this is the only `<ContentProtection>` element in the manifest, Shaka will
-try all key systems it knows.  (Based on
-{@linksource shaka.dash.ContentProtection.defaultKeySystems_}.)
+try all key systems it knows. (Based on keySystemsByURI in
+{@linksource shaka.extern.DashManifestConfiguration}.)
+
+Through `player.configure()`, you can update the dash key systems mapping by
+scheme URI:
+
+```js
+player.configure({
+  manifest: {
+    dash: {
+      keySystemsByURI: {
+        'urn:uuid:9a04f079-9840-4286-ab92-e65be0885f95': 'com.microsoft.playready.recommendation',
+        'urn:uuid:79f0049a-4098-8642-ab92-e65be0885f95': 'com.microsoft.playready.recommendation',
+      }
+  }
+  }
+});
+```
+
 If the browser supports it and you configured a license server URL for it, we'll
 use it.
+
+Alternative there are a config for make a mapping of keysystem if you know that
+is broadly supported. For example, `com.microsoft.playready.recommendation`:
+
+```js
+player.configure({
+  drm: {
+    keySystemsMapping: {
+      'com.microsoft.playready': 'com.microsoft.playready.recommendation',
+    }
+  }
+});
+```
+
+With the previous configuration you will choose the `recommendation` keySystem
+when your manifest (HLS or DASH) uses PlayReady.
 
 
 #### Clear Key
@@ -145,11 +178,11 @@ playback.  Passing in a higher security level than can be supported will cause
 default is the empty string, which is the lowest security level supported by the
 key system.
 
-Each key system has their own values for robustness.  The values for Widevine
-are well-known (see the [Chromium sources][]) and listed below, but
-values for other key systems are not known to us at this time.
+Each key system has their own values for robustness.
 
-[Chromium sources]: https://cs.chromium.org/chromium/src/components/cdm/renderer/widevine_key_system_properties.h?q=SW_SECURE_CRYPTO&l=22
+##### Widevine
+
+Chromium sources: https://cs.chromium.org/chromium/src/components/cdm/renderer/widevine_key_system_properties.h?q=SW_SECURE_CRYPTO&l=22
 
 - `SW_SECURE_CRYPTO`
 - `SW_SECURE_DECODE`
@@ -157,6 +190,83 @@ values for other key systems are not known to us at this time.
 - `HW_SECURE_DECODE`
 - `HW_SECURE_ALL`
 
+##### PlayReady
+
+Microsoft Documentation: https://docs.microsoft.com/en-us/playready/overview/security-level
+
+- `3000`
+- `2000`
+- `150`
+
+`com.microsoft.playready` key system ignores given robustness and stays at a
+`2000` decryption level.
+
+NB: Audio Hardware DRM is not supported (PlayReady limitation)
+
+##### FairPlay
+
+Based on [Apple's Documentation](https://developer.apple.com/streaming/fps/),
+you should provide an empty string as robustness
+
+##### Other key-systems
+
+Values for other key systems are not known to us at this time.
+
+#### Re-use persistent license DRM for online playback
+
+If your DRM provider configuration allows you to deliver persistent license,
+you could re-use the created MediaKeys session for the next online playback.
+
+Configure Shaka to start DRM sessions with the `persistent-license` type
+instead of the `temporary` one:
+
+```js
+player.configure({
+  drm: {
+    advanced: {
+      'com.widevine.alpha': {
+        'sessionType': 'persistent-license'
+      }
+    }
+  }
+});
+```
+
+**Using `persistent-license` might not work on every devices, use this feature
+carefully.**
+
+When the playback starts, you can retrieve the sessions metadata:
+
+```js
+const activeDrmSessions = this.player.getActiveSessionsMetadata();
+const persistentDrmSessions = activeDrmSessions.filter(
+  ({ sessionType }) => sessionType === 'persistent-license');
+
+// Add your own storage mechanism here, give it an unique known identifier for
+// the playing video
+```
+
+When starting the same video again, retrieve the metadata from the storage, and
+set it back to Shaka's configuration.
+
+Shaka will load the given DRM persistent sessions and will only request a
+license if some keys are missing for the content.
+
+```js
+player.configure({
+  drm: {
+    persistentSessionOnlinePlayback: true,
+    persistentSessionsMetadata: [{
+      sessionId: 'deadbeefdeadbeefdeadbeefdeadbeef',
+      initData: new InitData(0),
+      initDataType: 'cenc'
+    }]
+  }
+});
+```
+
+NB: Shaka doesn't provide a out-of-the-box storage mechanism for the sessions
+metadata.
 
 #### Continue the Tutorials
 

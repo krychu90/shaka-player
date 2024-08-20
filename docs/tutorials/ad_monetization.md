@@ -7,6 +7,127 @@ other ad providers in v3.1+.
 Please note that the current API is likely to undergo significant
 changes as our support extends.
 
+#### AWS Elemental MediaTailor Integration
+
+Shaka Player provides an integration with the [AWS Elemental MediaTailor][].
+We support Client Side, Server Side and overlays ad insertion.
+
+[AWS Elemental MediaTailor]: https://aws.amazon.com/mediatailor/
+
+All ad insertion experiences are available through the
+{@linksource shaka.extern.IAdManager} object on the Player.
+
+If you're not using Shaka's UI library, you will
+also need to create a `<div>` over your video element to serve as an ad
+container.
+
+Start by initializing the server side logic.
+With Shaka UI:
+
+```js
+const video = document.getElementById('video');
+const ui = video['ui'];
+const controls = video.ui.getControls();
+// If you're using a non-UI build, this is the div you'll need to create
+// for your layout.
+const container = controls.getServerSideAdContainer();
+const player = controls.getPlayer();
+const netEngine = player.getNetworkingEngine();
+const adManager = player.getAdManager();
+adManager.initMediaTailor(container, netEngine, video);
+```
+
+Requesting a Client Side stream:
+
+```js
+const mediaTailorUrl = 'https://d305rncpy6ne2q.cloudfront.net/v1/session/94063eadf7d8c56e9e2edd84fdf897826a70d0df/SFP-MediaTailor-VOD-HLS-DASH/out/v1/b94f3611978f419985a18335bac9d9cb/ddb73bf548a44551a0059c346226445a/eaa5485198bf497284559efb8172425e/index.mpd';
+const mediaTailorAdsParams = {
+  adsParams: {
+    assetid: 'test2',
+    podduration: '15',
+  },
+};
+const uri = await adManager.requestMediaTailorStream(mediaTailorUrl, mediaTailorAdsParams);
+player.load(uri);
+```
+
+Requesting a Server Side stream:
+
+```js
+const mediaTailorUrl = 'https://ad391cc0d55b44c6a86d232548adc225.mediatailor.us-east-1.amazonaws.com/v1/session/d02fedbbc5a68596164208dd24e9b48aa60dadc7/singssai/master.m3u8';
+const uri = await adManager.requestMediaTailorStream(mediaTailorUrl);
+player.load(uri);
+```
+
+Note: overlays ad insertions is the same as server side.
+
+#### Interstitial Integration
+
+Shaka Player supports different types of interstitials:
+ - HLS Interstitials
+ - Custom Interstitials
+ - VAST (playback without tracking)
+ - VMAP (playback without tracking)
+
+
+##### HLS Interstitials
+
+It is not necessary to do anything, Shaka Player supports it natively without
+any type of intervention.
+
+
+##### Custom Interstitials
+
+Example:
+
+```js
+const adManager = player.getAdManager();
+const video = document.getElementById('video');
+const ui = video['ui'];
+// If you're using a non-UI build, this is the div you'll need to create
+// for your layout.  The ad manager will clear this div, when it unloads, so
+// don't pass in a div that contains non-ad elements.
+const container = video.ui.getControls().getClientSideAdContainer();
+adManager.initInterstitial(container, player, video);
+adManager.addCustomInterstitial({
+  id: null,
+  startTime: 10,
+  endTime: null,
+  uri: 'YOUR_URL',
+  isSkippable: true,
+  skipOffset: 10,
+  canJump: false,
+  resumeOffset: null,
+  playoutLimit: null,
+  once: true,
+  pre: false,
+  post: false,
+  timelineRange: false,
+});
+```
+
+
+##### VAST/VMAP (playback without tracking)
+
+Example:
+
+```js
+const adManager = player.getAdManager();
+const video = document.getElementById('video');
+const ui = video['ui'];
+// If you're using a non-UI build, this is the div you'll need to create
+// for your layout.  The ad manager will clear this div, when it unloads, so
+// don't pass in a div that contains non-ad elements.
+const container = video.ui.getControls().getClientSideAdContainer();
+adManager.initInterstitial(container, player, video);
+const url = 'https://pubads.g.doubleclick.net/gampad/ads?' +
+    'sz=640x480&iu=/124319096/external/single_ad_samples&ciu_szs=300x250&' +
+    'impl=s&gdfp_req=1&env=vp&output=vast&unviewed_position_start=1&' +
+    'cust_params=deployment%3Ddevsite%26sample_ct%3Dlinear&correlator=';
+adManager.addAdUrlInterstitial(url);
+```
+
+
 #### IMA SDK Integration
 
 Shaka Player provides an integration with the [Interactive Media Ads][] SDKs.
@@ -57,8 +178,9 @@ const adManager = player.getAdManager();
 const video = document.getElementById('video');
 const ui = video['ui'];
 // If you're using a non-UI build, this is the div you'll need to create
-// for your layout.
-const container = video.ui.getControls().getControlsContainer();
+// for your layout.  The ad manager will clear this div, when it unloads, so
+// don't pass in a div that contains non-ad elements.
+const container = video.ui.getControls().getClientSideAdContainer();
 adManager.initClientSide(container, video);
 ```
 
@@ -79,6 +201,20 @@ adManager.requestClientSideAds(adsRequest);
 See: [google.ima.AdsRequest][] for details on the request object.
 
 [google.ima.AdsRequest]: https://developers.google.com/interactive-media-ads/docs/sdks/html5/v3/reference/js/ima.AdsRequest
+
+Control the rendering of ads:
+
+```js
+const adsRenderingSettings = new google.ima.AdsRenderingSettings();
+adsRenderingSettings.restoreCustomPlaybackStateOnAdBreakComplete = true;
+adManager.initClientSide(container, video, adsRenderingSettings);
+// Updates the ads rendering settings.
+adManager.updateClientSideAdsRenderingSettings(adsRenderingSettings);
+```
+
+See: [google.ima.AdsRenderingSettings][] for details on the request object.
+
+[google.ima.AdsRenderingSettings]: https://developers.google.com/interactive-media-ads/docs/sdks/html5/client-side/reference/js/google.ima.AdsRenderingSettings
 
 #### Streaming with Server Side Ads Insertion
 
@@ -143,6 +279,74 @@ See: [google.ima.dai.api.LiveStreamRequest][] for details on the request object.
 
 If you are using Shaka's UI library, we will automatically hook up our ad UI.
 
+#### Listening To Ad Events
+We unify Server Side and Client Side ad events into our own Shaka ad events and
+objects. which your application can listen to and interact with.
+Check out the {@link shaka.ads.AdManager#event:AdBreakReadyEvent|full list of 
+ad events} for details.
+
+Let's register a simple listener to Shaka's AD_STARTED event. It will log the
+start of the ad in the console.
+
+```js
+adManager.addEventListener(shaka.ads.Utils.AD_STARTED, () => {
+  console.log('An ad has started');
+});
+```
+
+Every shaka ad event contains an original SDK event and an ad object if those
+are available. Most apps are unlikely to need them, but if you have a use case
+that requires access to those, here is how to get them:
+
+```js
+// Note that unlike in the previous example, we are capturing the AD_STARTED
+// event object here (the "e" parameter of the lambda function) so we can access
+// its properties.
+adManager.addEventListener(shaka.ads.Utils.AD_STARTED, (e) => {
+  const sdkAdObject = e['sdkAdObject'];
+  const originalEvent = e['originalEvent'];
+});
+```
+
+#### Accommodating IMA Power Users
+If you have an existing IMA integration you want to plug into Shaka, or you want
+to use more intricate SDK capabilities not exposed through our API, we provide a
+way to do that.
+Listen to the {@link shaka.ads.AdManager#event:ImaAdManagerLoadedEvent} for
+Client Side or the {@link shaka.ads.AdManager#event:ImaStreamManagerLoadedEvent}
+for Server Side to get the IMA [AdManager][] or [StreamManager][] objects.
+
+```js
+adManager.addEventListener(shaka.ads.Utils.IMA_AD_MANAGER_LOADED, (e) => {
+  const imaAdManager = e['imaAdManager'];
+});
+
+adManager.addEventListener(shaka.ads.Utils.IMA_STREAM_MANAGER_LOADED, (e) => {
+  const imaStreamManager = e['imaStreamManager'];
+});
+```
+[AdManager]: https://developers.google.com/interactive-media-ads/docs/sdks/html5/client-side/reference/js/google.ima.AdsManager
+[StreamManager]: https://developers.google.com/interactive-media-ads/docs/sdks/html5/dai/reference/js/StreamManager
+
+#### Disabling Cookies For Serving Limited Ads
+The server side IMA SDK allows limited ads to be served when the user does not
+give or denies consent to cookies. To allow this, set the `ltd` parameter using
+`StreamRequest.adTagParameters` as described in the [IMA limited ads guide][].
+To set up cookie-less manifest and segment requests, use an appropriate
+`requestFilter`. Please note that `request.withCredentials` flag is `false` by
+default, so you should only need to set this if you've enabled it in other parts of
+your code.
+
+```js
+  player.getNetworkingEngine().registerRequestFilter(function(type, request, context) {
+    if (type == shaka.net.NetworkingEngine.RequestType.MANIFEST ||
+        type == shaka.net.NetworkingEngine.RequestType.SEGMENT) {
+      request.withCredentials = false;
+    }
+  });
+```
+[IMA limited ads guide]: https://developers.devsite.corp.google.com/interactive-media-ads/docs/sdks/html5/dai/limited-ads
+
 #### Custom Ad Manager Implementations
 Our architecture supports custom ad manager implementations. Every ad manager
 should implement the {@linksource shaka.extern.IAdManager} interface. To make
@@ -153,7 +357,3 @@ before instantiating the player.
 // myapp.CustomAdManager is a placeholder name for your ad manager implementation.
 shaka.Player.setAdManagerFactory(() => new myapp.CustomAdManager());
 ```
-
-#### Continue the Tutorials
-
-Next, check out {@tutorial plugins}.

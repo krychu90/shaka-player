@@ -4,22 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.dash.ContentProtection');
-goog.require('shaka.dash.DashParser');
-goog.require('shaka.test.Dash');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.Iterables');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.Uint8ArrayUtils');
-
 // Test DRM-related parsing.
 describe('DashParser ContentProtection', () => {
   const Dash = shaka.test.Dash;
   const ContentProtection = shaka.dash.ContentProtection;
   const strToXml = (str) => {
-    const parser = new DOMParser();
-    return parser.parseFromString(str, 'application/xml').documentElement;
+    return shaka.util.TXml.parseXmlString(str);
   };
 
   /**
@@ -42,12 +32,23 @@ describe('DashParser ContentProtection', () => {
 
     const playerInterface = {
       networkingEngine: netEngine,
+      modifyManifestRequest: (request, manifestInfo) => {},
+      modifySegmentRequest: (request, segmentInfo) => {},
       filter: (manifest) => Promise.resolve(),
       makeTextStreamsForClosedCaptions: (manifest) => {},
       onTimelineRegionAdded: fail,  // Should not have any EventStream elements.
       onEvent: fail,
       onError: fail,
       isLowLatencyMode: () => false,
+      isAutoLowLatencyMode: () => false,
+      enableLowLatencyMode: () => {},
+      updateDuration: () => {},
+      newDrmInfo: (stream) => {},
+      onManifestUpdated: () => {},
+      getBandwidthEstimate: () => 1e6,
+      onMetadata: () => {},
+      disableStream: (stream) => {},
+      addFont: (name, url) => {},
     };
 
     const actual = await dashParser.start(
@@ -138,7 +139,7 @@ describe('DashParser ContentProtection', () => {
 
     const variants = [];
     const numVariants = 2;
-    for (const i of shaka.util.Iterables.range(numVariants)) {
+    for (let i = 0; i < numVariants; i++) {
       const variant = jasmine.objectContaining({
         video: jasmine.objectContaining({
           keyIds: new Set(keyIds[i] ? [keyIds[i]] : []),
@@ -161,11 +162,14 @@ describe('DashParser ContentProtection', () => {
    * @param {string} keySystem
    * @param {!Array.<string>=} keyIds
    * @param {!Array.<shaka.extern.InitDataOverride>=} initData
+   * @param {string=} encryptionScheme
    * @return {Object} A DrmInfo-like object.
    */
-  function buildDrmInfo(keySystem, keyIds = [], initData = []) {
+  function buildDrmInfo(keySystem, keyIds = [], initData = [],
+      encryptionScheme = 'cenc') {
     return jasmine.objectContaining({
       keySystem,
+      encryptionScheme,
       keyIds: new Set(keyIds),
       initData,
     });
@@ -224,8 +228,6 @@ describe('DashParser ContentProtection', () => {
         ['9a04f079-9840-4286-ab92-e65be0885f95'], ['com.microsoft.playready']);
     testKeySystemMappings('for old PlayReady',
         ['79f0049a-4098-8642-ab92-e65be0885f95'], ['com.microsoft.playready']);
-    testKeySystemMappings('for Adobe Primetime',
-        ['f239e769-efa3-4850-9c16-a903c6932efb'], ['com.adobe.primetime']);
 
     testKeySystemMappings('for multiple DRMs in the specified order',
         [
@@ -240,11 +242,9 @@ describe('DashParser ContentProtection', () => {
         [
           'EDEF8BA9-79D6-4ACE-A3C8-27DCD51D21ED',
           '9A04F079-9840-4286-AB92-E65BE0885F95',
-          'F239E769-EFA3-4850-9C16-A903C6932EFB',
         ], [
           'com.widevine.alpha',
           'com.microsoft.playready',
-          'com.adobe.primetime',
         ]);
   });
 
@@ -285,14 +285,13 @@ describe('DashParser ContentProtection', () => {
       '</ContentProtection>',
     ], []);
 
+    const initData = buildInitData(
+        ['bm8gaHVtYW4gY2FuIHJlYWQgYmFzZTY0IGRpcmVjdGx5'], // PSSHs
+        ['deadbeeffeedbaadf00d000008675309']); // key ID for init data
     const expected = buildExpectedManifest([
       buildDrmInfo('com.widevine.alpha',
           ['deadbeeffeedbaadf00d000008675309'], // key ID
-          buildInitData(
-              ['bm8gaHVtYW4gY2FuIHJlYWQgYmFzZTY0IGRpcmVjdGx5'], // PSSHs
-              ['deadbeeffeedbaadf00d000008675309'] // key ID for init data
-          )
-      ),
+          initData),
     ]);
     await testDashParser(source, expected);
   });
@@ -342,12 +341,10 @@ describe('DashParser ContentProtection', () => {
     const expected = buildExpectedManifest([
       buildDrmInfo('com.widevine.alpha',
           [], // key IDs
-          buildInitData(['ZmFrZSBXaWRldmluZSBQU1NI'])
-      ),
+          buildInitData(['ZmFrZSBXaWRldmluZSBQU1NI'])),
       buildDrmInfo('com.microsoft.playready',
           [], // key IDs
-          buildInitData(['bm8gaHVtYW4gY2FuIHJlYWQgYmFzZTY0IGRpcmVjdGx5'])
-      ),
+          buildInitData(['bm8gaHVtYW4gY2FuIHJlYWQgYmFzZTY0IGRpcmVjdGx5'])),
     ]);
     await testDashParser(source, expected);
   });
@@ -365,8 +362,7 @@ describe('DashParser ContentProtection', () => {
           [], // key IDs
           buildInitData([
             'AAAAKXBzc2gAAAAAmgTweZhAQoarkuZb4IhflQAAAAlQbGF5cmVhZHk=',
-          ])
-      ),
+          ])),
     ]);
     await testDashParser(source, expected);
   });
@@ -383,8 +379,7 @@ describe('DashParser ContentProtection', () => {
     const expected = buildExpectedManifest([
       buildDrmInfo('com.microsoft.playready',
           [], // key IDs
-          buildInitData(['bm8gaHVtYW4gY2FuIHJlYWQgYmFzZTY0IGRpcmVjdGx5'])
-      ),
+          buildInitData(['bm8gaHVtYW4gY2FuIHJlYWQgYmFzZTY0IGRpcmVjdGx5'])),
     ]);
     await testDashParser(source, expected);
   });
@@ -400,7 +395,25 @@ describe('DashParser ContentProtection', () => {
     const drmInfos = jasmine.arrayContaining([
       buildDrmInfo('com.widevine.alpha'),
       buildDrmInfo('com.microsoft.playready'),
-      buildDrmInfo('com.adobe.primetime'),
+    ]);
+    const expected = buildExpectedManifest(
+        /** @type {!Array.<shaka.extern.DrmInfo>} */(drmInfos),
+        [],  // key IDs
+    );
+    await testDashParser(source, expected);
+  });
+
+  it('assumes all known key systems for generic CBCS', async () => {
+    const source = buildManifestText([
+      // AdaptationSet lines
+      '<ContentProtection',
+      '  schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cbcs" />',
+    ], [], []);
+    // The order does not matter here, so use arrayContaining.
+    // NOTE: the buildDrmInfo calls here specify no init data
+    const drmInfos = jasmine.arrayContaining([
+      buildDrmInfo('com.widevine.alpha', [], [], 'cbcs'),
+      buildDrmInfo('com.microsoft.playready', [], [], 'cbcs'),
     ]);
     const expected = buildExpectedManifest(
         /** @type {!Array.<shaka.extern.DrmInfo>} */(drmInfos),
@@ -427,12 +440,10 @@ describe('DashParser ContentProtection', () => {
     const drmInfos = jasmine.arrayContaining([
       buildDrmInfo('com.widevine.alpha'),
       buildDrmInfo('com.microsoft.playready'),
-      buildDrmInfo('com.adobe.primetime'),
     ]);
     const expected = buildExpectedManifest(
         /** @type {!Array.<shaka.extern.DrmInfo>} */(drmInfos),
-        [],  // key IDs
-    );
+        []);  // key IDs
     await testDashParser(source, expected, /* ignoreDrmInfo= */ true);
   });
 
@@ -462,7 +473,6 @@ describe('DashParser ContentProtection', () => {
       // PlayReady has two associated UUIDs, so it appears twice.
       buildDrmInfo('com.microsoft.playready', keyIds),
       buildDrmInfo('com.microsoft.playready', keyIds),
-      buildDrmInfo('com.adobe.primetime', keyIds),
     ], variantKeyIds);
     await testDashParser(source, expected, /* ignoreDrmInfo= */ true);
   });
@@ -482,12 +492,10 @@ describe('DashParser ContentProtection', () => {
     const expected = buildExpectedManifest([
       buildDrmInfo('com.widevine.alpha',
           [], // key IDs
-          buildInitData(['b25lIGhlYWRlciB0byBydWxlIHRoZW0gYWxs'])
-      ),
+          buildInitData(['b25lIGhlYWRlciB0byBydWxlIHRoZW0gYWxs'])),
       buildDrmInfo('com.microsoft.playready',
           [], // key IDs
-          buildInitData(['b25lIGhlYWRlciB0byBydWxlIHRoZW0gYWxs'])
-      ),
+          buildInitData(['b25lIGhlYWRlciB0byBydWxlIHRoZW0gYWxs'])),
     ]);
     await testDashParser(source, expected);
   });
@@ -512,13 +520,10 @@ describe('DashParser ContentProtection', () => {
       buildDrmInfo('com.widevine.alpha',
           [], // key IDs
           buildInitData(
-              ['VGltZSBpcyBhbiBpbGx1c2lvbi4gTHVuY2h0aW1lIGRvdWJseSBzby4='],
-          )
-      ),
+              ['VGltZSBpcyBhbiBpbGx1c2lvbi4gTHVuY2h0aW1lIGRvdWJseSBzby4='])),
       buildDrmInfo('com.microsoft.playready',
           [], // key IDs
-          buildInitData(['b25lIGhlYWRlciB0byBydWxlIHRoZW0gYWxs']),
-      ),
+          buildInitData(['b25lIGhlYWRlciB0byBydWxlIHRoZW0gYWxs'])),
     ]);
     await testDashParser(source, expected);
   });
@@ -706,8 +711,7 @@ describe('DashParser ContentProtection', () => {
     const expected = buildExpectedManifest([
       buildDrmInfo('com.widevine.alpha',
           [], // key IDs
-          buildInitData(['b25lIGhlYWRlciB0byBydWxlIHRoZW0gYWxs'])
-      ),
+          buildInitData(['b25lIGhlYWRlciB0byBydWxlIHRoZW0gYWxs'])),
     ]);
     await testDashParser(source, expected);
   });
@@ -785,6 +789,7 @@ describe('DashParser ContentProtection', () => {
         init: null,
         keyId: null,
         schemeUri: '',
+        encryptionScheme: null,
         node: strToXml([
           '<test xmlns:ms="urn:microsoft">',
           '  <ms:laurl licenseUrl="www.example.com"></ms:laurl>',
@@ -800,6 +805,7 @@ describe('DashParser ContentProtection', () => {
         init: null,
         keyId: null,
         schemeUri: '',
+        encryptionScheme: null,
         node: strToXml([
           '<test xmlns:ms="urn:microsoft">',
           '  <ms:laurl></ms:laurl>',
@@ -810,14 +816,126 @@ describe('DashParser ContentProtection', () => {
       expect(actual).toBe('');
     });
 
-    it('no ms:laurl node', () => {
+    it('valid dashif:Laurl node', () => {
       const input = {
         init: null,
         keyId: null,
         schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml([
+          '<test xmlns:dashif="https://dashif.org/CPS">',
+          '  <dashif:Laurl>www.example.com</dashif:Laurl>',
+          '</test>',
+        ].join('\n')),
+      };
+      const actual = ContentProtection.getWidevineLicenseUrl(input);
+      expect(actual).toBe('www.example.com');
+    });
+
+    it('dashif:Laurl without license url', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml([
+          '<test xmlns:dashif="https://dashif.org/CPS">',
+          '  <dashif:Laurl></dashif:Laurl>',
+          '</test>',
+        ].join('\n')),
+      };
+      const actual = ContentProtection.getWidevineLicenseUrl(input);
+      expect(actual).toBe('');
+    });
+
+    it('no ms:laurl node or dashif:Laurl node', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
         node: strToXml('<test></test>'),
       };
       const actual = ContentProtection.getWidevineLicenseUrl(input);
+      expect(actual).toBe('');
+    });
+  });
+
+  describe('getClearKeyLicenseUrl', () => {
+    it('valid clearkey:Laurl node', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml([
+          '<test xmlns:clearkey="http://dashif.org/guidelines/clearKey">',
+          '  <clearkey:Laurl ',
+          '     Lic_type="EME-1.0">www.example.com</clearkey:Laurl>',
+          '</test>',
+        ].join('\n')),
+      };
+      const actual = ContentProtection.getClearKeyLicenseUrl(input);
+      expect(actual).toBe('www.example.com');
+    });
+
+    it('clearkey:Laurl without license url', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml([
+          '<test xmlns:clearkey="http://dashif.org/guidelines/clearKey">',
+          '  <clearkey:Laurl Lic_type="EME-1.0"></clearkey:Laurl>',
+          '</test>',
+        ].join('\n')),
+      };
+      const actual = ContentProtection.getClearKeyLicenseUrl(input);
+      expect(actual).toBe('');
+    });
+
+    it('valid dashif:Laurl node', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml([
+          '<test xmlns:dashif="https://dashif.org/CPS">',
+          '  <dashif:Laurl>www.example.com</dashif:Laurl>',
+          '</test>',
+        ].join('\n')),
+      };
+      const actual = ContentProtection.getClearKeyLicenseUrl(input);
+      expect(actual).toBe('www.example.com');
+    });
+
+    it('dashif:Laurl without license url', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml([
+          '<test xmlns:dashif="https://dashif.org/CPS">',
+          '  <dashif:Laurl></dashif:Laurl>',
+          '</test>',
+        ].join('\n')),
+      };
+      const actual = ContentProtection.getClearKeyLicenseUrl(input);
+      expect(actual).toBe('');
+    });
+
+    it('no clearkey:Laurl or dashif:Laurl node', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml('<test></test>'),
+      };
+      const actual = ContentProtection.getClearKeyLicenseUrl(input);
       expect(actual).toBe('');
     });
   });
@@ -852,6 +970,7 @@ describe('DashParser ContentProtection', () => {
         init: null,
         keyId: null,
         schemeUri: '',
+        encryptionScheme: null,
         node:
         strToXml([
           '<test xmlns:mspr="urn:microsoft:playready">',
@@ -863,11 +982,44 @@ describe('DashParser ContentProtection', () => {
       expect(actual).toBe('www.example.com');
     });
 
-    it('no mspro', () => {
+    it('valid dashif:Laurl node', () => {
       const input = {
         init: null,
         keyId: null,
         schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml([
+          '<test xmlns:dashif="https://dashif.org/CPS">',
+          '  <dashif:Laurl>www.example.com</dashif:Laurl>',
+          '</test>',
+        ].join('\n')),
+      };
+      const actual = ContentProtection.getPlayReadyLicenseUrl(input);
+      expect(actual).toBe('www.example.com');
+    });
+
+    it('dashif:Laurl without license url', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
+        node: strToXml([
+          '<test xmlns:dashif="https://dashif.org/CPS">',
+          '  <dashif:Laurl></dashif:Laurl>',
+          '</test>',
+        ].join('\n')),
+      };
+      const actual = ContentProtection.getPlayReadyLicenseUrl(input);
+      expect(actual).toBe('');
+    });
+
+    it('no mspro or dashif:Laurl node', () => {
+      const input = {
+        init: null,
+        keyId: null,
+        schemeUri: '',
+        encryptionScheme: null,
         node: strToXml('<test></test>'),
       };
       const actual = ContentProtection.getPlayReadyLicenseUrl(input);

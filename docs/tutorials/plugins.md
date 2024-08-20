@@ -29,6 +29,7 @@ __Manifest parsers__
   - Default manifest parser plugins:
     - DASH: {@linksource shaka.dash.DashParser}
     - HLS: {@linksource shaka.hls.HlsParser}
+    - MSS: {@linksource shaka.mss.MssParser}
 
 __Subtitle/caption parsers__
   - Selected by MIME type
@@ -38,6 +39,10 @@ __Subtitle/caption parsers__
       {@linksource shaka.text.Mp4VttParser}
     - TTML: {@linksource shaka.text.TtmlTextParser} and
       {@linksource shaka.text.Mp4TtmlParser}
+    - SubRip (SRT): {@linksource shaka.text.SrtTextParser}
+    - LyRiCs (LRC): {@linksource shaka.text.LrcTextParser}
+    - SubStation Alpha (SSA, ASS): {@linksource shaka.text.SsaTextParser}
+    - SubViewer (SBV): {@linksource shaka.text.SbvTextParser}
 
 __Subtitle/caption displayers__
   - Configured at runtime on a Player instance
@@ -69,9 +74,7 @@ __Polyfills__
       {@linksource shaka.polyfill.Fullscreen}
     - prefixed video QoE metrics:
       {@linksource shaka.polyfill.VideoPlaybackQuality}
-    - prefixed EME implementations for IE 11 and very old versions of embedded
-      Chrome/Chromium:
-      - {@linksource shaka.polyfill.PatchedMediaKeysMs}
+    - prefixed EME implementations:
       - {@linksource shaka.polyfill.PatchedMediaKeysWebkit}
       - {@linksource shaka.polyfill.PatchedMediaKeysNop}
     - variants of VTTCue and TextTrackCue constructors:
@@ -108,6 +111,7 @@ python build/build.py +@complete -@polyfill
 python build/build.py +@complete -@polyfill -@text
 ```
 
+To see the complete list of categories, its in [`build/types/`](https://github.com/shaka-project/shaka-player/tree/main/build/types)
 
 #### Build Configs
 
@@ -158,7 +162,7 @@ group file.  For example:
 -@networking
 # Add my custom HTTP implementation
 +/path/to/my_http_plugin.js
-# Add an additional polyfill for some odd platform I'm targetting
+# Add an additional polyfill for some odd platform I'm targeting
 +/path/to/my_platform_polyfill.js
 ```
 
@@ -176,5 +180,5 @@ If you have a great plugin that you'd like to contribute back to the community,
 we'd love to hear from you.  You can get in touch via our [issue tracker][] to
 discuss it, and once it's ready, you can send a [pull request][] on github.
 
-[issue tracker]: https://github.com/google/shaka-player/issues/new/choose
-[pull request]: https://github.com/google/shaka-player/pull/new/master
+[issue tracker]: https://github.com/shaka-project/shaka-player/issues/new/choose
+[pull request]: https://github.com/shaka-project/shaka-player/pull/new/main

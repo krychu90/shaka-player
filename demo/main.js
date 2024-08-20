@@ -7,6 +7,12 @@
 
 goog.provide('shakaDemo.Main');
 
+goog.require('ShakaDemoAssetInfo');
+goog.require('goog.asserts');
+goog.require('shakaDemo.CloseButton');
+goog.require('shakaDemo.Utils');
+goog.require('shakaDemo.Visualizer');
+goog.require('shakaDemo.VisualizerButton');
 
 /**
  * Shaka Player demo, main section.
@@ -15,6 +21,7 @@ goog.provide('shakaDemo.Main');
  * configuration, etc).
  */
 shakaDemo.Main = class {
+  /** */
   constructor() {
     /** @private {HTMLVideoElement} */
     this.video_ = null;
@@ -53,6 +60,9 @@ shakaDemo.Main = class {
     this.trickPlayControlsEnabled_ = false;
 
     /** @private {boolean} */
+    this.customContextMenu_ = false;
+
+    /** @private {boolean} */
     this.nativeControlsEnabled_ = false;
 
     /** @private {shaka.extern.SupportType} */
@@ -74,6 +84,9 @@ shakaDemo.Main = class {
     // Override the icon for the MDL library's menu button.
     // eslint-disable-next-line no-restricted-syntax
     MaterialLayout.prototype.Constant_.MENU_ICON = 'settings';
+
+    /** @private {?shakaDemo.Visualizer} */
+    this.visualizer_ = null;
   }
 
   /**
@@ -110,10 +123,9 @@ shakaDemo.Main = class {
    * Set up the application with errors to show that load failed.
    * This does not dispatch the shaka-main-loaded event, so it will not cause
    * the nav bar buttons to be set up.
-   * @param {!shaka.ui.FailReasonCode} reasonCode
-   * @return {!Promise}
+   * @param {!shaka.ui.Overlay.FailReasonCode} reasonCode
    */
-  async initFailed(reasonCode) {
+  initFailed(reasonCode) {
     this.initCommon_();
 
     // Set up version links, so the user can switch to compiled mode if
@@ -144,25 +156,19 @@ shakaDemo.Main = class {
       element.classList.add('disabled-by-fail');
     }
 
-    // Because the UI did not load, this will need to set up a localization
-    // object manually.
-    this.localization_ = new shaka.ui.Localization(/* fallbackLocale= */ 'en');
-    this.localization_.changeLocale(navigator.languages || []);
-    await this.setupLocalization_();
-
     // Process a synthetic error about lack of browser support.
     const severity = shaka.util.Error.Severity.CRITICAL;
     let href = '';
     let message = '';
     switch (reasonCode) {
-      case shaka.ui.FailReasonCode.NO_BROWSER_SUPPORT:
-        message = this.getLocalizedString(
-            shakaDemo.MessageIds.FAILURE_NO_BROWSER_SUPPORT);
-        href = 'https://github.com/google/shaka-player#' +
+      case shaka.ui.Overlay.FailReasonCode.NO_BROWSER_SUPPORT:
+        message = 'Your browser is not supported!';
+        href = 'https://github.com/shaka-project/shaka-player#' +
                 'platform-and-browser-support-matrix';
         break;
-      case shaka.ui.FailReasonCode.PLAYER_FAILED_TO_LOAD:
-        message = this.getLocalizedString(shakaDemo.MessageIds.FAILURE_MISC);
+      case shaka.ui.Overlay.FailReasonCode.PLAYER_FAILED_TO_LOAD:
+        message = 'Shaka Player failed to load! If you are using an adblocker' +
+            ', try switching to compiled mode at the bottom of the page.';
         break;
     }
     this.handleError_(severity, message, href);
@@ -177,7 +183,7 @@ shakaDemo.Main = class {
     this.support_ = await shaka.Player.probeSupport();
 
     this.video_ =
-      /** @type {!HTMLVideoElement} */(document.getElementById('video'));
+      /** @type {!HTMLVideoElement} */ (document.getElementById('video'));
     this.video_.poster = shakaDemo.Main.mainPoster_;
 
     this.container_ = /** @type {!HTMLElement} */(
@@ -194,8 +200,7 @@ shakaDemo.Main = class {
     // Optionally enter noinput mode. This has to happen before setting up the
     // player.
     this.noInput_ = 'noinput' in this.getParams_();
-    await this.setupPlayer_();
-    this.readHash_();
+    this.setupPlayer_();
     window.addEventListener('hashchange', () => this.hashChanged_());
 
     await this.setupStorage_();
@@ -215,7 +220,25 @@ shakaDemo.Main = class {
       // Also fullscreen the container.
       this.container_.classList.add('no-input-sized');
       document.getElementById('video-bar').classList.add('no-input-sized');
+    } else {
+      goog.asserts.assert(this.player_, 'Player should exist by now.');
+
+      // Make the visualizer element.
+      const vCanvas = /** @type {!HTMLCanvasElement} */ (
+        document.getElementById('visualizer-canvas'));
+      const vDiv = /** @type {!HTMLElement} */ (
+        document.getElementById('visualizer-div'));
+      const vControlsDiv = /** @type {!HTMLElement} */ (
+        document.getElementById('visualizer-controls-div'));
+      const vScreenshotDiv = /** @type {!HTMLElement} */ (
+        document.getElementById('visualizer-screenshot-div'));
+      /** @private {?shakaDemo.Visualizer} */
+      this.visualizer_ = new shakaDemo.Visualizer(
+          vCanvas, vDiv, vScreenshotDiv, vControlsDiv, this.video_,
+          this.player_);
     }
+
+    this.readHash_();
 
     // The main page is loaded. Dispatch an event, so the various
     // configurations will load themselves.
@@ -269,7 +292,32 @@ shakaDemo.Main = class {
       text = text.replace(replaceString, value);
     };
     fillInTemplate('RE:player', shaka.Player.version);
-    fillInTemplate('RE:link', window.location.href);
+    if (this.selectedAsset) {
+      const uriLines = [];
+      const addLine = (key, value) => {
+        uriLines.push(key + '= `' + value + '`');
+      };
+      addLine('uri', this.selectedAsset.manifestUri);
+      if (this.selectedAsset.adTagUri) {
+        addLine('ad tag uri', this.selectedAsset.adTagUri);
+      }
+      if (this.selectedAsset.licenseServers.size) {
+        const uri = this.selectedAsset.licenseServers.values().next().value;
+        addLine('license server', uri);
+        for (const drmSystem of this.selectedAsset.licenseServers.keys()) {
+          if (!shakaDemo.Main.commonDrmSystems.includes(drmSystem)) {
+            addLine('drm system', drmSystem);
+            break;
+          }
+        }
+      }
+      if (this.selectedAsset.certificateUri) {
+        addLine('certificate', this.selectedAsset.certificateUri);
+      }
+      fillInTemplate('RE:uris', uriLines.join('\n'));
+    } else {
+      fillInTemplate('RE:uris', 'No asset');
+    }
     fillInTemplate('RE:browser', navigator.userAgent);
     if (this.selectedAsset &&
         this.selectedAsset.source == shakaAssets.Source.CUSTOM) {
@@ -281,11 +329,14 @@ shakaDemo.Main = class {
       fillInTemplate('RE:customwarning\n', '');
     }
 
+    const urlTerms = [];
+    urlTerms.push('labels=type%3A+bug');
+    urlTerms.push('body=' + encodeURIComponent(text));
+    const url = 'https://github.com/shaka-project/shaka-player/issues/new?' +
+        urlTerms.join('&');
+
     // Navigate to the github issue opening interface, with the
-    // partially-filled template as a preset body.
-    let url = 'https://github.com/google/shaka-player/issues/new?';
-    url += 'body=' + encodeURIComponent(text);
-    // Open in another tab.
+    // partially-filled template as a preset body, opening in another tab.
     window.open(url, '_blank');
   }
 
@@ -313,6 +364,7 @@ shakaDemo.Main = class {
     const ui = video['ui'];
 
     const uiConfig = ui.getConfiguration();
+    uiConfig.customContextMenu = this.customContextMenu_;
     // Remove any trick play configurations from a previous config.
     uiConfig.addSeekBar = true;
     uiConfig.controlPanelElements =
@@ -331,17 +383,32 @@ shakaDemo.Main = class {
     if (!uiConfig.controlPanelElements.includes('close')) {
       uiConfig.controlPanelElements.push('close');
     }
+    if (!uiConfig.overflowMenuButtons.includes('visualizer')) {
+      uiConfig.overflowMenuButtons.push('visualizer');
+    }
     ui.configure(uiConfig);
   }
 
-  /**
-   * @return {!Promise}
-   * @private
-   */
-  async setupPlayer_() {
+  /** @private */
+  setupPlayer_() {
     const video = /** @type {!HTMLVideoElement} */ (this.video_);
     const ui = video['ui'];
     this.player_ = ui.getControls().getPlayer();
+
+    // Change the poster by the APIC ID3 if the stream is audio only.
+    this.player_.addEventListener('metadata', (event) => {
+      if (!this.player_.isAudioOnly()) {
+        return;
+      }
+      const payload = event['payload'];
+      if (payload &&
+          payload['key'] == 'APIC' && payload['mimeType'] == '-->') {
+        const url = payload['data'];
+        if (url && url != video.poster) {
+          video.poster = url;
+        }
+      }
+    });
 
     if (!this.noInput_) {
       // Don't add the close button if in noInput mode; it doesn't make much
@@ -350,6 +417,8 @@ shakaDemo.Main = class {
       // Register custom controls to the UI.
       const closeFactory = new shakaDemo.CloseButton.Factory();
       shaka.ui.Controls.registerElement('close', closeFactory);
+      const visualizerFactory = new shakaDemo.VisualizerButton.Factory();
+      shaka.ui.OverflowMenu.registerElement('visualizer', visualizerFactory);
 
       // Configure UI.
       this.configureUI_();
@@ -383,7 +452,6 @@ shakaDemo.Main = class {
     });
 
     this.localization_ = this.controls_.getLocalization();
-    await this.setupLocalization_();
 
     const drawerCloseButton = document.getElementById('drawer-close-button');
     drawerCloseButton.addEventListener('click', () => {
@@ -396,9 +464,21 @@ shakaDemo.Main = class {
     // are pressed also.
     const drawerButton = document.querySelector('.mdl-layout__drawer-button');
     goog.asserts.assert(drawerButton, 'There should be a drawer button.');
-    drawerButton.addEventListener('click', () => {
+    const openDrawer = () => {
       this.dispatchEventWithName_('shaka-main-drawer-state-change');
       this.showElement_(drawerCloseButton);
+    };
+    // Listen to both the "click" and "keydown" events on the drawer button,
+    // since the element is actually a div rather than a button, which means
+    // that it doesn't fire "click" events when activated by keyboard input.
+    drawerButton.addEventListener('click', openDrawer);
+    drawerButton.addEventListener('keydown', (event) => {
+      const key = (/** @type {!KeyboardEvent} */ (event)).key;
+      // Ignore "keydown" input for keys that won't trigger the button (i.e.
+      // anything besides spacebar or enter).
+      if (key == ' ' || key == 'Spacebar' || key == 'Enter') {
+        openDrawer();
+      }
     });
     const obfuscator = document.querySelector('.mdl-layout__obfuscator');
     goog.asserts.assert(obfuscator, 'There should be an obfuscator.');
@@ -407,50 +487,6 @@ shakaDemo.Main = class {
       this.hideElement_(drawerCloseButton);
     });
     this.hideElement_(drawerCloseButton);
-  }
-
-  /**
-   * @return {!Promise}
-   * @private
-   */
-  async setupLocalization_() {
-    // Set up localization lazy-loading.
-    const applyNewLocaleIfPossible = () => {
-      this.localizeHTMLElements_();
-      this.dispatchEventWithName_('shaka-main-locale-changed');
-    };
-    const UNKNOWN_LOCALES = shaka.ui.Localization.UNKNOWN_LOCALES;
-    this.localization_.addEventListener(UNKNOWN_LOCALES, (event) => {
-      for (const locale of event['locales']) {
-        // This will leave promise rejections uncaught; this is acceptable, as
-        // this function is actually expected to fail fairly often, and has
-        // built-in fallback behavior (from localization events) without needing
-        // to catch the promise rejection.
-        this.loadUILocale_(locale).then(() => {
-          if (locale == this.uiLocale_) {
-            applyNewLocaleIfPossible();
-          }
-        });
-      }
-    });
-    const LOCALE_CHANGED = shaka.ui.Localization.LOCALE_CHANGED;
-    this.localization_.addEventListener(LOCALE_CHANGED, (event) => {
-      applyNewLocaleIfPossible();
-    });
-    const initialLocaleLoads = [];
-    initialLocaleLoads.push(this.loadUILocale_(this.uiLocale_));
-    if (this.uiLocale_.includes('-')) {
-      // Also try to load the 'base' localization.
-      // This is so that, for example, the uiLocale_ is set to 'en-US', it will
-      // try to load 'en'.
-      initialLocaleLoads.push(this.loadUILocale_(this.uiLocale_.split('-')[0]));
-    }
-    if (!this.uiLocale_.startsWith('en')) {
-      // Load 'en' as a fallback option, if not already loaded.
-      initialLocaleLoads.push(this.loadUILocale_('en'));
-    }
-    await Promise.all(initialLocaleLoads);
-    this.localizeHTMLElements_();
   }
 
   /** @return {boolean} */
@@ -564,7 +600,10 @@ shakaDemo.Main = class {
         };
         asset.storedProgress = 0;
         this.dispatchEventWithName_('shaka-main-offline-progress');
+        const start = Date.now();
         const stored = await storage.store(asset.manifestUri, metadata).promise;
+        const end = Date.now();
+        console.log('Download time:', end - start);
         asset.storedContent = stored;
       } catch (error) {
         this.onError_(/** @type {!shaka.util.Error} */ (error));
@@ -644,13 +683,13 @@ shakaDemo.Main = class {
    *
    * @param {!ShakaDemoAssetInfo} asset
    * @param {boolean} needOffline True if offline support is required.
-   * @return {?shakaDemo.MessageIds} unsupportedReason
+   * @return {?string} unsupportedReason
    *   Null if asset is supported.
    */
   getAssetUnsupportedReason(asset, needOffline) {
     if (needOffline &&
         (!shaka.offline.Storage.support() || !this.initialStoredList_)) {
-      return shakaDemo.MessageIds.UNSUPPORTED_NO_OFFLINE;
+      return 'Your browser does not support offline storage.';
     }
 
     if (asset.source == shakaAssets.Source.CUSTOM) {
@@ -661,19 +700,19 @@ shakaDemo.Main = class {
 
     // Is the asset disabled?
     if (asset.disabled) {
-      return shakaDemo.MessageIds.UNSUPPORTED_DISABLED;
+      return 'This asset is disabled.';
     }
 
     if (needOffline && !asset.features.includes(shakaAssets.Feature.OFFLINE)) {
-      return shakaDemo.MessageIds.UNSUPPORTED_NO_DOWNLOAD;
+      return 'This asset cannot be downloaded.';
     }
 
-    if (!asset.isClear()) {
+    if (!asset.isClear() && !asset.isAes128()) {
       const hasSupportedDRM = asset.drm.some((drm) => {
         return this.support_.drm[shakaAssets.identifierForKeySystem(drm)];
       });
       if (!hasSupportedDRM) {
-        return shakaDemo.MessageIds.UNSUPPORTED_NO_KEY_SUPPORT;
+        return 'Your browser does not support the required key systems.';
       }
       if (needOffline) {
         const hasSupportedOfflineDRM = asset.drm.some((drm) => {
@@ -682,19 +721,24 @@ shakaDemo.Main = class {
                  this.support_.drm[identifier].persistentState;
         });
         if (!hasSupportedOfflineDRM) {
-          return shakaDemo.MessageIds.UNSUPPORTED_NO_LICENSE_SUPPORT;
+          return 'Your browser does not support offline licenses for the ' +
+              'required key systems.';
         }
       }
     }
 
     // Does the browser support the asset's manifest type?
     if (asset.features.includes(shakaAssets.Feature.DASH) &&
-        !this.support_.manifest['mpd']) {
-      return shakaDemo.MessageIds.UNSUPPORTED_NO_DASH_SUPPORT;
+        !this.support_.manifest['application/dash+xml']) {
+      return 'Your browser does not support MPEG-DASH manifests.';
     }
     if (asset.features.includes(shakaAssets.Feature.HLS) &&
-        !this.support_.manifest['m3u8']) {
-      return shakaDemo.MessageIds.UNSUPPORTED_NO_HLS_SUPPORT;
+        !this.support_.manifest['application/x-mpegurl']) {
+      return 'Your browser does not support HLS manifests.';
+    }
+    if (asset.features.includes(shakaAssets.Feature.MSS) &&
+        !this.support_.manifest['application/vnd.ms-sstr+xml']) {
+      return 'Your browser does not support MSS manifests.';
     }
 
     // Does the asset contain a playable mime type?
@@ -708,11 +752,27 @@ shakaDemo.Main = class {
     if (asset.features.includes(shakaAssets.Feature.MP2TS)) {
       mimeTypes.push('video/mp2t');
     }
-    const hasSupportedMimeType = mimeTypes.some((type) => {
+    if (asset.features.includes(shakaAssets.Feature.CONTAINERLESS)) {
+      mimeTypes.push('audio/aac');
+    }
+    if (asset.features.includes(shakaAssets.Feature.DOLBY_VISION_3D)) {
+      mimeTypes.push('video/mp4; codecs="dvh1.20.01"');
+    }
+    let hasSupportedMimeType = mimeTypes.some((type) => {
       return this.support_.media[type];
     });
+    if (!hasSupportedMimeType &&
+        !(window.ManagedMediaSource || window.MediaSource) &&
+        !!navigator.vendor && navigator.vendor.includes('Apple')) {
+      if (mimeTypes.includes('video/mp4')) {
+        hasSupportedMimeType = true;
+      }
+      if (mimeTypes.includes('video/mp2t')) {
+        hasSupportedMimeType = true;
+      }
+    }
     if (!hasSupportedMimeType) {
-      return shakaDemo.MessageIds.UNSUPPORTED_NO_FORMAT_SUPPORT;
+      return 'Your browser does not support the required video format.';
     }
 
     return null;
@@ -740,6 +800,27 @@ shakaDemo.Main = class {
   }
 
   /**
+   * Enable or disable the UI's custom context menu.
+   *
+   * @param {boolean} enabled
+   */
+  setCustomContextMenuEnabled(enabled) {
+    this.customContextMenu_ = enabled;
+    // Configure the UI, to add or remove the controls.
+    this.configureUI_();
+    this.remakeHash();
+  }
+
+  /**
+   * Get if the UI's custom context menu is enabled.
+   *
+   * @return {boolean} enabled
+   */
+  getCustomContextMenuEnabled() {
+    return this.customContextMenu_;
+  }
+
+  /**
    * Enable or disable the native controls.
    * Goes into effect during the next load.
    *
@@ -757,55 +838,6 @@ shakaDemo.Main = class {
    */
   getNativeControlsEnabled() {
     return this.nativeControlsEnabled_;
-  }
-
-  /**
-   * Look through all elements in the DOM, and look for things tagged as having
-   * a localized string. Then, localize them.
-   *
-   * @private
-   */
-  localizeHTMLElements_() {
-    for (const element of document.querySelectorAll('[localized-string]')) {
-      const key = element.getAttribute('localized-string');
-      const value = shakaDemo.MessageIds[key];
-      if (value) {
-        element.textContent = this.getLocalizedString(value);
-      }
-    }
-  }
-
-  /**
-   * @param {!shakaDemo.MessageIds} string
-   * @return {string}
-   */
-  getLocalizedString(string) {
-    return this.localization_.resolve(string);
-  }
-
-  /**
-   * @param {string} locale
-   * @return {!Promise}
-   * @private
-   */
-  async loadUILocale_(locale) {
-    if (!locale) {
-      return;
-    }
-
-    const load = async (urlBase) => {
-      const url = urlBase + '/locales/' + locale + '.json';
-
-      try {
-        const text = await this.loadText_(url);
-        const obj = /** @type {!Object.<string, string>} */(JSON.parse(text));
-        const map = new Map(Object.entries(obj));
-        this.localization_.insert(locale, map);
-      } catch (error) {
-        console.warn('Unable to load locale', locale, 'for url', url);
-      }
-    };
-    await Promise.all([load('../ui'), load('../demo')]);
   }
 
   /** @param {string} locale */
@@ -831,8 +863,9 @@ shakaDemo.Main = class {
     const params = this.getParams_();
 
     const manifest = params['asset'];
-    const adTagUri = params['adTagUri'];
+    const assetBase64 = params['assetBase64'];
     if (manifest) {
+      const adTagUri = params['adTagUri'];
       // See if it's a default asset.
       for (const asset of shakaAssets.testAssets) {
         if (asset.manifestUri == manifest && asset.adTagUri == adTagUri) {
@@ -866,6 +899,22 @@ shakaDemo.Main = class {
         asset.addCertificateUri(params['certificate']);
       }
       return asset;
+    } else if (assetBase64) {
+      // See if it's a default asset.
+      for (const asset of shakaAssets.testAssets) {
+        if (asset.toBase64() == assetBase64) {
+          return asset;
+        }
+      }
+
+      // See if it's a custom asset saved here.
+      for (const asset of shakaDemoCustom.assets()) {
+        if (asset.toBase64() == assetBase64) {
+          return asset;
+        }
+      }
+
+      return ShakaDemoAssetInfo.fromBase64(assetBase64);
     }
     return null;
   }
@@ -898,7 +947,7 @@ shakaDemo.Main = class {
       if (advanced) {
         for (const drmSystem of shakaDemo.Main.commonDrmSystems) {
           if (!advanced[drmSystem]) {
-            advanced[drmSystem] = shakaDemo.Config.emptyAdvancedConfiguration();
+            advanced[drmSystem] = shakaDemo.Main.defaultAdvancedDrmConfig();
           }
           if ('videoRobustness' in params) {
             advanced[drmSystem].videoRobustness = params['videoRobustness'];
@@ -923,8 +972,15 @@ shakaDemo.Main = class {
     if ('noadaptation' in params) {
       this.configure('abr.enabled', false);
     }
-    if ('jumpLargeGaps' in params) {
-      this.configure('streaming.jumpLargeGaps', true);
+
+    if ('preferredVideoCodecs' in params) {
+      this.configure('preferredVideoCodecs',
+          params['preferredVideoCodecs'].split(','));
+    }
+
+    if ('preferredAudioCodecs' in params) {
+      this.configure('preferredAudioCodecs',
+          params['preferredAudioCodecs'].split(','));
     }
 
     // Add compiled/uncompiled links.
@@ -937,6 +993,17 @@ shakaDemo.Main = class {
     if ('trickplay' in params) {
       this.trickPlayControlsEnabled_ = true;
       this.configureUI_();
+    }
+
+    if ('customContextMenu' in params) {
+      this.customContextMenu_ = true;
+      this.configureUI_();
+    }
+
+    if ('visualizer' in params) {
+      this.setIsVisualizerActive(true);
+    } else {
+      this.setIsVisualizerActive(false);
     }
 
     // Check if uncompiled mode is supported.
@@ -1096,8 +1163,34 @@ shakaDemo.Main = class {
     return response.data;
   }
 
+  /** @return {boolean} */
+  getIsVisualizerActive() {
+    if (this.visualizer_) {
+      return this.visualizer_.active;
+    }
+    return false;
+  }
+
+  /** @param {boolean} active */
+  setIsVisualizerActive(active) {
+    if (this.visualizer_) {
+      const wasActive = this.visualizer_.active;
+      this.visualizer_.active = active;
+      if (wasActive != active) {
+        if (active) {
+          this.visualizer_.start();
+        } else {
+          this.visualizer_.stop();
+        }
+      }
+    }
+  }
+
   /** Unload the currently-playing asset. */
   unload() {
+    if (this.visualizer_) {
+      this.visualizer_.stop();
+    }
     this.selectedAsset = null;
     const videoBar = document.getElementById('video-bar');
     this.hideElement_(videoBar);
@@ -1106,8 +1199,15 @@ shakaDemo.Main = class {
     if (document.fullscreenElement) {
       document.exitFullscreen();
     }
+    if (this.video_.webkitDisplayingFullscreen) {
+      this.video_.webkitExitFullscreen();
+    }
     if (document.pictureInPictureElement) {
       document.exitPictureInPicture();
+    }
+    if (window.documentPictureInPicture &&
+        window.documentPictureInPicture.window) {
+      window.documentPictureInPicture.window.close();
     }
     this.player_.unload();
 
@@ -1143,9 +1243,8 @@ shakaDemo.Main = class {
       // Remove all not-player-applied configurations, by resetting the
       // configuration then re-applying the desired configuration.
       this.player_.resetConfiguration();
-      this.player_.configure(this.desiredConfig_);
+      this.readHash_();
       this.player_.configure(assetConfig);
-      // This uses Player.configure so as to not change |this.desiredConfig_|.
     }
 
     const config = storage ?
@@ -1201,6 +1300,40 @@ shakaDemo.Main = class {
   /**
    * @param {ShakaDemoAssetInfo} asset
    */
+  async preloadAsset(asset) {
+    await this.drmConfiguration_(asset);
+    const manifestUri = await this.getManifestUri_(asset);
+    asset.preloadManager = await this.player_.preload(manifestUri);
+  }
+
+  /**
+   * @param {ShakaDemoAssetInfo} asset
+   * @return {!Promise.<string>}
+   * @private
+   */
+  async getManifestUri_(asset) {
+    let manifestUri = asset.manifestUri;
+    // If we have an offline copy, use that.  If the offlineUri field is null,
+    // we are still downloading it.
+    if (asset.storedContent && asset.storedContent.offlineUri) {
+      manifestUri = asset.storedContent.offlineUri;
+    }
+    // If it's a server side dai asset, request ad-containing manifest
+    // from the ad manager.
+    if (asset.imaAssetKey || (asset.imaContentSrcId && asset.imaVideoId)) {
+      manifestUri = await this.getManifestUriFromAdManager_(asset);
+    }
+    // If it's a MediaTailor asset, request ad-containing manifest
+    // from the ad manager.
+    if (asset.mediaTailorUrl) {
+      manifestUri = await this.getManifestUriFromMediaTailorAdManager_(asset);
+    }
+    return manifestUri;
+  }
+
+  /**
+   * @param {ShakaDemoAssetInfo} asset
+   */
   async loadAsset(asset) {
     try {
       this.selectedAsset = asset;
@@ -1208,9 +1341,6 @@ shakaDemo.Main = class {
 
       // The currently-selected asset changed, so update asset cards.
       this.dispatchEventWithName_('shaka-main-selected-asset-changed');
-
-      await this.drmConfiguration_(asset);
-      this.controls_.getCastProxy().setAppData({'asset': asset});
 
       // Enable the correct set of controls before loading.
       // The video container influences the TextDisplayer used.
@@ -1226,32 +1356,70 @@ shakaDemo.Main = class {
         this.player_.setVideoContainer(this.container_);
       }
 
+      await this.drmConfiguration_(asset);
+      this.controls_.getCastProxy().setAppData({'asset': asset});
+      const ui = this.video_['ui'];
+      if (asset.extraUiConfig) {
+        ui.configure(asset.extraUiConfig);
+      } else {
+        const uiConfig = {
+          displayInVrMode: false,
+        };
+        ui.configure(uiConfig);
+      }
+
       // Finally, the asset can be loaded.
-      let manifestUri = asset.manifestUri;
-      // If we have an offline copy, use that.  If the offlineUri field is null,
-      // we are still downloading it.
-      if (asset.storedContent && asset.storedContent.offlineUri) {
-        manifestUri = asset.storedContent.offlineUri;
+      if (asset.preloadManager) {
+        const preloadManager = asset.preloadManager;
+        asset.preloadManager = null;
+        await this.player_.load(preloadManager);
+      } else {
+        const manifestUri = await this.getManifestUri_(asset);
+        await this.player_.load(
+            manifestUri,
+            /* startTime= */ null,
+            asset.mimeType || undefined);
       }
-      // If it's a server side dai asset, request ad-containing manifest
-      // from the ad manager.
-      if (asset.imaIds) {
-        manifestUri = await this.getManifestUriFromAdManager_(asset);
-      }
-      await this.player_.load(manifestUri);
-      if (this.player_.isAudioOnly()) {
+
+      if (this.player_.isAudioOnly() &&
+          this.video_.poster == shakaDemo.Main.mainPoster_) {
         this.video_.poster = shakaDemo.Main.audioOnlyPoster_;
+      }
+
+      for (const extraText of asset.extraText) {
+        if (extraText.mime) {
+          this.player_.addTextTrackAsync(extraText.uri, extraText.language,
+              extraText.kind, extraText.mime, extraText.codecs);
+        } else {
+          this.player_.addTextTrackAsync(extraText.uri, extraText.language,
+              extraText.kind);
+        }
+      }
+
+      for (const extraThumbnail of asset.extraThumbnail) {
+        this.player_.addThumbnailsTrack(extraThumbnail);
+      }
+
+      for (const extraChapter of asset.extraChapter) {
+        if (extraChapter.mime) {
+          this.player_.addChaptersTrack(
+              extraChapter.uri, extraChapter.language, extraChapter.mime);
+        } else {
+          this.player_.addChaptersTrack(
+              extraChapter.uri, extraChapter.language);
+        }
       }
 
       // If the asset has an ad tag attached to it, load the ads
       const adManager = this.player_.getAdManager();
-      if (adManager && asset.adTagUri) {
+      if (adManager && asset.adTagUri && asset.useIMA) {
         try {
           // If IMA is blocked by an AdBlocker, init() will throw.
           // If that happens, just proceed to load.
           goog.asserts.assert(this.video_ != null, 'this.video should exist!');
           adManager.initClientSide(
-              this.controls_.getControlsContainer(), this.video_);
+              this.controls_.getClientSideAdContainer(), this.video_,
+              /** adsRenderingSettings= **/ null);
           const adRequest = new google.ima.AdsRequest();
           adRequest.adTagUrl = asset.adTagUri;
           adManager.requestClientSideAds(adRequest);
@@ -1260,6 +1428,9 @@ shakaDemo.Main = class {
           console.warn('Ads code has been prevented from running. ' +
             'Proceeding without ads.');
         }
+      }
+      if (adManager && asset.adTagUri && !asset.useIMA) {
+        adManager.addAdUrlInterstitial(asset.adTagUri);
       }
 
       // Set media session title, but only if the browser supports that API.
@@ -1270,6 +1441,50 @@ shakaDemo.Main = class {
         };
         metadata.artist = asset.source;
         navigator.mediaSession.metadata = new MediaMetadata(metadata);
+
+        const addMediaSessionHandler = (type, callback) => {
+          try {
+            navigator.mediaSession.setActionHandler(type, (details) => {
+              callback(details);
+            });
+          } catch (error) {
+            console.warn(
+                `The "${type}" media session action is not supported.`);
+          }
+        };
+        const commonHandler = (details) => {
+          switch (details.action) {
+            case 'pause':
+              this.video_.pause();
+              break;
+            case 'play':
+              this.video_.play();
+              break;
+            case 'seekbackward':
+              this.video_.currentTime -= (details.seekOffset || 10);
+              break;
+            case 'seekforward':
+              this.video_.currentTime += (details.seekOffset || 10);
+              break;
+            case 'stop':
+              this.unload();
+              break;
+            case 'enterpictureinpicture':
+              this.controls_.togglePiP();
+              break;
+          }
+        };
+
+        addMediaSessionHandler('pause', commonHandler);
+        addMediaSessionHandler('play', commonHandler);
+        addMediaSessionHandler('seekbackward', commonHandler);
+        addMediaSessionHandler('seekforward', commonHandler);
+        addMediaSessionHandler('stop', commonHandler);
+        addMediaSessionHandler('enterpictureinpicture', commonHandler);
+      }
+
+      if (this.visualizer_ && this.visualizer_.active) {
+        this.visualizer_.start();
       }
     } catch (reason) {
       const error = /** @type {!shaka.util.Error} */ (reason);
@@ -1303,7 +1518,10 @@ shakaDemo.Main = class {
         // NaN != NaN, so there has to be a special check for it to prevent
         // false positives.
         const bothAreNaN = isNaN(currentValue) && isNaN(defaultValue);
-        if (currentValue != defaultValue && !bothAreNaN) {
+        // Strings count as NaN too, so check for them specifically.
+        const bothAreStrings = (typeof currentValue) == 'string' &&
+            (typeof defaultValue) == 'string';
+        if (currentValue != defaultValue && (!bothAreNaN || bothAreStrings)) {
           // Don't bother saving in the hash unless it's a non-default value.
           params.push(hashName + '=' + currentValue);
         }
@@ -1329,30 +1547,18 @@ shakaDemo.Main = class {
     if (!this.getCurrentConfigValue('abr.enabled')) {
       params.push('noadaptation');
     }
-    if (this.getCurrentConfigValue('streaming.jumpLargeGaps')) {
-      params.push('jumpLargeGaps');
-    }
     params.push('uilang=' + this.getUILocale());
 
+    for (const key of ['preferredVideoCodecs', 'preferredAudioCodecs']) {
+      const array = /** @type {!Array.<string>} */(
+        this.getCurrentConfigValue(key));
+      if (array.length) {
+        params.push(key + '=' + array.join(','));
+      }
+    }
+
     if (this.selectedAsset) {
-      const isDefault = shakaAssets.testAssets.includes(this.selectedAsset);
-      params.push('asset=' + this.selectedAsset.manifestUri);
-      if (this.selectedAsset.adTagUri) {
-        params.push('adTagUri=' + this.selectedAsset.adTagUri);
-      }
-      if (!isDefault && this.selectedAsset.licenseServers.size) {
-        const uri = this.selectedAsset.licenseServers.values().next().value;
-        params.push('license=' + uri);
-        for (const drmSystem of this.selectedAsset.licenseServers.keys()) {
-          if (!shakaDemo.Main.commonDrmSystems.includes(drmSystem)) {
-            params.push('drmSystem=' + drmSystem);
-            break;
-          }
-        }
-      }
-      if (!isDefault && this.selectedAsset.certificateUri) {
-        params.push('certificate=' + this.selectedAsset.certificateUri);
-      }
+      params.push('assetBase64=' + this.selectedAsset.toBase64());
     }
 
     const navButtons = document.getElementById('nav-button-container');
@@ -1387,6 +1593,14 @@ shakaDemo.Main = class {
 
     if (this.trickPlayControlsEnabled_) {
       params.push('trickplay');
+    }
+
+    if (this.customContextMenu_) {
+      params.push('customContextMenu');
+    }
+
+    if (this.getIsVisualizerActive()) {
+      params.push('visualizer');
     }
 
     // MAX_LOG_LEVEL is the default starting log level. Only save the log level
@@ -1460,9 +1674,6 @@ shakaDemo.Main = class {
    * @private
    */
   async getManifestUriFromAdManager_(asset) {
-    goog.asserts.assert(asset.imaIds != null,
-        'Asset should have imaIds!');
-
     const adManager = this.player_.getAdManager();
     const container = this.controls_.getServerSideAdContainer();
     try {
@@ -1471,19 +1682,63 @@ shakaDemo.Main = class {
       goog.asserts.assert(this.video_ != null, 'Video should not be null!');
       adManager.initServerSide(container, this.video_);
       let request;
-      if (asset.imaIds.assetKey.length) {
+      if (asset.imaAssetKey != null) {
         // LIVE stream
         request = new google.ima.dai.api.LiveStreamRequest();
-        request.assetKey = asset.imaIds.assetKey;
+        request.assetKey = asset.imaAssetKey;
       } else {
+        goog.asserts.assert(asset.imaContentSrcId != null &&
+            asset.imaVideoId != null, 'Asset should have ima ids!');
         // VOD
         request = new google.ima.dai.api.VODStreamRequest();
-        request.contentSourceId = asset.imaIds.contentSourceId;
-        request.videoId = asset.imaIds.videoId;
+        request.contentSourceId = asset.imaContentSrcId;
+        request.videoId = asset.imaVideoId;
+      }
+      switch (asset.imaManifestType) {
+        case 'DASH':
+        case 'dash':
+        case 'MPD':
+        case 'mpd':
+          request.format = google.ima.dai.api.StreamRequest.StreamFormat.DASH;
+          break;
+        case 'HLS':
+        case 'hls':
+        case 'M3U8':
+        case 'm3u8':
+          request.format = google.ima.dai.api.StreamRequest.StreamFormat.HLS;
+          break;
       }
 
       const uri = await adManager.requestServerSideStream(
           request, /* backupUri= */ asset.manifestUri);
+      return uri;
+    } catch (error) {
+      console.log(error);
+      console.warn('Ads code has been prevented from running ' +
+          'or returned an error. Proceeding without ads.');
+
+      return asset.manifestUri;
+    }
+  }
+
+  /**
+   * @param {ShakaDemoAssetInfo} asset
+   * @return {!Promise.<string>}
+   * @private
+   */
+  async getManifestUriFromMediaTailorAdManager_(asset) {
+    const adManager = this.player_.getAdManager();
+    const container = this.controls_.getServerSideAdContainer();
+    try {
+      goog.asserts.assert(this.video_ != null, 'Video should not be null!');
+      goog.asserts.assert(asset.mediaTailorUrl != null,
+          'Media Tailor info not be null!');
+      const netEngine = this.player_.getNetworkingEngine();
+      goog.asserts.assert(netEngine, 'There should be a net engine.');
+      adManager.initMediaTailor(container, netEngine, this.video_);
+      const uri = await adManager.requestMediaTailorStream(
+          asset.mediaTailorUrl, asset.mediaTailorAdsParams,
+          /* backupUri= */ asset.manifestUri);
       return uri;
     } catch (error) {
       console.log(error);
@@ -1587,7 +1842,7 @@ shakaDemo.Main = class {
 
   /**
    * Sets the "version-string" divs to a version string.
-   * For example, "v2.5.4-master (uncompiled)".
+   * For example, "v2.5.4-main (uncompiled)".
    * @private
    */
   setUpVersionStrings_() {
@@ -1668,7 +1923,6 @@ shakaDemo.Main = class {
     // Always show the new error if:
     //   1. there is no error showing currently
     //   2. the new error is more severe than the old one
-    // Sadly, we do not (yet?) have localizations for error messages.
     if (this.currentErrorSeverity_ == null ||
         severity > this.currentErrorSeverity_) {
       this.errorDisplayLink_.href = href;
@@ -1701,6 +1955,21 @@ shakaDemo.Main = class {
       this.showPlayer_();
     }
   }
+
+  /** @return {!shaka.extern.AdvancedDrmConfiguration} */
+  static defaultAdvancedDrmConfig() {
+    return {
+      distinctiveIdentifierRequired: false,
+      persistentStateRequired: false,
+      videoRobustness: '',
+      audioRobustness: '',
+      sessionType: '',
+      serverCertificate: new Uint8Array(0),
+      serverCertificateUri: '',
+      individualizationServer: '',
+      headers: {},
+    };
+  }
 };
 
 
@@ -1708,8 +1977,7 @@ shakaDemo.Main = class {
 shakaDemo.Main.commonDrmSystems = [
   'com.widevine.alpha',
   'com.microsoft.playready',
-  'com.apple.fps.1_0',
-  'com.adobe.primetime',
+  'com.apple.fps',
   'org.w3.clearkey',
 ];
 
@@ -1755,7 +2023,7 @@ document.addEventListener('shaka-ui-loaded', () => {
 });
 document.addEventListener('shaka-ui-load-failed', (event) => {
   shakaDemo.Main.initWrapper(() => {
-    const reasonCode = /** @type {!shaka.ui.FailReasonCode} */ (
+    const reasonCode = /** @type {!shaka.ui.Overlay.FailReasonCode} */ (
       event['detail']['reasonCode']);
     shakaDemoMain.initFailed(reasonCode);
   });

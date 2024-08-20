@@ -16,11 +16,8 @@ var google = {};
 /** @const */
 google.ima = {};
 
-/** @const */
-google.ima.settings = {};
-
-/** @param {string} locale */
-google.ima.settings.setLocale = function(locale) {};
+/** @type {!google.ima.ImaSdkSettings} */
+google.ima.settings;
 
 
 /**
@@ -46,6 +43,8 @@ google.ima.AdsLoader = class {
 
   /** @override */
   dispatchEvent() {}
+
+  destroy() {}
 };
 
 
@@ -82,6 +81,8 @@ google.ima.AdsManager = class {
 
   stop() {}
 
+  destroy() {}
+
   /**
    * @param {number} volume
    */
@@ -107,17 +108,91 @@ google.ima.AdsManager = class {
 
   /** @override */
   dispatchEvent() {}
+
+  /**
+   * @param {!google.ima.AdsRenderingSettings} adsRenderingSettings
+   */
+  updateAdsRenderingSettings(adsRenderingSettings) {}
 };
 
 
 /** @const */
 google.ima.AdsManagerLoadedEvent = class extends Event {
   /**
-   * @param {!HTMLElement} video
+   * @param {!(HTMLElement|{currentTime: number})} video
+   * @param {!google.ima.AdsRenderingSettings=} adsRenderingSettings
    * @return {!google.ima.AdsManager}
    */
-  getAdsManager(video) {}
+  getAdsManager(video, adsRenderingSettings) {}
 };
+
+
+/**
+ * @typedef {{
+ *   autoAlign: (boolean),
+ *   bitrate: (number),
+ *   enablePreloading: (boolean),
+ *   loadVideoTimeout: (number),
+ *   mimeTypes: (?Array.<string>),
+ *   playAdsAfterTime: (number),
+ *   restoreCustomPlaybackStateOnAdBreakComplete: (boolean),
+ *   uiElements: (?Array.<string>),
+ *   useStyledLinearAds: (boolean),
+ *   useStyledNonLinearAds: (boolean),
+ * }}
+ *
+ * @description Defines parameters that control the rendering of ads.
+ * @property {boolean} autoAlign
+ *   Set to false if you wish to have fine grained control over
+ *   the positioning of all non-linear ads.
+ *   If this value is true, the ad is positioned in the bottom center.
+ *   If this value is false, the ad is positioned in the top left corner.
+ *   The default value is true.
+ * @property {number} bitrate
+ *   Maximum recommended bitrate. The value is in kbit/s.
+ *   The SDK will pick media with bitrate below the specified max,
+ *   or the closest bitrate if there is no media with lower bitrate found.
+ *   Default value, -1, means the SDK selects the maximum bitrate.
+ * @property {boolean} enablePreloading
+ *   Enables preloading of video assets.
+ *   For more info see [our guide to preloading media]{@link https://developers.google.com/interactive-media-ads/docs/sdks/html5/preload}.
+ * @property {number} loadVideoTimeout
+ *   Timeout (in milliseconds) when loading a video ad media file.
+ *   If loading takes longer than this timeout, the ad playback is canceled
+ *   and the next ad in the pod plays, if available.
+ *   Use -1 for the default of 8 seconds.
+ * @property {?Array.<string>} mimeTypes
+ *   Only supported for linear video mime types.
+ *   If specified, the SDK will include media that matches
+ *   the MIME type(s) specified in the list and exclude media.
+ *   that does not match the specified MIME type(s).
+ *   The format is a list of strings,
+ *   for example, [ 'video/mp4', 'video/webm', ... ] If not specified,
+ *   the SDK will pick the media based on player capabilities.
+ * @property {number} playAdsAfterTime
+ *   For VMAP and ad rules playlists, only play ad breaks scheduled
+ *   after this time (in seconds).
+ *   This setting is strictly after - for example,
+ *   setting playAdsAfterTime to 15 will cause IMA to ignore
+ *   an ad break scheduled to play at 15s.
+ * @property {boolean} restoreCustomPlaybackStateOnAdBreakComplete
+ *   Specifies whether or not the SDK should restore the custom playback
+ *   state after an ad break completes. This is setting is used primarily
+ *   when the publisher passes in its content player to use for
+ *   custom ad playback.
+ * @property {?Array.<string>} uiElements
+ *   Specifies whether the UI elements that should be displayed.
+ *   The elements in this array are ignored for AdSense/AdX ads.
+ * @property {boolean} useStyledLinearAds
+ *   Render linear ads with full UI styling.
+ *   This setting does not apply to AdSense/AdX ads
+ *   or ads played in a mobile context that already
+ *   use full UI styling by default.
+ * @property {boolean} useStyledNonLinearAds
+ *   Render non-linear ads with a close and recall button.
+ * @exportDoc
+ */
+google.ima.AdsRenderingSettings;
 
 
 /** @const */
@@ -129,6 +204,8 @@ google.ima.AdDisplayContainer = class {
   constructor(adContainer, video) {}
 
   initialize() {}
+
+  destroy() {}
 };
 
 
@@ -142,7 +219,7 @@ google.ima.AdsManagerLoadedEvent.Type = {
 
 /** @const */
 google.ima.AdEvent = class extends Event {
-  /** @return {!google.ima.Ad } */
+  /** @return {?google.ima.Ad} */
   getAd() {}
 };
 
@@ -153,6 +230,9 @@ google.ima.Ad = class {
   getDuration() {}
 
   /** @return {number} */
+  getMinSuggestedDuration() {}
+
+  /** @return {number} */
   getSkipTimeOffset() {}
 
   /** @return {google.ima.AdPodInfo} */
@@ -160,6 +240,33 @@ google.ima.Ad = class {
 
   /** @return {string} */
   getAdvertiserName() {}
+
+  /** @return {boolean} */
+  isLinear() {}
+
+  /** @return {string} */
+  getTitle() {}
+
+  /** @return {string} */
+  getDescription() {}
+
+  /** @return {number} */
+  getVastMediaBitrate() {}
+
+  /** @return {number} */
+  getVastMediaHeight() {}
+
+  /** @return {number} */
+  getVastMediaWidth() {}
+
+  /** @return {string} */
+  getAdId() {}
+
+  /** @return {string} */
+  getCreativeAdId() {}
+
+  /** @return {?string} */
+  getMediaUrl() {}
 };
 
 
@@ -170,6 +277,12 @@ google.ima.AdPodInfo = class {
 
   /** @return {number} */
   getTotalAds() {}
+
+  /** @return {number} */
+  getTimeOffset() {}
+
+  /** @return {number} */
+  getPodIndex() {}
 };
 
 /** @const */
@@ -188,6 +301,25 @@ google.ima.ImaSdkSettings = class {
    * @param {string} version
    */
   setPlayerVersion(version) {}
+
+  /**
+   * @param {google.ima.ImaSdkSettings.VpaidMode} vpaidMode
+   */
+  setVpaidMode(vpaidMode) {}
+
+  /**
+   * @param {boolean} disable
+   */
+  setDisableCustomPlaybackForIOS10Plus(disable) {}
+};
+
+/**
+ * @enum {number}
+ */
+google.ima.ImaSdkSettings.VpaidMode = {
+  DISABLED: 0,
+  ENABLED: 1,
+  INSECURE: 2,
 };
 
 
@@ -227,11 +359,19 @@ google.ima.AdEvent.Type = {
 
 /**
  * @typedef {{
- *   adTagUrl: string,
+ *   adsResponse: (string|undefined),
+ *   adTagUrl: (string|undefined),
  * }}
  *
  * @description Request for the ad server
- * @property {string} adTagUrl
+ * @property {string|undefined} adTagUrl
+ *   Specifies the ad tag url that is requested from the ad server.
+ *   This parameter is optional if adsReponse is given.
+ * @property {string|undefined} adsResponse
+ *   Specifies a VAST 2.0 document to be used as the ads response instead of
+ *   making a request via an ad tag url. This can be useful for debugging
+ *   and other situations where a VAST response is already available.
+ *   This parameter is optional if adTagUrl is given.
  * @exportDoc
  */
 google.ima.AdsRequest;
@@ -360,6 +500,24 @@ google.ima.dai.api.Ad = class {
 
   /** @return {boolean} */
   isSkippable() {}
+
+  /** @return {string} */
+  getTitle() {}
+
+  /** @return {string} */
+  getDescription() {}
+
+  /** @return {number} */
+  getVastMediaHeight() {}
+
+  /** @return {number} */
+  getVastMediaWidth() {}
+
+  /** @return {string} */
+  getAdId() {}
+
+  /** @return {string} */
+  getCreativeAdId() {}
 };
 
 
@@ -370,6 +528,12 @@ google.ima.dai.api.AdPodInfo = class {
 
   /** @return {number} */
   getTotalAds() {}
+
+  /** @return {number} */
+  getTimeOffset() {}
+
+  /** @return {number} */
+  getPodIndex() {}
 };
 
 
@@ -472,6 +636,23 @@ google.ima.dai.api.StreamRequest.prototype.streamActivityMonitorId;
 google.ima.dai.api.StreamRequest.prototype.format;
 
 
+/**
+ * @type {Object.<
+ *   google.ima.dai.api.OmidVerificationVendor,
+ *   (google.ima.dai.api.OmidAccessMode | undefined)>}
+ */
+google.ima.dai.api.StreamRequest.prototype.omidAccessModeRules;
+
+
+/**
+ * @enum {string}
+ */
+google.ima.dai.api.StreamRequest.StreamFormat = {
+  DASH: 'dash',
+  HLS: 'hls',
+};
+
+
 /** @const */
 google.ima.dai.api.VODStreamRequest =
     class extends google.ima.dai.api.StreamRequest {};
@@ -548,4 +729,30 @@ google.ima.dai.api.StreamEvent.Type = {
   SKIPPABLE_STATE_CHANGED: 'skippableStateChanged',
   SKIPPED: 'skip',
   VIDEO_CLICKED: 'videoClicked',
+};
+
+
+/**
+ * @enum {number}
+ */
+google.ima.dai.api.OmidVerificationVendor = {
+  OTHER: 1,
+  MOAT: 2,
+  DOUBLEVERIFY: 3,
+  INTEGRAL_AD_SCIENCE: 4,
+  PIXELATE: 5,
+  NIELSEN: 6,
+  COMSCORE: 7,
+  MEETRICS: 8,
+  GOOGLE: 9,
+};
+
+
+/**
+ * @enum {string}
+ */
+google.ima.dai.api.OmidAccessMode = {
+  FULL: 'full',
+  DOMAIN: 'domain',
+  LIMITED: 'limited',
 };

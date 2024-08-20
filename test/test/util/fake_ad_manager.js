@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.FakeAdManager');
-
-
 /**
  * @implements {shaka.extern.IAdManager}
  * @final
@@ -20,10 +17,19 @@ shaka.test.FakeAdManager = class extends shaka.util.FakeEventTarget {
   }
 
   /** @override */
+  release() {}
+
+  /** @override */
   setLocale(locale) {}
 
   /** @override */
-  initClientSide(adContainer, video) {}
+  configure(config) {}
+
+  /** @override */
+  initInterstitial(adContainer, basePlayer, baseVideo) {}
+
+  /** @override */
+  initClientSide(adContainer, video, adsRenderingSettings) {}
 
   /** @override */
   onAssetUnload() {}
@@ -32,6 +38,20 @@ shaka.test.FakeAdManager = class extends shaka.util.FakeEventTarget {
   requestClientSideAds(imaRequest) {
     return Promise.resolve('fake:url');
   }
+
+  /** @override */
+  updateClientSideAdsRenderingSettings(adsRenderingSettings) {}
+
+  /** @override */
+  initMediaTailor(networkingEngine, video) {}
+
+  /** @override */
+  requestMediaTailorStream(url, adsParams, backupUrl) {
+    return Promise.resolve('fake:url');
+  }
+
+  /** @override */
+  addMediaTailorTrackingUrl(url) {}
 
   /** @override */
   initServerSide(adContainer, video) {}
@@ -45,45 +65,61 @@ shaka.test.FakeAdManager = class extends shaka.util.FakeEventTarget {
   replaceServerSideAdTagParameters(adTagParameters) {}
 
   /** @override */
+  getServerSideCuePoints() {
+    return [];
+  }
+
+  /** @override */
+  getCuePoints() {
+    return [];
+  }
+
+  /** @override */
   getStats() {
     return this.stats_;
   }
 
-  /**
-   * @override
-   */
+  /** @override */
+  onManifestUpdated(isLive) {}
+
+  /** @override */
   onDashTimedMetadata(region) {}
 
-  /**
-   * @override
-   */
+  /** @override */
   onHlsTimedMetadata(metadata) {}
 
-  /**
-   * @override
-   */
+  /** @override */
   onCueMetadataChange(data) {}
+
+  /** @override */
+  onHLSInterstitialMetadata(basePlayer, baseVideo, interstitial) {}
+
+  /** @override */
+  addCustomInterstitial(interstitial) {}
+
+  /** @override */
+  addAdUrlInterstitial(url) {}
 
   /**
    * @param {!shaka.test.FakeAd} ad
    */
   startAd(ad) {
-    const event = new shaka.util.FakeEvent(shaka.ads.AdManager.AD_STARTED,
-        {'ad': ad});
+    const event = new shaka.util.FakeEvent(shaka.ads.Utils.AD_STARTED,
+        (new Map()).set('ad', ad));
 
     this.dispatchEvent(event);
   }
 
   /** @public */
   finishAd() {
-    const event = new shaka.util.FakeEvent(shaka.ads.AdManager.AD_STOPPED);
+    const event = new shaka.util.FakeEvent(shaka.ads.Utils.AD_STOPPED);
     this.dispatchEvent(event);
   }
 
   /** @public */
   changeSkipState() {
     const event =
-        new shaka.util.FakeEvent(shaka.ads.AdManager.AD_SKIP_STATE_CHANGED);
+        new shaka.util.FakeEvent(shaka.ads.Utils.AD_SKIP_STATE_CHANGED);
     this.dispatchEvent(event);
   }
 };

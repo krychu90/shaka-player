@@ -4,15 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.Player');
-goog.require('shaka.offline.Storage');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.util.EventManager');
-
 /** @return {boolean} */
 const supportsStorage = () => shaka.offline.Storage.support();
 
@@ -28,10 +19,18 @@ filterDescribe('Offline', supportsStorage, () => {
   let eventManager;
   /** @type {shaka.test.Waiter} */
   let waiter;
+  /** @type {?shaka.extern.DrmSupportType} */
+  let widevineSupport;
+  /** @type {?shaka.extern.DrmSupportType} */
+  let playreadySupport;
 
   beforeAll(() => {
     video = shaka.test.UiUtils.createVideoElement();
     document.body.appendChild(video);
+
+    widevineSupport = window['shakaSupport'].drm['com.widevine.alpha'];
+    playreadySupport = window['shakaSupport'].drm['com.microsoft.playready'] ||
+        window['shakaSupport'].drm['com.chromecast.playready'];
   });
 
   afterAll(() => {
@@ -39,11 +38,16 @@ filterDescribe('Offline', supportsStorage, () => {
   });
 
   beforeEach(async () => {
-    player = new shaka.Player(video);
+    player = new shaka.Player();
+    await player.attach(video);
     player.addEventListener('error', fail);
+
+    // Disable stall detection, which can interfere with playback tests.
+    player.configure('streaming.stallEnabled', false);
 
     eventManager = new shaka.util.EventManager();
     waiter = new shaka.test.Waiter(eventManager);
+    waiter.setPlayer(player);
 
     // Make sure we are starting with a blank slate.
     await shaka.offline.Storage.deleteAll();
@@ -75,8 +79,8 @@ filterDescribe('Offline', supportsStorage, () => {
 
     await player.load(contentUri);
 
-    video.play();
-    await playTo(/* end= */ 3, /* timeout= */ 10);
+    await video.play();
+    await playTo(/* end= */ 3, /* timeout= */ 20);
     await player.unload();
     await storage.remove(contentUri);
   });
@@ -85,11 +89,12 @@ filterDescribe('Offline', supportsStorage, () => {
   drmIt(
       'stores, plays, and deletes protected content with a persistent license',
       async () => {
-        const support = await shaka.Player.probeSupport();
-        const widevineSupport = support.drm['com.widevine.alpha'];
-
         if (!widevineSupport || !widevineSupport.persistentState) {
           pending('Widevine persistent licenses are not supported');
+          return;
+        }
+        if (shaka.util.Platform.isAndroid()) {
+          pending('Skipping offline DRM tests on Android - crbug.com/1108158');
           return;
         }
 
@@ -111,8 +116,8 @@ filterDescribe('Offline', supportsStorage, () => {
 
         await player.load(contentUri);
 
-        video.play();
-        await playTo(/* end= */ 3, /* timeout= */ 10);
+        await video.play();
+        await playTo(/* end= */ 3, /* timeout= */ 20);
         await player.unload();
         await storage.remove(contentUri);
       });
@@ -120,12 +125,22 @@ filterDescribe('Offline', supportsStorage, () => {
   drmIt(
       'stores, plays, and deletes protected content with a temporary license',
       async () => {
-        const support = await shaka.Player.probeSupport();
-        const widevineSupport = support.drm['com.widevine.alpha'];
-        const playreadySupport = support.drm['com.microsoft.playready'];
-
         if (!(widevineSupport || playreadySupport)) {
           pending('Widevine and PlayReady are not supported');
+          return;
+        }
+        if (shaka.util.Platform.isAndroid()) {
+          pending('Skipping offline DRM tests on Android - crbug.com/1108158');
+          return;
+        }
+
+        if (shaka.util.Platform.isXboxOne()) {
+          // Axinom won't issue a license for an Xbox One.  The error message
+          // from the license server says "Your DRM client's security level is
+          // 150, but the entitlement message requires 2000 or higher."
+          // TODO: Stop using Axinom's license server.  Use
+          // https://testweb.playready.microsoft.com/Server/ServiceQueryStringSyntax
+          pending('Xbox One not supported by Axinom license server');
           return;
         }
 
@@ -144,8 +159,8 @@ filterDescribe('Offline', supportsStorage, () => {
 
         await player.load(contentUri);
 
-        video.play();
-        await playTo(/* end= */ 3, /* timeout= */ 10);
+        await video.play();
+        await playTo(/* end= */ 3, /* timeout= */ 20);
         await player.unload();
         await storage.remove(contentUri);
       });

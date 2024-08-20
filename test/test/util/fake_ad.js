@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.FakeAd');
-
-
 /**
  * @implements {shaka.extern.IAd}
  */
@@ -37,12 +34,59 @@ shaka.test.FakeAd = class {
 
     /** @private {number} */
     this.volume_ = 1;
+
+    /** @private {string} */
+    this.title_ = 'Test Title';
+
+    /** @private {string} */
+    this.description_ = 'Test Description';
+
+    /** @private {number} */
+    this.vastMediaBitrate_ = 128;
+
+    /** @private {number} */
+    this.vastMediaHeight_ = 720;
+
+    /** @private {number} */
+    this.vastMediaWidth_ = 1280;
+
+    /** @private {string} */
+    this.adId_ = 'Test Ad ID';
+
+    /** @private {string} */
+    this.creativeAdId_ = 'Test Creative Ad ID';
+
+    /** @private {string} */
+    this.advertiserName_ = '';
+
+    /** @private {string} */
+    this.mediaUrl_ = 'fake';
+
+    /** @private {number} */
+    this.timeOffsetInPod_ = 1;
+
+    /** @private {number} */
+    this.podIndex_ = 1;
+  }
+
+  /**
+   * @override
+   */
+  needsSkipUI() {
+    return true;
   }
 
   /**
    * @override
    */
   getDuration() {
+    return this.duration_;
+  }
+
+  /**
+   * @override
+   */
+  getMinSuggestedDuration() {
     return this.duration_;
   }
 
@@ -150,6 +194,13 @@ shaka.test.FakeAd = class {
   /**
    * @override
    */
+  isLinear() {
+    return true;
+  }
+
+  /**
+   * @override
+   */
   resize(width, height) {
     // No op
   }
@@ -179,6 +230,93 @@ shaka.test.FakeAd = class {
     return this.position_;
   }
 
+  /**
+   * @override
+   * @export
+   */
+  getTitle() {
+    return this.title_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getDescription() {
+    return this.description_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getVastMediaBitrate() {
+    return this.vastMediaBitrate_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getVastMediaHeight() {
+    return this.vastMediaHeight_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getVastMediaWidth() {
+    return this.vastMediaWidth_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getAdId() {
+    return this.adId_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getCreativeAdId() {
+    return this.creativeAdId_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getAdvertiserName() {
+    return this.advertiserName_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getMediaUrl() {
+    return this.mediaUrl_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getTimeOffset() {
+    return this.timeOffsetInPod_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getPodIndex() {
+    return this.podIndex_;
+  }
 
   /**
    * @override

@@ -4,31 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.media.InitSegmentReference');
-goog.require('shaka.media.MediaSourceEngine');
-goog.require('shaka.media.MediaSourcePlayhead');
-goog.require('shaka.media.SegmentIndex');
-goog.require('shaka.media.SegmentReference');
-goog.require('shaka.media.StreamingEngine');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.FakeClosedCaptionParser');
-goog.require('shaka.test.FakeTextDisplayer');
-goog.require('shaka.test.Mp4LiveStreamGenerator');
-goog.require('shaka.test.Mp4VodStreamGenerator');
-goog.require('shaka.test.StreamingEngineUtil');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.ManifestParserUtils');
-goog.require('shaka.util.Platform');
-goog.require('shaka.util.PlayerConfiguration');
-goog.requireType('shaka.media.Playhead');
-goog.requireType('shaka.media.PresentationTimeline');
-goog.requireType('shaka.test.FakeNetworkingEngine');
-goog.requireType('shaka.test.FakePresentationTimeline');
-
 describe('StreamingEngine', () => {
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
   const Util = shaka.test.Util;
@@ -60,7 +35,6 @@ describe('StreamingEngine', () => {
   /** @type {!shaka.media.StreamingEngine} */
   let streamingEngine;
 
-
   /** @type {shaka.extern.Variant} */
   let variant;
 
@@ -83,6 +57,9 @@ describe('StreamingEngine', () => {
   beforeEach(() => {
     config = shaka.util.PlayerConfiguration.createDefault().streaming;
 
+    // Disable stall detection, which can interfere with playback tests.
+    config.stallEnabled = false;
+
     onError = jasmine.createSpy('onError');
     onError.and.callFake(fail);
     onEvent = jasmine.createSpy('onEvent');
@@ -92,8 +69,15 @@ describe('StreamingEngine', () => {
 
     mediaSourceEngine = new shaka.media.MediaSourceEngine(
         video,
-        new shaka.test.FakeClosedCaptionParser(),
-        new shaka.test.FakeTextDisplayer());
+        new shaka.test.FakeTextDisplayer(),
+        {
+          getKeySystem: () => null,
+          onMetadata: () => {},
+        });
+    const mediaSourceConfig =
+        shaka.util.PlayerConfiguration.createDefault().mediaSource;
+    mediaSourceEngine.configure(mediaSourceConfig);
+    waiter.setMediaSourceEngine(mediaSourceEngine);
   });
 
   afterEach(async () => {
@@ -115,17 +99,17 @@ describe('StreamingEngine', () => {
 
     segmentAvailability = {
       start: 0,
-      end: 60,
+      end: 40,
     };
 
     timeline = shaka.test.StreamingEngineUtil.createFakePresentationTimeline(
         segmentAvailability,
-        /* presentationDuration= */ 60,
+        /* presentationDuration= */ 40,
         /* maxSegmentDuration= */ metadata.video.segmentDuration,
         /* isLive= */ false);
 
     setupNetworkingEngine(
-        /* presentationDuration= */ 60,
+        /* presentationDuration= */ 40,
         {
           audio: metadata.audio.segmentDuration,
           video: metadata.video.segmentDuration,
@@ -133,8 +117,8 @@ describe('StreamingEngine', () => {
 
     setupManifest(
         /* firstPeriodStartTime= */ 0,
-        /* secondPeriodStartTime= */ 30,
-        /* presentationDuration= */ 60);
+        /* secondPeriodStartTime= */ 20,
+        /* presentationDuration= */ 40);
 
     setupPlayhead();
 
@@ -178,6 +162,19 @@ describe('StreamingEngine', () => {
         /* secondPeriodStartTime= */ 300,
         /* presentationDuration= */ Infinity);
     setupPlayhead();
+
+    // Retry on failure for live streams.
+    config.failureCallback = () => streamingEngine.retry(0.1);
+
+    // Ignore 404 errors in live stream tests.
+    onError.and.callFake((error) => {
+      if (error.code == shaka.util.Error.Code.BAD_HTTP_STATUS &&
+          error.data[1] == 404) {
+        // 404 error
+      } else {
+        fail(error);
+      }
+    });
 
     createStreamingEngine();
   }
@@ -264,12 +261,17 @@ describe('StreamingEngine', () => {
     const playerInterface = {
       getPresentationTime: () => playhead.getTime(),
       getBandwidthEstimate: () => 1e6,
+      getPlaybackRate: () => video.playbackRate,
       mediaSourceEngine: mediaSourceEngine,
       netEngine: /** @type {!shaka.net.NetworkingEngine} */(netEngine),
       onError: Util.spyFunc(onError),
       onEvent: Util.spyFunc(onEvent),
       onManifestUpdate: () => {},
       onSegmentAppended: () => playhead.notifyOfBufferingChange(),
+      onInitSegmentAppended: () => {},
+      beforeAppendSegment: () => Promise.resolve(),
+      onMetadata: () => {},
+      disableStream: (stream, time) => false,
     };
     streamingEngine = new shaka.media.StreamingEngine(
         /** @type {shaka.extern.Manifest} */(manifest), playerInterface);
@@ -285,8 +287,13 @@ describe('StreamingEngine', () => {
       // Let's go!
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
-      video.play();
-      await waiter.timeoutAfter(90).waitForEnd(video);
+      await video.play();
+      // The overall test timeout is 120 seconds, and the content is 40
+      // seconds.  It should be possible to complete this test in 100 seconds,
+      // and if not, we want the error thrown to be within the overall test's
+      // timeout window.  Note that we have seen some devices fail to play at
+      // full speed for reasons beyond our control, so we plan for >= 0.5x.
+      await waiter.timeoutAfter(100).waitForEnd(video);
     });
 
     it('plays at high playback rates', async () => {
@@ -300,40 +307,33 @@ describe('StreamingEngine', () => {
       // Let's go!
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
-      video.play();
+      await video.play();
 
       // Wait for playback to begin before increasing the playback rate.  This
       // improves test reliability on slow platforms like Chromecast.
       await waiter.timeoutAfter(10).waitForMovement(video);
       video.playbackRate = 10;
 
-      // Something weird happens on some platforms (variously Chromecast, IE,
-      // legacy Edge, and Safari) where the playhead can go past duration.
-      // To cope with this, don't fail on timeout.  If the video never got
-      // flagged as "ended", check for the playhead to be near or past the end.
-      await waiter.timeoutAfter(30).failOnTimeout(false).waitForEnd(video);
-      if (!video.ended) {
-        expect(video.currentTime).toBeGreaterThan(video.duration - 0.1);
-      }
+      await waiter.timeoutAfter(30).waitForEnd(video);
     });
 
     it('can handle buffered seeks', async () => {
       // Let's go!
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
-      video.play();
+      await video.play();
 
       // After 35 seconds seek back 10 seconds into the first Period.
-      await waiter.timeoutAfter(60).waitUntilPlayheadReaches(video, 35);
+      await waiter.timeoutAfter(80).waitUntilPlayheadReaches(video, 35);
       video.currentTime = 25;
-      await waiter.timeoutAfter(60).waitForEnd(video);
+      await waiter.timeoutAfter(80).waitForEnd(video);
     });
 
     it('can handle unbuffered seeks', async () => {
       // Let's go!
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
-      video.play();
+      await video.play();
       await waiter.timeoutAfter(60).waitUntilPlayheadReaches(video, 20);
       video.currentTime = 40;
       await waiter.timeoutAfter(60).waitForEnd(video);
@@ -361,14 +361,17 @@ describe('StreamingEngine', () => {
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
 
-      video.play();
+      await video.play();
       await waiter.timeoutAfter(60).waitUntilPlayheadReaches(video, 305);
 
       const segmentType = shaka.net.NetworkingEngine.RequestType.SEGMENT;
+      const segmentContext = {
+        type: shaka.net.NetworkingEngine.AdvancedRequestType.MEDIA_SEGMENT,
+      };
       // firstSegmentNumber =
       //   [(segmentAvailabilityEnd - rebufferingGoal) / segmentDuration] + 1
-      netEngine.expectRequest('0_video_29', segmentType);
-      netEngine.expectRequest('0_audio_29', segmentType);
+      netEngine.expectRequest('0_video_29', segmentType, segmentContext);
+      netEngine.expectRequest('0_audio_29', segmentType, segmentContext);
     });
 
     it('can handle seeks ahead of availability window', async () => {
@@ -376,14 +379,12 @@ describe('StreamingEngine', () => {
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
 
-      // IE is sensitive and throws InvalidStateError when you seek while
-      // readyState is 0.
       await waiter.timeoutAfter(5).waitForEvent(video, 'loadeddata');
 
       // Seek outside the availability window right away. The playhead
       // should adjust the video's current time.
       video.currentTime = segmentAvailability.end + 120;
-      video.play();
+      await video.play();
 
       // Wait until the repositioning is complete so we don't
       // immediately hit this case.
@@ -401,8 +402,6 @@ describe('StreamingEngine', () => {
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
 
-      // IE is sensitive and throws InvalidStateError when you seek while
-      // readyState is 0.
       await waiter.timeoutAfter(5).waitForEvent(video, 'loadeddata');
 
       // Seek outside the availability window right away. The playhead
@@ -410,7 +409,7 @@ describe('StreamingEngine', () => {
       video.currentTime = segmentAvailability.start - 120;
       expect(video.currentTime).toBeGreaterThan(0);
 
-      video.play();
+      await video.play();
       await waiter.timeoutAfter(60).waitUntilPlayheadReaches(video, 305);
 
       // We are playing close to the beginning of the availability window.
@@ -423,8 +422,9 @@ describe('StreamingEngine', () => {
       //   3. Playhead seeks to force us back inside the window
       //   4. (maybe) seek if there is a gap at the period boundary
       //   5. (maybe) seek to flush a pipeline stall
+      //   6. (maybe) on slower platforms (e.g. GitHub actions)
       expect(seekCount).toBeGreaterThan(2);
-      expect(seekCount).toBeLessThan(6);
+      expect(seekCount).toBeLessThan(7);
     });
   });
 
@@ -432,13 +432,12 @@ describe('StreamingEngine', () => {
   // TODO: Consider also adding tests for missing frames.
   describe('gap jumping', () => {
     it('jumps small gaps at the beginning', async () => {
-      config.smallGapLimit = 5;
       await setupGappyContent(/* gapAtStart= */ 1, /* dropSegment= */ false);
 
       // Let's go!
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
-      video.play();
+      await video.play();
 
       await waiter.timeoutAfter(5).waitUntilPlayheadReaches(video, 0.01);
       expect(video.buffered.length).toBeGreaterThan(0);
@@ -448,14 +447,12 @@ describe('StreamingEngine', () => {
     });
 
     it('jumps large gaps at the beginning', async () => {
-      config.smallGapLimit = 1;
-      config.jumpLargeGaps = true;
       await setupGappyContent(/* gapAtStart= */ 5, /* dropSegment= */ false);
 
       // Let's go!
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
-      video.play();
+      await video.play();
 
       await waiter.timeoutAfter(5).waitUntilPlayheadReaches(video, 0.01);
       expect(video.buffered.length).toBeGreaterThan(0);
@@ -465,70 +462,37 @@ describe('StreamingEngine', () => {
     });
 
     it('jumps small gaps in the middle', async () => {
-      config.smallGapLimit = 20;
       await setupGappyContent(/* gapAtStart= */ 0, /* dropSegment= */ true);
 
       // Let's go!
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
 
-      // IE is sensitive and throws InvalidStateError when you seek while
-      // readyState is 0.
       await waiter.timeoutAfter(5).waitForEvent(video, 'loadeddata');
 
       video.currentTime = 8;
-      video.play();
+      await video.play();
 
       await waiter.timeoutAfter(60).waitUntilPlayheadReaches(video, 23);
       // Should be close enough to still have the gap buffered.
       expect(video.buffered.length).toBe(2);
-      expect(onEvent).not.toHaveBeenCalled();
     });
 
     it('jumps large gaps in the middle', async () => {
-      config.jumpLargeGaps = true;
       await setupGappyContent(/* gapAtStart= */ 0, /* dropSegment= */ true);
 
       // Let's go!
       streamingEngine.switchVariant(variant);
       await streamingEngine.start();
 
-      // IE is sensitive and throws InvalidStateError when you seek while
-      // readyState is 0.
       await waiter.timeoutAfter(5).waitForEvent(video, 'loadeddata');
 
       video.currentTime = 8;
-      video.play();
+      await video.play();
 
       await waiter.timeoutAfter(60).waitUntilPlayheadReaches(video, 23);
       // Should be close enough to still have the gap buffered.
       expect(video.buffered.length).toBe(2);
-      expect(onEvent).toHaveBeenCalled();
-    });
-
-    it('won\'t jump large gaps with preventDefault()', async () => {
-      config.jumpLargeGaps = true;
-      await setupGappyContent(/* gapAtStart= */ 0, /* dropSegment= */ true);
-
-      onEvent.and.callFake((event) => {
-        event.preventDefault();
-      });
-
-      // Let's go!
-      streamingEngine.switchVariant(variant);
-      await streamingEngine.start();
-
-      // IE is sensitive and throws InvalidStateError when you seek while
-      // readyState is 0.
-      await waiter.timeoutAfter(5).waitForEvent(video, 'loadeddata');
-
-      video.currentTime = 8;
-      video.play();
-
-      await shaka.test.Util.delay(5);
-      // IE/Edge somehow plays inside the gap.  Just make sure we
-      // don't jump the gap.
-      expect(video.currentTime).toBeLessThan(20);
     });
 
     /**
@@ -613,7 +577,6 @@ describe('StreamingEngine', () => {
               /* timestampOffset= */ gapAtStart,
               /* appendWindowStart= */ 0,
               /* appendWindowEnd= */ Infinity));
-
           i++;
           time = end;
         }
@@ -637,6 +600,16 @@ describe('StreamingEngine', () => {
         offlineSessionIds: [],
         minBufferTime: 2,
         textStreams: [],
+        imageStreams: [],
+        sequenceMode: false,
+        ignoreManifestTimestampsInSegmentsMode: false,
+        type: 'UNKNOWN',
+        serviceDescription: null,
+        nextUrl: null,
+        periodCount: 1,
+        gapCount: 0,
+        isLowLatency: false,
+        startTime: null,
         variants: [{
           id: 1,
           video: {
@@ -649,6 +622,7 @@ describe('StreamingEngine', () => {
             width: 600,
             height: 400,
             type: shaka.util.ManifestParserUtils.ContentType.VIDEO,
+            drmInfos: [],
           },
           audio: {
             id: 3,
@@ -658,6 +632,7 @@ describe('StreamingEngine', () => {
             codecs: 'mp4a.40.2',
             bandwidth: 192000,
             type: shaka.util.ManifestParserUtils.ContentType.AUDIO,
+            drmInfos: [],
           },
         }],
       };

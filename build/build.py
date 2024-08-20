@@ -45,6 +45,7 @@ import argparse
 import logging
 import os
 import re
+import shutil
 
 import compiler
 import generateLocalizations
@@ -54,8 +55,6 @@ import shakaBuildHelpers
 shaka_version = shakaBuildHelpers.calculate_version()
 
 common_closure_opts = [
-    '--language_out', 'ECMASCRIPT3',
-
     '--jscomp_error=*',
 
     # Turn off complaints like:
@@ -71,7 +70,9 @@ common_closure_opts = [
     # the 20200406 release.
     '--jscomp_off=lintChecks',
     '--jscomp_off=deprecated',
-
+    # Turn off complaints like:
+    #   "Built-in 'Reflect.setPrototypeOf' not supported in output version es3."
+    '--jscomp_off=missingPolyfill',
     '--extra_annotation_name=listens',
     '--extra_annotation_name=exportDoc',
     '--extra_annotation_name=exportInterface',
@@ -84,7 +85,6 @@ common_closure_opts = [
 ]
 common_closure_defines = [
     '-D', 'COMPILED=true',
-    '-D', 'goog.STRICT_MODE_COMPATIBLE=true',
     '-D', 'goog.ENABLE_DEBUG_LOADER=false',
 ]
 
@@ -184,6 +184,13 @@ class Build(object):
         return True
     return False
 
+  def has_cast(self):
+    """Returns True if the cast system is in the build."""
+    for path in self.include:
+      if 'cast' in path.split(os.path.sep):
+        return True
+    return False
+
   def generate_localizations(self, locales, force):
     localizations = compiler.GenerateLocalizations(locales)
     localizations.generate(force)
@@ -257,14 +264,16 @@ class Build(object):
 
     return True
 
-  def build_library(self, name, locales, force, is_debug):
+  def build_library(self, name, langout, locales, force, is_debug, skip_ts):
     """Builds Shaka Player using the files in |self.include|.
 
     Args:
       name: The name of the build.
+      langout: Closure Compiler output language.
       locales: A list of strings of locale identifiers.
       force: True to rebuild, False to ignore if no changes are detected.
       is_debug: True to compile for debugging, false for release.
+      skip_ts: True to skip generation of TypeScript definitions.
 
     Returns:
       True on success; False on failure.
@@ -274,6 +283,10 @@ class Build(object):
       return False
     if self.has_ui():
       self.generate_localizations(locales, force)
+      # So that the UI will correctly build if the cast is disabled, add the
+      # dummy cast proxy.
+      if not self.has_cast():
+        self.include.add(os.path.abspath('conditional/dummy_cast_proxy.js'))
 
     if is_debug:
       name += '.debug'
@@ -281,11 +294,8 @@ class Build(object):
     build_name = 'shaka-player.' + name
     closure = compiler.ClosureCompiler(self.include, build_name)
 
-    # Don't pass node modules to the extern generator.
-    local_include = set([f for f in self.include if 'node_modules' not in f])
-    generator = compiler.ExternGenerator(local_include, build_name)
-
     closure_opts = common_closure_opts + common_closure_defines
+    closure_opts += ['--language_out', langout]
     if is_debug:
       closure_opts += debug_closure_opts + debug_closure_defines
     else:
@@ -294,8 +304,34 @@ class Build(object):
     if not closure.compile(closure_opts, force):
       return False
 
-    if not generator.generate(force):
+    source_base = shakaBuildHelpers.get_source_base()
+
+    # Don't pass local node modules to the extern generator.  But don't simply
+    # exclude the string 'node_modules', either, since Shaka Player could be
+    # rebuilt after installing it as a node module.
+    node_modules_path = os.path.join(source_base, 'node_modules')
+    local_include = set([f for f in self.include if node_modules_path not in f])
+    extern_generator = compiler.ExternGenerator(local_include, build_name)
+
+    if not extern_generator.generate(force):
       return False
+
+    generated_externs = [extern_generator.output]
+    shaka_externs = shakaBuildHelpers.get_all_js_files('externs/shaka')
+    if self.has_ui():
+      shaka_externs += shakaBuildHelpers.get_all_js_files('ui/externs')
+
+    if not skip_ts:
+      ts_def_generator = compiler.TsDefGenerator(
+          generated_externs + shaka_externs, build_name)
+
+      if not ts_def_generator.generate(force):
+        return False
+
+    # Copy this file to dist/ where support.html can use it
+    shutil.copy(
+        os.path.join(source_base, 'test', 'test', 'cast-boot.js'),
+        os.path.join(source_base, 'dist', 'cast-boot.js'))
 
     return True
 
@@ -337,7 +373,25 @@ def main(args):
       type=str,
       default='ui')
 
+  parser.add_argument(
+      '--langout',
+      help='Set closure compiler output language. Defaults to ECMASCRIPT5.',
+      type=str,
+      default='ECMASCRIPT5')
+
+  parser.add_argument(
+    '--skip-ts',
+    help='Skips generation of TypeScript definition files (.d.ts).',
+    action='store_true')
+
   parsed_args, commands = parser.parse_known_args(args)
+
+  # Make the dist/ folder, ignore errors.
+  base = shakaBuildHelpers.get_source_base()
+  try:
+    os.mkdir(os.path.join(base, 'dist'))
+  except OSError:
+    pass
 
   # Update node modules if needed.
   if not shakaBuildHelpers.update_node_modules():
@@ -356,11 +410,14 @@ def main(args):
     return 1
 
   name = parsed_args.name
+  langout = parsed_args.langout
   locales = parsed_args.locales
   force = parsed_args.force
   is_debug = parsed_args.mode == 'debug'
+  skip_ts = parsed_args.skip_ts
 
-  if not custom_build.build_library(name, locales, force, is_debug):
+  if not custom_build.build_library(name, langout, locales, force, is_debug,
+      skip_ts):
     return 1
 
   return 0

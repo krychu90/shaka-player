@@ -7,10 +7,8 @@
 
 goog.provide('shaka.ui.PlayButton');
 
-goog.require('shaka.ads.AdManager');
-goog.require('shaka.ui.Constants');
+goog.require('shaka.ads.Utils');
 goog.require('shaka.ui.Element');
-goog.require('shaka.ui.Locales');
 goog.require('shaka.ui.Localization');
 goog.require('shaka.util.Dom');
 goog.requireType('shaka.ui.Controls');
@@ -18,6 +16,7 @@ goog.requireType('shaka.ui.Controls');
 
 /**
  * @extends {shaka.ui.Element}
+ * @implements {shaka.extern.IUIPlayButton}
  * @export
  */
 shaka.ui.PlayButton = class extends shaka.ui.Element {
@@ -27,8 +26,6 @@ shaka.ui.PlayButton = class extends shaka.ui.Element {
    */
   constructor(parent, controls) {
     super(parent, controls);
-
-    const AdManager = shaka.ads.AdManager;
 
     /** @protected {!HTMLButtonElement} */
     this.button = shaka.util.Dom.createButton();
@@ -54,50 +51,77 @@ shaka.ui.PlayButton = class extends shaka.ui.Element {
       this.updateIcon();
     });
 
-    this.eventManager.listen(this.adManager, AdManager.AD_PAUSED, () => {
+    this.eventManager.listen(this.video, 'seeking', () => {
       this.updateAriaLabel();
       this.updateIcon();
     });
 
-    this.eventManager.listen(this.adManager, AdManager.AD_RESUMED, () => {
+    this.eventManager.listen(this.adManager, shaka.ads.Utils.AD_PAUSED, () => {
       this.updateAriaLabel();
       this.updateIcon();
     });
 
-    this.eventManager.listen(this.adManager, AdManager.AD_STARTED, () => {
+    this.eventManager.listen(this.adManager, shaka.ads.Utils.AD_RESUMED, () => {
+      this.updateAriaLabel();
+      this.updateIcon();
+    });
+
+    this.eventManager.listen(this.adManager, shaka.ads.Utils.AD_STARTED, () => {
+      this.updateAriaLabel();
+      this.updateIcon();
+    });
+
+    this.eventManager.listen(this.adManager, shaka.ads.Utils.AD_STOPPED, () => {
       this.updateAriaLabel();
       this.updateIcon();
     });
 
     this.eventManager.listen(this.button, 'click', () => {
-      if (this.ad) {
+      if (this.ad && this.ad.isLinear()) {
         this.controls.playPauseAd();
       } else {
         this.controls.playPausePresentation();
       }
     });
+
+    if (this.ad) {
+      // There was already an ad.
+      this.updateAriaLabel();
+      this.updateIcon();
+    }
   }
 
   /**
    * @return {boolean}
    * @protected
+   * @override
    */
   isPaused() {
-    if (this.ad) {
+    if (this.ad && this.ad.isLinear()) {
       return this.ad.isPaused();
     }
 
     return this.controls.presentationIsPaused();
   }
 
-  /** @protected */
-  updateAriaLabel() {
-    const LocIds = shaka.ui.Locales.Ids;
-    const label = this.isPaused() ? LocIds.PLAY : LocIds.PAUSE;
+  /**
+   * @return {boolean}
+   * @protected
+   * @override
+   */
+  isEnded() {
+    if (this.ad && this.ad.isLinear()) {
+      return false;
+    }
 
-    this.button.setAttribute(shaka.ui.Constants.ARIA_LABEL,
-        this.localization.resolve(label));
+    return this.video.ended;
   }
+
+  /**
+   * Called when the button's aria label needs to change.
+   * To be overridden by subclasses.
+   */
+  updateAriaLabel() {}
 
   /**
    * Called when the button's icon needs to change.

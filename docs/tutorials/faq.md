@@ -1,5 +1,12 @@
 # Frequently Asked Questions
 
+**Q:** Does Shaka Player support IE11?
+
+**A:** Shaka Player no longer supports IE11 beyond v3.1. If you need Shaka
+Player with IE support, checkout v3.0.x and previous versions.
+
+<hr>
+
 **Q:** My live stream is buffering forever or doesn't play.
 
 **A:** Check your time-sync.  In v1 we would adjust automatically to account for
@@ -7,8 +14,9 @@ bad content.  But now in v2, we don't.
 
 This requires setting up clock sync for live streams.  This can be done by
 adding a `<UTCTiming>` element to the manifest or by setting the
-[`.manifest.dash.clockSyncUri`][DashManifestConfiguration] configuration.
-See [#386(comment)][386] for more info.
+{@link shaka.extern.html.DashManifestConfiguration|
+`.manifest.dash.clockSyncUri`} configuration. See [#386(comment)][386] 
+for more info.
 
 We also have issues with "drifting" DASH streams.  If your encoder experiences
 drift, you may need to address that with the encoder.  We have plans to be
@@ -87,30 +95,6 @@ you see JSON, you will need to [unwrap the response][wrapping].
 
 <hr>
 
-**Q:** Why doesn't getStats() work in Safari?
-
-**A:** To play HLS content on Safari, we default to using Apple's native src=
-playback.  Since the browser handles playback, we don't get much information.
-
-If you want to disable native playback and use MediaSource playback instead,
-configure [`.streaming.useNativeHlsOnSafari`][StreamingConfiguration] to false.
-
-<hr>
-
-**Q:** Why doesn't my HLS content work?
-
-**A:** If your HLS content uses MPEG2-TS, you may need to enable transmuxing.
-The only browsers capable of playing TS natively are Edge and Chromecast.  You
-will get a `CONTENT_UNSUPPORTED_BY_BROWSER` error on other browsers due to
-their lack of TS support.
-
-You can enable transmuxing by [including mux.js][] v5.6.3+ in your application.
-If Shaka Player detects that mux.js has been loaded, we will use it to transmux
-TS content into MP4 on-the-fly, so that the content can be played by the
-browser.
-
-<hr>
-
 **Q:** Why does it take so long to switch to HD?
 
 **A:** When Shaka Player's `AbrManager` makes a decision to adapt, we don't
@@ -119,8 +103,8 @@ does not work consistently across browsers and created a bad experience.)
 
 This means that if you want to see the results of a new decision sooner, you
 should have a less aggressive buffering goal.  See the tutorial on [buffering
-configuration][buffering] and the docs for the
-[`.streaming.bufferingGoal`][StreamingConfiguration] configuration.
+configuration][buffering] and the docs for the {@link 
+shaka.extern.StreamingConfiguration|`.streaming.bufferingGoal`} configuration.
 
 Another factor is the segment size.  It may take up to 2 segments before Shaka
 Player has enough information to form a bandwidth estimate and make a decision.
@@ -128,8 +112,8 @@ If your content uses 10-second segments, this means we may buffer 20 seconds
 of low quality video before we make a decision.  If it is too late to change
 the segment size in your content library, you may want to adjust the "default"
 bandwidth estimate used by Shaka Player to select the first segments.  Use the
-[`.abr.defaultBandwidthEstimate`][AbrConfiguration] configuration to control
-these initial decisions.
+{@link shaka.extern.AbrConfiguration|`.abr.defaultBandwidthEstimate`} 
+configuration to control these initial decisions.
 
 <hr>
 
@@ -144,30 +128,23 @@ In other environments, for example Electron, it is appropriate.
 In those cases, before Shaka Player loads a manifest, you can register the
 existing http plugin for `file://` requests:
 ```js
-shaka.net.NetworkingEngine.registerScheme('file', shaka.net.HttpXHRPlugin);
+shaka.net.NetworkingEngine.registerScheme('file', shaka.net.HttpXHRPlugin.parse);
 ```
-
-<hr>
-
-**Q:** Why are my CEA-708 captions not showing on Edge or Chromecast?
-
-**A:** Our support for CEA-708 captions requires transmuxing the TS files that
-contain said captions.  Edge and Chromecast, however, have native TS support and
-thus are not required to transmux.
-In order to force those platforms to transmux, set the
-[`.streaming.forceTransmuxTS`][StreamingConfiguration] configuration to true.
 
 <hr>
 
 **Q:** Why do I get 404 errors with very large timescales?
 
-**A:** We can't handle content that creates timestamps too large to be
-represented as Numbers in JavaScript (2^53).  Very large timescales require very
-large timestamps (in timescale units), which means we are unable to substitute
-the correct values for `$Time$` in a `<SegmentTemplate>`.  [BigInteger.js][] is
-too large to become a required dependency for Shaka Player.
+**A:** Some content creates timestamps too large to be represented as Numbers
+in JavaScript (2^53).  Very large timescales require very large timestamps (in
+timescale units), which means we are unable to substitute the correct values
+for `$Time$` in a `<SegmentTemplate>`.
 
-We recommend reducing your timescale or avoiding `$Time` in `<SegmentTemplate>`.
+We can work around this for platforms that support [`BigInt`][], or in cases
+where we can live with a rounding error (not `$Time$` in `<SegmentTemplate>`).
+
+If you must use `$Time` in `<SegmentTemplate>` and you must play on devices
+that do not support [`BigInt`][], we recommend reducing your timescale.
 See discussion in [#1667][1667] for details.
 
 <hr>
@@ -180,8 +157,8 @@ For most content, this warning can be safely ignored (see
 <https://crbug.com/720013>).  If your content requires a specific robustness
 level, it is suggested to set it in the player configuration to ensure playback
 works: `.drm.advanced.<key_system>.audioRobustness` and
-`.drm.advanced.<key_system>.videoRobustness` (see
-[docs][AdvancedDrmConfiguration]).
+`.drm.advanced.<key_system>.videoRobustness` (see {@link 
+shaka.extern.AdvancedDrmConfiguration|docs}).
 
 <hr>
 
@@ -192,20 +169,23 @@ you can use the same top-level APIs; but we are dependent on the browser
 handling the streaming.  So we won't support DASH on iOS since the browser
 doesn't support it.
 
-We have another project called [Shaka Player Embedded][] that offers the same
-features and similar APIs for native apps on iOS.  This project uses its own
-media stack, which allows it to play content that would otherwise not be
-supported.  This supports both DASH and HLS manifests.
+In a future version, we plan to support `ManagedMediaSource` on iOS to achieve
+control over both DASH and HLS playback on iOS.  See [#5271][] and the
+[`ManagedMediaSource` W3C spec proposal][]
 
 <hr>
 
 **Q:** The Nightly Demo isn't loading for me!
 
 **A:** Are you looking at the uncompiled build with an AdBlocker enabled?
-We're rolling out ad support which is triggering some ad blockers to block
-requests for some of our source files. This only affects the uncompiled build.
+
+Some ad blockers decide to block requests for some of our source files simply
+because they have `ad` in the file name. This only affects the uncompiled
+build.
+
 Switch to the compiled build (add "build=compiled" to the url) or temporarily
-disable your ad blocker to see the nightly uncompiled mode.
+disable your ad blocker to see the nightly in uncompiled mode.
+
 Please note that if you want to test our ad logic, you might have to disable
 the ad blocker in compiled mode as well.
 
@@ -233,28 +213,65 @@ an HLS manifest, we do our best to guess what the codecs might be, but those
 guesses might not always be accurate.  If an HLS manifest has no codec
 information provided, we default to guessing that the video codec is
 `avc1.42E01E` and the audio codec is `mp4a.40.2`, which can cause problems if
-the stream is actually video-only or audio-only.  In this case, you can enable
-the [`.manifest.disableVideo`][ManifestConfiguration] or
-[`.manifest.disableAudio`][ManifestConfiguration] configurations to signal that
-your content does not have a video or audio stream.
+the stream is actually video-only or audio-only.
 
-[386]: https://github.com/google/shaka-player/issues/386#issuecomment-227898001
-[489]: https://github.com/google/shaka-player/issues/489#issuecomment-240466224
-[743]: https://github.com/google/shaka-player/issues/743
-[887]: https://github.com/google/shaka-player/issues/887
-[999]: https://github.com/google/shaka-player/issues/999
-[1667]: https://github.com/google/shaka-player/issues/1667
-[AbrConfiguration]: https://shaka-player-demo.appspot.com/docs/api/shaka.extern.html#.AbrConfiguration
-[AdvancedDrmConfiguration]: https://shaka-player-demo.appspot.com/docs/api/shaka.extern.html#.AdvancedDrmConfiguration
-[BigInteger.js]: https://github.com/peterolson/BigInteger.js
+To change our default assumptions about codecs in HLS, please see
+{@link shaka.extern.HlsManifestConfiguration|`.manifest.hls`} in the player
+config.
+
+<hr>
+
+**Q:** How can I make Shaka Player work with Vue?
+
+**A:** Currently, Shaka Player does not support being made into a Vue reactive
+object. When Vue wraps an object in a reactive Proxy, it
+{@link https://v3.vuejs.org/guide/reactivity.html#proxied-objects|also wraps
+nested objects}. This results in Vue converting some of our internal values into
+Proxy objects, which causes failures at load-time.
+If you want to use Shaka Player in Vue, avoid making it into a reactive object;
+so don't declare it using a ref(), and if you put your player instance into a
+data() object, you can prefix the property name with "$" or "_" to make Vue not
+proxy them.
+
+<hr>
+
+**Q:** My player keeps buffering after each chunk when streaming HLS live.
+
+**A:** It is recommended to have more than 3 chunks in your chunklist. If this
+is not possible, then you have to change the presentationDelay value. We offer
+the following configuration:
+
+```js
+player.configure('manifest.hls.liveSegmentsDelay', 1);
+```
+
+<hr>
+
+**Q:** Why can I not find the new version of Shaka Player on
+ajax.googleapis.com?
+
+**A:** When a new version of Shaka Player is released on GitHub, it has to
+undergo a brief manual review process before it can be uploaded to Google's
+servers. After approval, the upload process then usually takes several hours.
+Therefore it is not unusual for a day or two to pass before a new version of
+Shaka Player is hosted on Google's ajax.googleapis.com website. We ask for your
+patience in these matters.
+
+
+[386]: https://github.com/shaka-project/shaka-player/issues/386#issuecomment-227898001
+[489]: https://github.com/shaka-project/shaka-player/issues/489#issuecomment-240466224
+[743]: https://github.com/shaka-project/shaka-player/issues/743
+[887]: https://github.com/shaka-project/shaka-player/issues/887
+[999]: https://github.com/shaka-project/shaka-player/issues/999
+[1667]: https://github.com/shaka-project/shaka-player/issues/1667
+[#5271]: https://github.com/shaka-project/shaka-player/issues/5271
+[BigInt]: https://caniuse.com/bigint
 [CORS]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS
-[DashManifestConfiguration]: https://shaka-player-demo.appspot.com/docs/api/shaka.extern.html#.DashManifestConfiguration
-[Shaka Player Embedded]: https://github.com/google/shaka-player-embedded
-[StreamingConfiguration]: https://shaka-player-demo.appspot.com/docs/api/shaka.extern.html#.StreamingConfiguration
+[`ManagedMediaSource` W3C spec proposal]: https://github.com/w3c/media-source/issues/320
+[Shaka Player Embedded]: https://github.com/shaka-project/shaka-player-embedded
 [auth]: https://shaka-player-demo.appspot.com/docs/api/tutorial-license-server-auth.html
 [buffering]: https://shaka-player-demo.appspot.com/docs/api/tutorial-network-and-buffering-config.html
 [drm_tutorial]: https://shaka-player-demo.appspot.com/docs/api/tutorial-drm-config.html
 [eme_https]: https://sites.google.com/a/chromium.org/dev/Home/chromium-security/deprecating-powerful-features-on-insecure-origins
 [wrapping]: https://shaka-player-demo.appspot.com/docs/api/tutorial-license-wrapping.html
-[including mux.js]: https://github.com/google/shaka-player/blob/967f3399/demo/index.html#L39
-[ManifestConfiguration]: https://shaka-player-demo.appspot.com/docs/api/shaka.extern.html#.ManifestConfiguration
+[including mux.js]: https://github.com/shaka-project/shaka-player/blob/967f3399/demo/index.html#L39

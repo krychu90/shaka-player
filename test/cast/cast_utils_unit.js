@@ -4,22 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.Player');
-goog.require('shaka.cast.CastUtils');
-goog.require('shaka.media.MediaSourceEngine');
-goog.require('shaka.media.TimeRangesUtils');
-goog.require('shaka.test.FakeClosedCaptionParser');
-goog.require('shaka.test.FakeTextDisplayer');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.FakeEvent');
-goog.require('shaka.util.FakeEventTarget');
-goog.require('shaka.util.ManifestParserUtils');
-
 describe('CastUtils', () => {
   const CastUtils = shaka.cast.CastUtils;
   const FakeEvent = shaka.util.FakeEvent;
+
+  /** @type {shaka.extern.Stream} */
+  const fakeStream = shaka.test.StreamingEngineUtil.createMockVideoStream(1);
 
   it('includes every Player member', () => {
     const ignoredMembers = [
@@ -27,13 +17,24 @@ describe('CastUtils', () => {
       'getAdManager',  // Handled specially
       'getSharedConfiguration',  // Handled specially
       'getNetworkingEngine',  // Handled specially
+      'getDrmEngine',  // Handled specially
       'getMediaElement',  // Handled specially
       'setMaxHardwareResolution',
       'destroy',  // Should use CastProxy.destroy instead
+      'getAllThumbnails', // Too large to proxy.
       'drmInfo',  // Too large to proxy
       'getManifest', // Too large to proxy
       'getManifestParserFactory',  // Would not serialize.
       'setVideoContainer',
+      'getActiveSessionsMetadata',
+      'releaseAllMutexes', // Very specific to the inner workings of the player.
+      'detachAndSavePreload',
+      'unloadAndSavePreload',
+      'preload',
+      'destroyAllPreloads',
+      'getNonDefaultConfiguration',
+      'addFont',
+      'getFetchedPlaybackInfo',
 
       // Test helper methods (not @export'd)
       'createDrmEngine',
@@ -41,16 +42,14 @@ describe('CastUtils', () => {
       'createPlayhead',
       'createMediaSourceEngine',
       'createStreamingEngine',
+      'disableStream',
     ];
 
     const castMembers = CastUtils.PlayerVoidMethods
-        .concat(CastUtils.PlayerPromiseMethods);
-    for (const name in CastUtils.PlayerGetterMethods) {
-      castMembers.push(name);
-    }
-    for (const name in CastUtils.PlayerGetterMethodsThatRequireLive) {
-      castMembers.push(name);
-    }
+        .concat(CastUtils.PlayerPromiseMethods)
+        .concat(Object.keys(CastUtils.PlayerGetterMethods))
+        .concat(Object.keys(CastUtils.LargePlayerGetterMethods))
+        .concat(Object.keys(CastUtils.PlayerGetterMethodsThatRequireLive));
     // eslint-disable-next-line no-restricted-syntax
     const allPlayerMembers = Object.getOwnPropertyNames(shaka.Player.prototype);
     expect(
@@ -98,10 +97,7 @@ describe('CastUtils', () => {
     });
 
     it('transfers real Events', () => {
-      // new Event() is not usable on IE11:
-      const event =
-      /** @type {!CustomEvent} */ (document.createEvent('CustomEvent'));
-      event.initCustomEvent('myEventType', false, false, null);
+      const event = new CustomEvent('myEventType');
 
       // Properties that can definitely be transferred.
       const nativeProperties = [
@@ -129,7 +125,7 @@ describe('CastUtils', () => {
       expect(typeof deserialized).toBe('object');
 
       // The object can be used to construct a FakeEvent.
-      const fakeEvent = new FakeEvent(deserialized['type'], deserialized);
+      const fakeEvent = FakeEvent.fromRealEvent(deserialized);
 
       // The fake event has the same type and properties as the original.
       const asObj = /** @type {!Object} */ (fakeEvent);
@@ -189,7 +185,10 @@ describe('CastUtils', () => {
       }
     });
 
-    describe('TimeRanges', () => {
+    // Disable because these tests are flakey on ChromeLinux, and this whole
+    // module will be removed in
+    // https://github.com/shaka-project/shaka-player/issues/4214
+    xdescribe('TimeRanges', () => {
       /** @type {!HTMLVideoElement} */
       let video;
       /** @type {!shaka.util.EventManager} */
@@ -208,6 +207,7 @@ describe('CastUtils', () => {
         const fakeVideoStream = {
           mimeType: 'video/mp4',
           codecs: 'avc1.42c01e',
+          drmInfos: [],
         };
         const initSegmentUrl = '/base/test/test/assets/sintel-video-init.mp4';
         const videoSegmentUrl =
@@ -223,8 +223,14 @@ describe('CastUtils', () => {
 
         mediaSourceEngine = new shaka.media.MediaSourceEngine(
             video,
-            new shaka.test.FakeClosedCaptionParser(),
-            new shaka.test.FakeTextDisplayer());
+            new shaka.test.FakeTextDisplayer(),
+            {
+              getKeySystem: () => null,
+              onMetadata: () => {},
+            });
+        const config =
+            shaka.util.PlayerConfiguration.createDefault().mediaSource;
+        mediaSourceEngine.configure(config);
 
         const ContentType = shaka.util.ManifestParserUtils.ContentType;
         const initObject = new Map();
@@ -233,11 +239,11 @@ describe('CastUtils', () => {
         await mediaSourceEngine.init(initObject, false);
         const data = await shaka.test.Util.fetch(initSegmentUrl);
         await mediaSourceEngine.appendBuffer(
-            ContentType.VIDEO, data, null, null,
+            ContentType.VIDEO, data, null, fakeStream,
             /* hasClosedCaptions= */ false);
         const data2 = await shaka.test.Util.fetch(videoSegmentUrl);
         await mediaSourceEngine.appendBuffer(
-            ContentType.VIDEO, data2, null, null,
+            ContentType.VIDEO, data2, null, fakeStream,
             /* hasClosedCaptions= */ false);
       });
 

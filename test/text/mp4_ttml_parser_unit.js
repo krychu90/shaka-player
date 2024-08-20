@@ -4,16 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.test.Util');
-goog.require('shaka.text.Mp4TtmlParser');
-goog.require('shaka.util.BufferUtils');
-goog.require('shaka.util.Error');
-
 describe('Mp4TtmlParser', () => {
   const ttmlInitSegmentUri = '/base/test/test/assets/ttml-init.mp4';
   const ttmlSegmentUri = '/base/test/test/assets/ttml-segment.mp4';
   const ttmlSegmentMultipleMDATUri =
       '/base/test/test/assets/ttml-segment-multiplemdat.mp4';
+  const imscImageInitSegmentUri =
+      '/base/test/test/assets/imsc-image-init.cmft';
+  const imscImageSegmentUri =
+      '/base/test/test/assets/imsc-image-segment.cmft';
   const audioInitSegmentUri = '/base/test/test/assets/sintel-audio-init.mp4';
 
   /** @type {!Uint8Array} */
@@ -23,6 +22,10 @@ describe('Mp4TtmlParser', () => {
   /** @type {!Uint8Array} */
   let ttmlSegmentMultipleMDAT;
   /** @type {!Uint8Array} */
+  let imscImageInitSegment;
+  /** @type {!Uint8Array} */
+  let imscImageSegment;
+  /** @type {!Uint8Array} */
   let audioInitSegment;
 
   beforeAll(async () => {
@@ -30,12 +33,16 @@ describe('Mp4TtmlParser', () => {
       shaka.test.Util.fetch(ttmlInitSegmentUri),
       shaka.test.Util.fetch(ttmlSegmentUri),
       shaka.test.Util.fetch(ttmlSegmentMultipleMDATUri),
+      shaka.test.Util.fetch(imscImageInitSegmentUri),
+      shaka.test.Util.fetch(imscImageSegmentUri),
       shaka.test.Util.fetch(audioInitSegmentUri),
     ]);
     ttmlInitSegment = shaka.util.BufferUtils.toUint8(responses[0]);
     ttmlSegment = shaka.util.BufferUtils.toUint8(responses[1]);
     ttmlSegmentMultipleMDAT = shaka.util.BufferUtils.toUint8(responses[2]);
-    audioInitSegment = shaka.util.BufferUtils.toUint8(responses[3]);
+    imscImageInitSegment = shaka.util.BufferUtils.toUint8(responses[3]);
+    imscImageSegment = shaka.util.BufferUtils.toUint8(responses[4]);
+    audioInitSegment = shaka.util.BufferUtils.toUint8(responses[5]);
   });
 
   it('parses init segment', () => {
@@ -46,22 +53,32 @@ describe('Mp4TtmlParser', () => {
   it('handles media segments with multiple mdats', () => {
     const parser = new shaka.text.Mp4TtmlParser();
     parser.parseInit(ttmlInitSegment);
-    const time = {periodStart: 0, segmentStart: 0, segmentEnd: 0};
-    const ret = parser.parseMedia(ttmlSegmentMultipleMDAT, time);
-    expect(ret.length).toBe(20);
+    const time =
+        {periodStart: 0, segmentStart: 0, segmentEnd: 60, vttOffset: 0};
+    const ret = parser.parseMedia(ttmlSegmentMultipleMDAT, time, null);
+    // Bodies.
+    expect(ret.length).toBe(2);
+    // Divs.
+    expect(ret[0].nestedCues.length).toBe(1);
+    expect(ret[1].nestedCues.length).toBe(1);
+    // Cues.
+    expect(ret[0].nestedCues[0].nestedCues.length).toBe(10);
+    expect(ret[1].nestedCues[0].nestedCues.length).toBe(10);
   });
 
   it('accounts for offset', () => {
-    const time1 = {periodStart: 0, segmentStart: 0, segmentEnd: 0};
-    const time2 = {periodStart: 7, segmentStart: 0, segmentEnd: 0};
+    const time1 =
+        {periodStart: 0, segmentStart: 0, segmentEnd: 70, vttOffset: 0};
+    const time2 =
+        {periodStart: 7, segmentStart: 0, segmentEnd: 70, vttOffset: 7};
 
     const parser = new shaka.text.Mp4TtmlParser();
     parser.parseInit(ttmlInitSegment);
 
-    const ret1 = parser.parseMedia(ttmlSegment, time1);
+    const ret1 = parser.parseMedia(ttmlSegment, time1, null);
     expect(ret1.length).toBeGreaterThan(0);
 
-    const ret2 = parser.parseMedia(ttmlSegment, time2);
+    const ret2 = parser.parseMedia(ttmlSegment, time2, null);
     expect(ret2.length).toBeGreaterThan(0);
 
     expect(ret2[0].startTime).toBe(ret1[0].startTime + 7);
@@ -93,14 +110,24 @@ describe('Mp4TtmlParser', () => {
       {
         startTime: 27,
         endTime: 30.5,
-        payload: '...you have your robotics, and I\n'+
-            'just want to be awesome in space.',
+        nestedCues: [{
+          payload: '...you have your robotics, and I',
+        }, {
+          lineBreak: true,
+        }, {
+          payload: 'just want to be awesome in space.',
+        }],
       },
       {
         startTime: 30.8,
         endTime: 34,
-        payload: 'Why don\'t you just admit that\nyou\'re freaked out by my' +
-            ' robot hand?',
+        nestedCues: [{
+          payload: 'Why don\'t you just admit that',
+        }, {
+          lineBreak: true,
+        }, {
+          payload: 'you\'re freaked out by my robot hand?',
+        }],
       },
       {
         startTime: 34.5,
@@ -115,8 +142,13 @@ describe('Mp4TtmlParser', () => {
       {
         startTime: 38,
         endTime: 41,
-        payload: 'I\'m freaked out! I have nightmares\nthat I\'m being' +
-            ' chased...',
+        nestedCues: [{
+          payload: 'I\'m freaked out! I have nightmares',
+        }, {
+          lineBreak: true,
+        }, {
+          payload: 'that I\'m being chased...',
+        }],
       },
       {
         startTime: 41,
@@ -126,7 +158,13 @@ describe('Mp4TtmlParser', () => {
       {
         startTime: 42.2,
         endTime: 45,
-        payload: '"Fourty years later"\nWhatever, Thom. We\'re done.',
+        nestedCues: [{
+          payload: '"Fourty years later"',
+        }, {
+          lineBreak: true,
+        }, {
+          payload: 'Whatever, Thom. We\'re done.',
+        }],
       },
       {
         startTime: 50,
@@ -136,12 +174,24 @@ describe('Mp4TtmlParser', () => {
     ];
     const parser = new shaka.text.Mp4TtmlParser();
     parser.parseInit(ttmlInitSegment);
-    const time = {periodStart: 0, segmentStart: 0, segmentEnd: 0};
-    const result = parser.parseMedia(ttmlSegment, time);
-    verifyHelper(cues, result);
+    const time =
+        {periodStart: 0, segmentStart: 0, segmentEnd: 60, vttOffset: 0};
+    const result = parser.parseMedia(ttmlSegment, time, null);
+    shaka.test.TtmlUtils.verifyHelper(
+        cues, result, {startTime: 23, endTime: 53.5});
   });
 
-  function verifyHelper(/** !Array */ expected, /** !Array */ actual) {
-    expect(actual).toEqual(expected.map((c) => jasmine.objectContaining(c)));
-  }
+  it('handles IMSC1 (CMAF) image subtitle', () => {
+    const parser = new shaka.text.Mp4TtmlParser();
+    parser.parseInit(imscImageInitSegment);
+    const time =
+        {periodStart: 0, segmentStart: 0, segmentEnd: 60, vttOffset: 0};
+    const ret = parser.parseMedia(imscImageSegment, time, null);
+    // Bodies.
+    expect(ret.length).toBe(1);
+    // Divs.
+    expect(ret[0].nestedCues.length).toBe(1);
+    // Cues.
+    expect(ret[0].nestedCues[0].backgroundImage).toBeDefined();
+  });
 });

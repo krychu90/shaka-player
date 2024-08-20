@@ -11,6 +11,8 @@ goog.provide('shakaDemo.NumberInput');
 goog.provide('shakaDemo.SelectInput');
 goog.provide('shakaDemo.TextInput');
 
+goog.requireType('shakaDemo.InputContainer');
+
 /**
  * Creates and contains the MDL elements of a type of input.
  */
@@ -22,7 +24,7 @@ shakaDemo.Input = class {
    *   the input object.
    * @param {string} extraType The element type for the "sibling element" to the
    *   input object. If null, it adds no such element.
-   * @param {function(!HTMLInputElement)} onChange
+   * @param {function(!HTMLInputElement, !shakaDemo.Input)} onChange
    */
   constructor(parentContainer, inputType, containerType, extraType, onChange) {
     /** @private {!Element} */
@@ -33,8 +35,14 @@ shakaDemo.Input = class {
     this.input_ =
       /** @type {!HTMLInputElement} */(document.createElement(inputType));
     this.input_.onchange = () => {
-      onChange(this.input_);
+      onChange(this.input_, this);
     };
+    // <textarea> elements need to also react to 'input' events.
+    if (inputType == 'textarea') {
+      this.input_.oninput = () => {
+        onChange(this.input_, this);
+      };
+    }
     this.input_.id = shakaDemo.Input.generateNewId_('input');
     this.container_.appendChild(this.input_);
 
@@ -78,6 +86,17 @@ shakaDemo.Input = class {
     return this.extra_;
   }
 
+  /** @param {boolean} valid */
+  setValid(valid) {
+    if (valid) {
+      this.input_.setCustomValidity('');  // valid
+      this.container_.classList.remove('is-invalid');
+    } else {
+      this.input_.setCustomValidity('invalid');  // any message will do
+      this.container_.parentElement.classList.add('is-invalid');
+    }
+  }
+
   /**
   * @param {string} prefix
   * @return {string}
@@ -101,8 +120,8 @@ shakaDemo.Input.lastId_ = 0;
 shakaDemo.SelectInput = class extends shakaDemo.Input {
   /**
    * @param {!shakaDemo.InputContainer} parentContainer
-   * @param {?shakaDemo.MessageIds} name
-   * @param {function(!HTMLInputElement)} onChange
+   * @param {?string} name
+   * @param {function(!HTMLInputElement, !shakaDemo.Input)} onChange
    * @param {!Object.<string, string>} values
    */
   constructor(parentContainer, name, onChange, values) {
@@ -114,7 +133,7 @@ shakaDemo.SelectInput = class extends shakaDemo.Input {
     this.extra_.classList.add('mdl-textfield__label');
     this.extra_.setAttribute('for', this.input_.id);
     if (name) {
-      this.extra_.textContent = shakaDemoMain.getLocalizedString(name);
+      this.extra_.textContent = name;
     }
     for (const value of Object.keys(values)) {
       const option =
@@ -134,9 +153,10 @@ shakaDemo.BoolInput = class extends shakaDemo.Input {
   /**
    * @param {!shakaDemo.InputContainer} parentContainer
    * @param {string} name
-   * @param {function(!HTMLInputElement)} onChange
+   * @param {function(!HTMLInputElement, !shakaDemo.Input)} onChange
+   * @param {boolean=} showName
    */
-  constructor(parentContainer, name, onChange) {
+  constructor(parentContainer, name, onChange, showName) {
     super(parentContainer, 'input', 'label', 'span', onChange);
     this.input_.type = 'checkbox';
     this.container_.classList.add('mdl-switch');
@@ -145,6 +165,9 @@ shakaDemo.BoolInput = class extends shakaDemo.Input {
     this.container_.setAttribute('for', this.input_.id);
     this.input_.classList.add('mdl-switch__input');
     this.extra_.classList.add('mdl-switch__label');
+    if (name && showName) {
+      this.extra_.textContent = name;
+    }
   }
 };
 
@@ -156,10 +179,12 @@ shakaDemo.TextInput = class extends shakaDemo.Input {
   /**
    * @param {!shakaDemo.InputContainer} parentContainer
    * @param {string} name
-   * @param {function(!HTMLInputElement)} onChange
+   * @param {function(!HTMLInputElement, !shakaDemo.Input)} onChange
+   * @param {boolean=} isTextArea
    */
-  constructor(parentContainer, name, onChange) {
-    super(parentContainer, 'input', 'div', 'label', onChange);
+  constructor(parentContainer, name, onChange, isTextArea) {
+    super(parentContainer, isTextArea ? 'textarea' : 'input', 'div', 'label',
+        onChange);
     this.container_.classList.add('mdl-textfield');
     this.container_.classList.add('mdl-js-textfield');
     this.container_.classList.add('mdl-textfield--floating-label');
@@ -177,11 +202,11 @@ shakaDemo.DatalistInput = class extends shakaDemo.TextInput {
   /**
    * @param {!shakaDemo.InputContainer} parentContainer
    * @param {string} name
-   * @param {function(!HTMLInputElement)} onChange
+   * @param {function(!HTMLInputElement, !shakaDemo.Input)} onChange
    * @param {!Array.<string>} values
    */
   constructor(parentContainer, name, onChange, values) {
-    super(parentContainer, name, onChange);
+    super(parentContainer, name, onChange, /* isTextArea= */ false);
     // This element is not literally a datalist, as those are not supported on
     // all platforms (and they also have no MDL style support).
     // Instead, this is using the third-party "awesomplete" module, which acts
@@ -196,7 +221,7 @@ shakaDemo.DatalistInput = class extends shakaDemo.TextInput {
       awesomplete.evaluate();
     });
     this.input_.addEventListener('awesomplete-selectcomplete', () => {
-      onChange(this.input_);
+      onChange(this.input_, this);
     });
   }
 };
@@ -209,42 +234,44 @@ shakaDemo.NumberInput = class extends shakaDemo.TextInput {
   /**
    * @param {!shakaDemo.InputContainer} parentContainer
    * @param {string} name
-   * @param {function(!HTMLInputElement)} onChange
+   * @param {function(!HTMLInputElement, !shakaDemo.Input)} onChange
    * @param {boolean} canBeDecimal
    * @param {boolean} canBeZero
    * @param {boolean} canBeUnset
    */
   constructor(
       parentContainer, name, onChange, canBeDecimal, canBeZero, canBeUnset) {
-    super(parentContainer, name, onChange);
+    super(parentContainer, name, onChange, /* isTextArea= */ false);
     const error = document.createElement('span');
     error.classList.add('mdl-textfield__error');
     this.container_.appendChild(error);
 
-    const MessageIds = shakaDemo.MessageIds;
-    const localize = (name) => shakaDemoMain.getLocalizedString(name);
     if (canBeZero && canBeDecimal) {
-      error.textContent = localize(MessageIds.NUMBER_DECIMAL_WARNING);
+      error.textContent = 'Must be a positive number.';
     } else if (canBeZero) {
-      error.textContent = localize(MessageIds.NUMBER_INTEGER_WARNING);
+      error.textContent = 'Must be a positive integer.';
     } else if (canBeDecimal) {
-      error.textContent =
-          localize(MessageIds.NUMBER_NONZERO_DECIMAL_WARNING);
+      error.textContent = 'Must be a positive, nonzero number.';
     } else {
-      error.textContent =
-          localize(MessageIds.NUMBER_NONZERO_INTEGER_WARNING);
+      error.textContent = 'Must be a positive, nonzero integer.';
     }
 
     this.input_.pattern = '(Infinity|';
+
     if (canBeZero) {
-      this.input_.pattern += '[0-9]*';
-    } else {
-      this.input_.pattern += '[0-9]*[1-9][0-9]*';
+      this.input_.pattern += '0+|';
     }
+
+    this.input_.pattern += '([0-9]*[1-9][0-9]*)';
+
     if (canBeDecimal) {
+      // strictly allow for 0.xxxx decimals
+      this.input_.pattern += '?(0(?=.))?';
       // TODO: Handle commas as decimal delimeters, for appropriate regions?
       this.input_.pattern += '(.[0-9]+)?';
     }
+
+
     this.input_.pattern += ')';
     if (canBeUnset) {
       this.input_.pattern += '?';

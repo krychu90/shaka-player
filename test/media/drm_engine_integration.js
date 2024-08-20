@@ -4,32 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.media.DrmEngine');
-goog.require('shaka.media.MediaSourceEngine');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.FakeClosedCaptionParser');
-goog.require('shaka.test.FakeTextDisplayer');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.ManifestParserUtils');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.PublicPromise');
-
 describe('DrmEngine', () => {
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
 
-  // These come from Axinom and use the Axinom license server.
-  // TODO: Do not rely on third-party services long-term.
+  // These come from Axinom.
   const videoInitSegmentUri = '/base/test/test/assets/multidrm-video-init.mp4';
   const videoSegmentUri = '/base/test/test/assets/multidrm-video-segment.mp4';
   const audioInitSegmentUri = '/base/test/test/assets/multidrm-audio-init.mp4';
   const audioSegmentUri = '/base/test/test/assets/multidrm-audio-segment.mp4';
-
-  /** @type {!Object.<string, ?shaka.extern.DrmSupportType>} */
-  let support = {};
 
   /** @type {!HTMLVideoElement} */
   let video;
@@ -63,22 +45,23 @@ describe('DrmEngine', () => {
   /** @type {!ArrayBuffer} */
   let audioSegment;
 
+  /** @type {shaka.extern.Stream} */
+  const fakeStream = shaka.test.StreamingEngineUtil.createMockVideoStream(1);
+
   beforeAll(async () => {
     video = shaka.test.UiUtils.createVideoElement();
     document.body.appendChild(video);
 
     const responses = await Promise.all([
-      shaka.media.DrmEngine.probeSupport(),
       shaka.test.Util.fetch(videoInitSegmentUri),
       shaka.test.Util.fetch(videoSegmentUri),
       shaka.test.Util.fetch(audioInitSegmentUri),
       shaka.test.Util.fetch(audioSegmentUri),
     ]);
-    support = responses[0];
-    videoInitSegment = responses[1];
-    videoSegment = responses[2];
-    audioInitSegment = responses[3];
-    audioSegment = responses[4];
+    videoInitSegment = responses[0];
+    videoSegment = responses[1];
+    audioInitSegment = responses[2];
+    audioSegment = responses[3];
   });
 
   beforeEach(async () => {
@@ -88,19 +71,6 @@ describe('DrmEngine', () => {
     onEventSpy = jasmine.createSpy('onEvent');
 
     networkingEngine = new shaka.net.NetworkingEngine();
-    networkingEngine.registerRequestFilter((type, request) => {
-      if (type != shaka.net.NetworkingEngine.RequestType.LICENSE) {
-        return;
-      }
-
-      request.headers['X-AxDRM-Message'] = [
-        'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ2ZXJzaW9uIjoxLCJjb21fa2V5X2lk',
-        'IjoiNjllNTQwODgtZTllMC00NTMwLThjMWEtMWViNmRjZDBkMTRlIiwibWVzc2FnZSI6e',
-        'yJ0eXBlIjoiZW50aXRsZW1lbnRfbWVzc2FnZSIsImtleXMiOlt7ImlkIjoiNmU1YTFkMj',
-        'YtMjc1Ny00N2Q3LTgwNDYtZWFhNWQxZDM0YjVhIn1dfX0.yF7PflOPv9qHnu3ZWJNZ12j',
-        'gkqTabmwXbDWk_47tLNE',
-      ].join('');
-    });
 
     const playerInterface = {
       netEngine: networkingEngine,
@@ -113,22 +83,26 @@ describe('DrmEngine', () => {
     drmEngine = new shaka.media.DrmEngine(playerInterface);
     const config = shaka.util.PlayerConfiguration.createDefault().drm;
     config.servers['com.widevine.alpha'] =
-        'https://drm-widevine-licensing.axtest.net/AcquireLicense';
+        'https://cwip-shaka-proxy.appspot.com/specific_key?QGCoZYh4Qmecv5GuW64ecg=/DU0CDcxDMD7U96X4ipp4A';
     config.servers['com.microsoft.playready'] =
-        'https://drm-playready-licensing.axtest.net/AcquireLicense';
+        'https://test.playready.microsoft.com/service/rightsmanager.asmx?cfg=(kid:4060a865-8878-4267-9cbf-91ae5bae1e72,contentkey:/DU0CDcxDMD7U96X4ipp4A==,sl:150)';
+    config.preferredKeySystems = [
+      'com.widevine.alpha',
+      'com.microsoft.playready',
+    ];
     drmEngine.configure(config);
 
     manifest = shaka.test.ManifestGenerator.generate((manifest) => {
       manifest.addVariant(0, (variant) => {
         variant.addVideo(1, (stream) => {
           stream.encrypted = true;
-          stream.addDrmInfo('com.widevine.alpha');
           stream.addDrmInfo('com.microsoft.playready');
+          stream.addDrmInfo('com.widevine.alpha');
         });
         variant.addAudio(2, (stream) => {
           stream.encrypted = true;
-          stream.addDrmInfo('com.widevine.alpha');
           stream.addDrmInfo('com.microsoft.playready');
+          stream.addDrmInfo('com.widevine.alpha');
         });
       });
     });
@@ -140,8 +114,14 @@ describe('DrmEngine', () => {
 
     mediaSourceEngine = new shaka.media.MediaSourceEngine(
         video,
-        new shaka.test.FakeClosedCaptionParser(),
-        new shaka.test.FakeTextDisplayer());
+        new shaka.test.FakeTextDisplayer(),
+        {
+          getKeySystem: () => null,
+          onMetadata: () => {},
+        });
+    const mediaSourceConfig =
+        shaka.util.PlayerConfiguration.createDefault().mediaSource;
+    mediaSourceEngine.configure(mediaSourceConfig);
 
     const expectedObject = new Map();
     expectedObject.set(ContentType.AUDIO, audioStream);
@@ -161,11 +141,24 @@ describe('DrmEngine', () => {
     document.body.removeChild(video);
   });
 
-  function checkSupport() {
-    return support['com.widevine.alpha'] || support['com.microsoft.playready'];
+  function checkTrueDrmSupport() {
+    if (shaka.util.Platform.isXboxOne()) {
+      // Axinom won't issue a license for an Xbox One.  The error message from
+      // the license server says "Your DRM client's security level is 150, but
+      // the entitlement message requires 2000 or higher."
+      // TODO: Stop using Axinom's license server.  Use
+      // https://testweb.playready.microsoft.com/Server/ServiceQueryStringSyntax
+      return false;
+    }
+    return window['shakaSupport'].drm['com.widevine.alpha'] ||
+        window['shakaSupport'].drm['com.microsoft.playready'];
   }
 
-  filterDescribe('basic flow', checkSupport, () => {
+  function checkClearKeySupport() {
+    return window['shakaSupport'].drm['org.w3.clearkey'];
+  }
+
+  filterDescribe('basic flow', checkTrueDrmSupport, () => {
     drmIt('gets a license and can play encrypted segments', async () => {
       // The error callback should not be invoked.
       onErrorSpy.and.callFake(fail);
@@ -189,8 +182,11 @@ describe('DrmEngine', () => {
       eventManager.listen(video, 'encrypted', () => {
         encryptedEventSeen.resolve();
       });
+
       eventManager.listen(video, 'error', () => {
+        fail('MediaError message ' + video.error.message);
         fail('MediaError code ' + video.error.code);
+
         let extended = video.error.msExtendedCode;
         if (extended) {
           if (extended < 0) {
@@ -207,16 +203,17 @@ describe('DrmEngine', () => {
       });
 
       const variants = manifest.variants;
-
       await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
       await drmEngine.attach(video);
+
       await mediaSourceEngine.appendBuffer(
-          ContentType.VIDEO, videoInitSegment, null, null,
+          ContentType.VIDEO, videoInitSegment, null, fakeStream,
           /* hasClosedCaptions= */ false);
       await mediaSourceEngine.appendBuffer(
-          ContentType.AUDIO, audioInitSegment, null, null,
+          ContentType.AUDIO, audioInitSegment, null, fakeStream,
           /* hasClosedCaptions= */ false);
       await encryptedEventSeen;
+
       // With PlayReady, a persistent license policy can cause a different
       // chain of events.  In particular, the request is bypassed and we
       // get a usable key right away.
@@ -247,17 +244,20 @@ describe('DrmEngine', () => {
         }
       }
 
+      const reference = dummyReference(0, 10);
+
       await mediaSourceEngine.appendBuffer(
-          ContentType.VIDEO, videoSegment, null, null,
+          ContentType.VIDEO, videoSegment, reference, fakeStream,
           /* hasClosedCaptions= */ false);
       await mediaSourceEngine.appendBuffer(
-          ContentType.AUDIO, audioSegment, null, null,
+          ContentType.AUDIO, audioSegment, reference, fakeStream,
           /* hasClosedCaptions= */ false);
 
       expect(video.buffered.end(0)).toBeGreaterThan(0);
-      video.play();
+      await video.play();
 
       const waiter = new shaka.test.Waiter(eventManager).timeoutAfter(15);
+      waiter.setMediaSourceEngine(mediaSourceEngine);
       await waiter.waitForMovement(video);
 
       // Something should have played by now.
@@ -265,4 +265,102 @@ describe('DrmEngine', () => {
       expect(video.currentTime).toBeGreaterThan(0);
     });
   });  // describe('basic flow')
+
+  filterDescribe('ClearKey', checkClearKeySupport, () => {
+    drmIt('plays encrypted content with the ClearKey CDM', async () => {
+      // Configure DrmEngine for ClearKey playback.
+      const config = shaka.util.PlayerConfiguration.createDefault().drm;
+      config.clearKeys = {
+        // From https://github.com/Axinom/public-test-vectors/blob/master/README.md#v10
+        '4060a865887842679cbf91ae5bae1e72': 'fc35340837310cc0fb53de97e22a69e0',
+      };
+      drmEngine.configure(config);
+
+      // The error callback should not be invoked.
+      onErrorSpy.and.callFake(fail);
+
+      /** @type {!shaka.util.PublicPromise} */
+      const encryptedEventSeen = new shaka.util.PublicPromise();
+      eventManager.listen(video, 'encrypted', () => {
+        encryptedEventSeen.resolve();
+      });
+
+      eventManager.listen(video, 'error', () => {
+        fail('MediaError message ' + video.error.message);
+        fail('MediaError code ' + video.error.code);
+
+        let extended = video.error.msExtendedCode;
+        if (extended) {
+          if (extended < 0) {
+            extended += Math.pow(2, 32);
+          }
+          fail('MediaError msExtendedCode ' + extended.toString(16));
+        }
+      });
+
+      /** @type {!shaka.util.PublicPromise} */
+      const keyStatusEventSeen = new shaka.util.PublicPromise();
+      onKeyStatusSpy.and.callFake(() => {
+        keyStatusEventSeen.resolve();
+      });
+
+      const variants = manifest.variants;
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
+      await drmEngine.attach(video);
+
+      await mediaSourceEngine.appendBuffer(
+          ContentType.VIDEO, videoInitSegment, null, fakeStream,
+          /* hasClosedCaptions= */ false);
+      await mediaSourceEngine.appendBuffer(
+          ContentType.AUDIO, audioInitSegment, null, fakeStream,
+          /* hasClosedCaptions= */ false);
+      await encryptedEventSeen;
+
+      // Some platforms (notably 2017 Tizen TVs) do not fire key status
+      // events.
+      const keyStatusTimeout = shaka.test.Util.delay(5);
+      await Promise.race([keyStatusTimeout, keyStatusEventSeen]);
+
+      const call = onKeyStatusSpy.calls.mostRecent();
+      if (call) {
+        const map = /** @type {!Object} */ (call.args[0]);
+        expect(Object.keys(map).length).not.toBe(0);
+        for (const k in map) {
+          expect(map[k]).toBe('usable');
+        }
+      }
+
+      const reference = dummyReference(0, 10);
+
+      await mediaSourceEngine.appendBuffer(
+          ContentType.VIDEO, videoSegment, reference, fakeStream,
+          /* hasClosedCaptions= */ false);
+      await mediaSourceEngine.appendBuffer(
+          ContentType.AUDIO, audioSegment, reference, fakeStream,
+          /* hasClosedCaptions= */ false);
+
+      expect(video.buffered.end(0)).toBeGreaterThan(0);
+      await video.play();
+
+      const waiter = new shaka.test.Waiter(eventManager).timeoutAfter(15);
+      waiter.setMediaSourceEngine(mediaSourceEngine);
+      await waiter.waitForMovement(video);
+
+      // Something should have played by now.
+      expect(video.readyState).toBeGreaterThan(1);
+      expect(video.currentTime).toBeGreaterThan(0);
+    });
+  });  // describe('ClearKey')
+
+  function dummyReference(startTime, endTime) {
+    return new shaka.media.SegmentReference(
+        startTime, endTime,
+        /* uris= */ () => ['foo://bar'],
+        /* startByte= */ 0,
+        /* endByte= */ null,
+        /* initSegmentReference= */ null,
+        /* timestampOffset= */ 0,
+        /* appendWindowStart= */ 0,
+        /* appendWindowEnd= */ Infinity);
+  }
 });

@@ -7,7 +7,7 @@
 
 goog.provide('shaka.ui.PresentationTimeTracker');
 
-goog.require('shaka.ui.Constants');
+goog.require('shaka.ads.Utils');
 goog.require('shaka.ui.Controls');
 goog.require('shaka.ui.Element');
 goog.require('shaka.ui.Locales');
@@ -41,6 +41,10 @@ shaka.ui.PresentationTimeTracker = class extends shaka.ui.Element {
       }
     });
 
+    this.eventManager.listen(this.player, 'loading', () => {
+      shaka.ui.Utils.setDisplay(this.currentTime_, true);
+    });
+
     this.eventManager.listen(this.controls, 'timeandseekrangeupdated', () => {
       this.updateTime_();
     });
@@ -48,6 +52,16 @@ shaka.ui.PresentationTimeTracker = class extends shaka.ui.Element {
     this.eventManager.listen(this.player, 'trackschanged', () => {
       this.onTracksChanged_();
     });
+
+    this.eventManager.listen(
+        this.adManager, shaka.ads.Utils.AD_STARTED, () => {
+          shaka.ui.Utils.setDisplay(this.currentTime_, false);
+        });
+
+    this.eventManager.listen(
+        this.adManager, shaka.ads.Utils.AD_STOPPED, () => {
+          shaka.ui.Utils.setDisplay(this.currentTime_, true);
+        });
   }
 
   /** @private */
@@ -65,12 +79,14 @@ shaka.ui.PresentationTimeTracker = class extends shaka.ui.Element {
   updateTime_() {
     const isSeeking = this.controls.isSeeking();
     let displayTime = this.controls.getDisplayTime();
-    const duration = this.video.duration;
     const seekRange = this.player.seekRange();
     const seekRangeSize = seekRange.end - seekRange.start;
     const Utils = shaka.ui.Utils;
 
-    if (this.player.isLive()) {
+    if (!isFinite(seekRangeSize)) {
+      this.setValue_(this.localization.resolve(shaka.ui.Locales.Ids.LIVE));
+      this.currentTime_.disabled = true;
+    } else if (this.player.isLive()) {
       // The amount of time we are behind the live edge.
       const behindLive = Math.floor(seekRange.end - displayTime);
       displayTime = Math.max(0, behindLive);
@@ -90,11 +106,12 @@ shaka.ui.PresentationTimeTracker = class extends shaka.ui.Element {
         this.currentTime_.disabled = true;
       }
     } else {
-      const showHour = duration >= 3600;
+      const showHour = seekRangeSize >= 3600;
 
-      let value = Utils.buildTimeString(displayTime, showHour);
-      if (duration) {
-        value += ' / ' + Utils.buildTimeString(duration, showHour);
+      const currentTime = Math.max(0, displayTime - seekRange.start);
+      let value = Utils.buildTimeString(currentTime, showHour);
+      if (seekRangeSize) {
+        value += ' / ' + Utils.buildTimeString(seekRangeSize, showHour);
       }
       this.setValue_(value);
       this.currentTime_.disabled = true;
@@ -108,8 +125,7 @@ shaka.ui.PresentationTimeTracker = class extends shaka.ui.Element {
   onTracksChanged_() {
     if (this.player.isLive()) {
       const ariaLabel = shaka.ui.Locales.Ids.SKIP_TO_LIVE;
-      this.currentTime_.setAttribute(shaka.ui.Constants.ARIA_LABEL,
-          this.localization.resolve(ariaLabel));
+      this.currentTime_.ariaLabel = this.localization.resolve(ariaLabel);
     }
   }
 };

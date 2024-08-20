@@ -4,21 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.media.SegmentReference');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.Dash');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.AbortableOperation');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.LanguageUtils');
-goog.require('shaka.util.ManifestParserUtils');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.StringUtils');
-goog.requireType('shaka.dash.DashParser');
-
 // Test basic manifest parsing functionality.
 describe('DashParser Manifest', () => {
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
@@ -31,10 +16,23 @@ describe('DashParser Manifest', () => {
   let parser;
   /** @type {!jasmine.Spy} */
   let onEventSpy;
+  /** @type {!jasmine.Spy} */
+  let addFontSpy;
   /** @type {shaka.extern.ManifestParser.PlayerInterface} */
   let playerInterface;
   /** @type {!ArrayBuffer} */
   let mp4Index;
+
+  /** @type {string} */
+  const thumbnailScheme = 'http://dashif.org/guidelines/thumbnail_tile';
+  /**
+   * CICP scheme. parameter must be one of the following: "ColourPrimaries",
+   * "TransferCharacteristics", or "MatrixCoefficients".
+   *
+   * @param {string} parameter
+   * @return {string}
+   */
+  const cicpScheme = (parameter) => `urn:mpeg:mpegB:cicp:${parameter}`;
 
   beforeAll(async () => {
     mp4Index = await shaka.test.Util.fetch(mp4IndexSegmentUri);
@@ -44,15 +42,32 @@ describe('DashParser Manifest', () => {
     fakeNetEngine = new shaka.test.FakeNetworkingEngine();
     parser = shaka.test.Dash.makeDashParser();
     onEventSpy = jasmine.createSpy('onEvent');
+    addFontSpy = jasmine.createSpy('addFont');
     playerInterface = {
       networkingEngine: fakeNetEngine,
+      modifyManifestRequest: (request, manifestInfo) => {},
+      modifySegmentRequest: (request, segmentInfo) => {},
       filter: (manifest) => Promise.resolve(),
       makeTextStreamsForClosedCaptions: (manifest) => {},
       onTimelineRegionAdded: fail,  // Should not have any EventStream elements.
       onEvent: shaka.test.Util.spyFunc(onEventSpy),
       onError: fail,
       isLowLatencyMode: () => false,
+      isAutoLowLatencyMode: () => false,
+      enableLowLatencyMode: () => {},
+      updateDuration: () => {},
+      newDrmInfo: (stream) => {},
+      onManifestUpdated: () => {},
+      getBandwidthEstimate: () => 1e6,
+      onMetadata: () => {},
+      disableStream: (stream) => {},
+      addFont: shaka.test.Util.spyFunc(addFontSpy),
     };
+  });
+
+  afterEach(() => {
+    // Dash parser stop is synchronous.
+    parser.stop();
   });
 
   /**
@@ -118,7 +133,99 @@ describe('DashParser Manifest', () => {
     });
   }
 
-  describe('parses and inherits attributes', () => {
+  describe('parses and inherits attributes with sequenceMode', () => {
+    beforeEach(() => {
+      const config = shaka.util.PlayerConfiguration.createDefault().manifest;
+      config.dash.sequenceMode = true;
+      parser.configure(config);
+    });
+
+    makeTestsForEach(
+        [
+          '<MPD minBufferTime="PT75S">',
+          '  <Period id="1" duration="PT30S">',
+          '    <BaseURL>http://example.com</BaseURL>',
+        ],
+        [
+          '    <AdaptationSet contentType="video" mimeType="video/mp4"',
+          '        codecs="avc1.4d401f" frameRate="1000000/42000">',
+          '      <Representation bandwidth="100" width="768" height="576" />',
+          '      <Representation bandwidth="50" width="576" height="432" />',
+          '    </AdaptationSet>',
+          '    <AdaptationSet mimeType="text/vtt"',
+          '        lang="spa" label="spanish">',
+          '      <Role value="caption" />',
+          '      <Role value="main" />',
+          '      <Representation bandwidth="100" />',
+          '    </AdaptationSet>',
+          '    <AdaptationSet mimeType="audio/mp4" lang="en" ',
+          '                             codecs="mp4a.40.29">',
+          '      <Role value="main" />',
+          '      <Representation bandwidth="100" />',
+          '    </AdaptationSet>',
+          '  </Period>',
+          '</MPD>',
+        ],
+        shaka.test.ManifestGenerator.generate((manifest) => {
+          manifest.sequenceMode = true;
+          manifest.type = shaka.media.ManifestParser.DASH;
+          manifest.anyTimeline();
+          manifest.minBufferTime = 75;
+          manifest.addPartialVariant((variant) => {
+            variant.language = 'en';
+            variant.bandwidth = 200;
+            variant.primary = true;
+            variant.addPartialStream(ContentType.VIDEO, (stream) => {
+              stream.bandwidth = 100;
+              stream.frameRate = 1000000 / 42000;
+              stream.size(768, 576);
+              stream.mime('video/mp4', 'avc1.4d401f');
+            });
+            variant.addPartialStream(ContentType.AUDIO, (stream) => {
+              stream.bandwidth = 100;
+              stream.primary = true;
+              stream.roles = ['main'];
+              stream.mime('audio/mp4', 'mp4a.40.29');
+            });
+          });
+          manifest.addPartialVariant((variant) => {
+            variant.language = 'en';
+            variant.bandwidth = 150;
+            variant.primary = true;
+            variant.addPartialStream(ContentType.VIDEO, (stream) => {
+              stream.bandwidth = 50;
+              stream.frameRate = 1000000 / 42000;
+              stream.size(576, 432);
+              stream.mime('video/mp4', 'avc1.4d401f');
+            });
+            variant.addPartialStream(ContentType.AUDIO, (stream) => {
+              stream.bandwidth = 100;
+              stream.primary = true;
+              stream.roles = ['main'];
+              stream.mime('audio/mp4', 'mp4a.40.29');
+            });
+          });
+          manifest.addPartialTextStream((stream) => {
+            stream.language = 'es';
+            stream.originalLanguage = 'spa';
+            stream.label = 'spanish';
+            stream.primary = true;
+            stream.mimeType = 'text/vtt';
+            stream.bandwidth = 100;
+            stream.kind = 'caption';
+            stream.roles = ['caption', 'main'];
+          });
+        }));
+  });
+
+  describe('parses and inherits attributes without sequenceMode', () => {
+    beforeEach(() => {
+      const config = shaka.util.PlayerConfiguration.createDefault().manifest;
+      config.dash.sequenceMode = false;
+      parser.configure(config);
+    });
+
+
     makeTestsForEach(
         [
           '<MPD minBufferTime="PT75S">',
@@ -146,6 +253,8 @@ describe('DashParser Manifest', () => {
           '</MPD>',
         ],
         shaka.test.ManifestGenerator.generate((manifest) => {
+          manifest.sequenceMode = false;
+          manifest.type = shaka.media.ManifestParser.DASH;
           manifest.anyTimeline();
           manifest.minBufferTime = 75;
           manifest.addPartialVariant((variant) => {
@@ -192,42 +301,6 @@ describe('DashParser Manifest', () => {
             stream.roles = ['caption', 'main'];
           });
         }));
-  });
-
-  it('rejects periods after one without duration', async () => {
-    const periodContents = [
-      '    <AdaptationSet mimeType="video/mp4" lang="en" group="1">',
-      '      <Representation bandwidth="100">',
-      '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4">',
-      '          <SegmentTimeline>',
-      '            <S t="0" d="10" />',
-      '          </SegmentTimeline>',
-      '        </SegmentTemplate>',
-      '      </Representation>',
-      '    </AdaptationSet>',
-    ].join('\n');
-    const template = [
-      '<MPD mediaPresentationDuration="PT75S">',
-      '  <Period id="1">',
-      '%(periodContents)s',
-      '  </Period>',
-      '  <Period id="2">',
-      '%(periodContents)s',
-      '  </Period>',
-      '</MPD>',
-    ].join('\n');
-    const source = sprintf(template, {periodContents: periodContents});
-
-    fakeNetEngine.setResponseText('dummy://foo', source);
-    /** @type {shaka.extern.Manifest} */
-    const manifest = await parser.start('dummy://foo', playerInterface);
-    const video = manifest.variants[0].video;
-    await video.createSegmentIndex();
-
-    // The first period has a segment from 0-10.
-    // With the second period skipping, we should fail to find a segment at 10.
-    expect(video.segmentIndex.find(0)).not.toBe(null);
-    expect(video.segmentIndex.find(10)).toBe(null);
   });
 
   it('calculates Period times when missing', async () => {
@@ -378,15 +451,15 @@ describe('DashParser Manifest', () => {
         const stream1 = manifest.variants[0].video;
         const stream2 = manifest.variants[1].video;
 
-        const expectedClosedCaptions1 = new Map(
-            [['CC1', shaka.util.LanguageUtils.normalize('eng')],
-              ['CC3', shaka.util.LanguageUtils.normalize('swe')]]
-        );
+        const expectedClosedCaptions1 = new Map([
+          ['CC1', shaka.util.LanguageUtils.normalize('eng')],
+          ['CC3', shaka.util.LanguageUtils.normalize('swe')],
+        ]);
 
-        const expectedClosedCaptions2 = new Map(
-            [['svc1', shaka.util.LanguageUtils.normalize('bos')],
-              ['svc3', shaka.util.LanguageUtils.normalize('cze')]]
-        );
+        const expectedClosedCaptions2 = new Map([
+          ['svc1', shaka.util.LanguageUtils.normalize('bos')],
+          ['svc3', shaka.util.LanguageUtils.normalize('cze')],
+        ]);
         expect(stream1.closedCaptions).toEqual(expectedClosedCaptions1);
         expect(stream2.closedCaptions).toEqual(expectedClosedCaptions2);
       });
@@ -412,10 +485,10 @@ describe('DashParser Manifest', () => {
         /** @type {shaka.extern.Manifest} */
         const manifest = await parser.start('dummy://foo', playerInterface);
         const stream = manifest.variants[0].video;
-        const expectedClosedCaptions = new Map(
-            [['svc1', shaka.util.LanguageUtils.normalize('eng')],
-              ['svc3', shaka.util.LanguageUtils.normalize('swe')]]
-        );
+        const expectedClosedCaptions = new Map([
+          ['svc1', shaka.util.LanguageUtils.normalize('eng')],
+          ['svc3', shaka.util.LanguageUtils.normalize('swe')],
+        ]);
         expect(stream.closedCaptions).toEqual(expectedClosedCaptions);
       });
 
@@ -440,14 +513,14 @@ describe('DashParser Manifest', () => {
         /** @type {shaka.extern.Manifest} */
         const manifest = await parser.start('dummy://foo', playerInterface);
         const stream = manifest.variants[0].video;
-        const expectedClosedCaptions = new Map(
-            [['svc1', shaka.util.LanguageUtils.normalize('eng')],
-              ['svc2', shaka.util.LanguageUtils.normalize('swe')]]
-        );
+        const expectedClosedCaptions = new Map([
+          ['svc1', shaka.util.LanguageUtils.normalize('eng')],
+          ['svc2', shaka.util.LanguageUtils.normalize('swe')],
+        ]);
         expect(stream.closedCaptions).toEqual(expectedClosedCaptions);
       });
 
-  it('Detects E-AC3 JOC content by SupplementalProperty', async () => {
+  it('Detects spatial audio', async () => {
     const idUri = 'tag:dolby.com,2018:dash:EC3_ExtensionType:2018';
     const source = [
       '<MPD>',
@@ -468,7 +541,7 @@ describe('DashParser Manifest', () => {
     /** @type {shaka.extern.Manifest} */
     const manifest = await parser.start('dummy://foo', playerInterface);
     const stream = manifest.variants[0].audio;
-    expect(stream.mimeType).toBe('audio/eac3-joc');
+    expect(stream.spatialAudio).toBe(true);
   });
 
   it('correctly parses CEA-608 closed caption tags without channel numbers',
@@ -501,19 +574,17 @@ describe('DashParser Manifest', () => {
         const stream1 = manifest.variants[0].video;
         const stream2 = manifest.variants[1].video;
 
-        const expectedClosedCaptions1 = new Map(
-            [['CC1', shaka.util.LanguageUtils.normalize('eng')],
-              ['CC3', shaka.util.LanguageUtils.normalize('swe')]]
-        );
+        const expectedClosedCaptions1 = new Map([
+          ['CC1', shaka.util.LanguageUtils.normalize('eng')],
+          ['CC3', shaka.util.LanguageUtils.normalize('swe')],
+        ]);
 
-        const expectedClosedCaptions2 = new Map(
-            [
-              ['CC1', shaka.util.LanguageUtils.normalize('eng')],
-              ['CC2', shaka.util.LanguageUtils.normalize('swe')],
-              ['CC3', shaka.util.LanguageUtils.normalize('fre')],
-              ['CC4', shaka.util.LanguageUtils.normalize('pol')],
-            ]
-        );
+        const expectedClosedCaptions2 = new Map([
+          ['CC1', shaka.util.LanguageUtils.normalize('eng')],
+          ['CC2', shaka.util.LanguageUtils.normalize('swe')],
+          ['CC3', shaka.util.LanguageUtils.normalize('fre')],
+          ['CC4', shaka.util.LanguageUtils.normalize('pol')],
+        ]);
 
         expect(stream1.closedCaptions).toEqual(expectedClosedCaptions1);
         expect(stream2.closedCaptions).toEqual(expectedClosedCaptions2);
@@ -670,7 +741,7 @@ describe('DashParser Manifest', () => {
         '    value="http://foo.bar/date" />',
       ]);
 
-      fakeNetEngine.request.and.callFake((type, request) => {
+      fakeNetEngine.request.and.callFake((type, request, context) => {
         if (request.uris[0] == 'http://foo.bar/manifest') {
           const data = shaka.util.StringUtils.toUTF8(source);
           return shaka.util.AbortableOperation.completed({
@@ -845,36 +916,6 @@ describe('DashParser Manifest', () => {
   });
 
   describe('fails for', () => {
-    it('invalid XML', async () => {
-      const source = '<not XML';
-      const error = new shaka.util.Error(
-          shaka.util.Error.Severity.CRITICAL,
-          shaka.util.Error.Category.MANIFEST,
-          shaka.util.Error.Code.DASH_INVALID_XML,
-          'dummy://foo');
-      await Dash.testFails(source, error);
-    });
-
-    it('XML with inner errors', async () => {
-      const source = [
-        '<MPD minBufferTime="PT75S">',
-        '  <Period id="1" duration="PT30S">',
-        '    <AdaptationSet mimeType="video/mp4">',
-        '      <Representation bandwidth="1">',
-        '        <SegmentBase indexRange="100-200" />',
-        '      </Representation', // Missing a close bracket.
-        '    </AdaptationSet>',
-        '  </Period>',
-        '</MPD>',
-      ].join('\n');
-      const error = new shaka.util.Error(
-          shaka.util.Error.Severity.CRITICAL,
-          shaka.util.Error.Category.MANIFEST,
-          shaka.util.Error.Code.DASH_INVALID_XML,
-          'dummy://foo');
-      await Dash.testFails(source, error);
-    });
-
     it('xlink problems when xlinkFailGracefully is false', async () => {
       const source = [
         '<MPD minBufferTime="PT75S" xmlns="urn:mpeg:dash:schema:mpd:2011" ' +
@@ -948,7 +989,8 @@ describe('DashParser Manifest', () => {
 
     it('duplicate Representation ids with live', async () => {
       const source = [
-        '<MPD minBufferTime="PT75S" type="dynamic">',
+        '<MPD minBufferTime="PT75S" type="dynamic"',
+        '     availabilityStartTime="1970-01-01T00:00:00Z">',
         '  <Period id="1" duration="PT30S">',
         '    <AdaptationSet mimeType="video/mp4">',
         '      <Representation id="1" bandwidth="1">',
@@ -976,14 +1018,14 @@ describe('DashParser Manifest', () => {
       '<MPD minBufferTime="PT75S">',
       '  <Period id="1" duration="PT30S">',
       '    <AdaptationSet id="1" mimeType="video/mp4">',
-      '      <Representation bandwidth="1">',
+      '      <Representation bandwidth="1" codecs="avc1.4d401f">',
       '        <SegmentTemplate media="1.mp4" duration="1" />',
       '      </Representation>',
       '    </AdaptationSet>',
       '    <AdaptationSet id="2" mimeType="video/mp4">',
       '      <EssentialProperty value="1" ',
       '        schemeIdUri="http://dashif.org/guidelines/trickmode" />',
-      '      <Representation bandwidth="1">',
+      '      <Representation bandwidth="1" codecs="avc1.4d401f">',
       '        <SegmentTemplate media="2.mp4" duration="1" />',
       '      </Representation>',
       '    </AdaptationSet>',
@@ -1004,6 +1046,82 @@ describe('DashParser Manifest', () => {
       id: 2,
       type: shaka.util.ManifestParserUtils.ContentType.VIDEO,
     }));
+  });
+
+  it('trick-mode track with multiple AdaptationSet elements', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation bandwidth="1" codecs="avc1.4d401f">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation bandwidth="2" codecs="avc1.4d401f">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="video/mp4">',
+      '      <EssentialProperty value="1 2" ',
+      '        schemeIdUri="http://dashif.org/guidelines/trickmode" />',
+      '      <Representation bandwidth="1" codecs="avc1.4d401f">',
+      '        <SegmentTemplate media="2.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(2);
+    expect(manifest.textStreams.length).toBe(0);
+
+    const variant = manifest.variants[0];
+    const trickModeVideo = variant && variant.video &&
+                         variant.video.trickModeVideo;
+    expect(trickModeVideo).toEqual(jasmine.objectContaining({
+      id: 3,
+      type: shaka.util.ManifestParserUtils.ContentType.VIDEO,
+    }));
+
+    const variant2 = manifest.variants[1];
+    const trickModeVideo2 = variant2 && variant2.video &&
+                         variant2.video.trickModeVideo;
+    expect(trickModeVideo2).toEqual(jasmine.objectContaining({
+      id: 3,
+      type: shaka.util.ManifestParserUtils.ContentType.VIDEO,
+    }));
+  });
+
+  it('ignore incompatible trickmode tracks', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation bandwidth="1" codecs="avc1.4d401f">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <EssentialProperty value="1" ',
+      '        schemeIdUri="http://dashif.org/guidelines/trickmode" />',
+      '      <Representation bandwidth="1" codecs="foo">',
+      '        <SegmentTemplate media="2.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+    expect(manifest.textStreams.length).toBe(0);
+    expect(manifest.variants[0].video.trickModeVideo).toBeUndefined();
   });
 
   it('skips unrecognized EssentialProperty elements', async () => {
@@ -1038,6 +1156,46 @@ describe('DashParser Manifest', () => {
     const trickModeVideo = variant && variant.video &&
                          variant.video.trickModeVideo;
     expect(trickModeVideo).toBe(null);
+  });
+
+  it('populates groupId if configuration enabled', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" contentType="text">',
+      '      <Representation id="text-en" mimeType="text/webvtt">',
+      '        <BaseURL>t-en.vtt</BaseURL>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    const config = shaka.util.PlayerConfiguration.createDefault().manifest;
+    config.dash.enableAudioGroups = true;
+    parser.configure(config);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+
+
+    expect(manifest.variants.length).toBe(1);
+    const variant = manifest.variants[0];
+    expect(variant.audio.groupId).toBe('3');
   });
 
   it('sets contentType to text for embedded text mime types', async () => {
@@ -1163,7 +1321,8 @@ describe('DashParser Manifest', () => {
   });
 
   it('handles bandwidth of 0 or missing', async () => {
-    // Regression test for https://github.com/google/shaka-player/issues/938
+    // Regression test for
+    // https://github.com/shaka-project/shaka-player/issues/938
     const source = [
       '<MPD minBufferTime="PT75S">',
       '  <Period id="1" duration="PT30S">',
@@ -1286,6 +1445,24 @@ describe('DashParser Manifest', () => {
       // Results in null if the value is not a valid hex number.
       await testAudioChannelConfiguration(null,
           {'urn:dolby:dash:audio_channel_configuration:2011': 'x'});
+    });
+
+    it('parses MPEG channel configuration scheme', async () => {
+      // Parses a simple channel count.
+      await testAudioChannelConfiguration(2,
+          {'urn:mpeg:mpegB:cicp:ChannelConfiguration': '2'});
+
+      // Parses a high channel count.
+      await testAudioChannelConfiguration(24,
+          {'urn:mpeg:mpegB:cicp:ChannelConfiguration': '13'});
+
+      // Results in null if the value is not an integer.
+      await testAudioChannelConfiguration(null,
+          {'urn:mpeg:mpegB:cicp:ChannelConfiguration': 'foo'});
+
+      // Results in null if the value is not in a spec range.
+      await testAudioChannelConfiguration(null,
+          {'urn:mpeg:mpegB:cicp:ChannelConfiguration': '100'});
     });
 
     it('ignores unrecognized schemes', async () => {
@@ -1505,6 +1682,58 @@ describe('DashParser Manifest', () => {
     expect(minBufferTime).toBe(75);
   });
 
+  it('honors the ignoreMaxSegmentDuration config', async () => {
+    const manifestText = [
+      '<MPD maxSegmentDuration="PT5S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    const config = shaka.util.PlayerConfiguration.createDefault().manifest;
+    config.dash.ignoreMaxSegmentDuration = true;
+    parser.configure(config);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const maxSegmentDuration =
+        manifest.presentationTimeline.getMaxSegmentDuration();
+    expect(maxSegmentDuration).toBe(1);
+  });
+
+  it('gets manifest value if ignoreMaxSegmentDuration is false', async () => {
+    const manifestText = [
+      '<MPD maxSegmentDuration="PT5S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    const config = shaka.util.PlayerConfiguration.createDefault().manifest;
+    config.dash.ignoreMaxSegmentDuration = false;
+    parser.configure(config);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const maxSegmentDuration =
+        manifest.presentationTimeline.getMaxSegmentDuration();
+    expect(maxSegmentDuration).toBe(5);
+  });
+
   it('does not set presentationDelay to NaN', async () => {
     // NOTE: This is a regression test for #2015. It ensures that, if
     // ignoreMinBufferTime is true and there is no suggestedPresentationDelay,
@@ -1617,6 +1846,93 @@ describe('DashParser Manifest', () => {
     expect(manifest.presentationTimeline).toBeTruthy();
   });
 
+  it('Invokes manifestPreprocessorTXml in config', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet mimeType="text/vtt" lang="de">',
+      '      <Representation>',
+      '        <BaseURL>http://example.com/de.vtt</BaseURL>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    const config = shaka.util.PlayerConfiguration.createDefault().manifest;
+    config.dash.manifestPreprocessorTXml = (mpd) => {
+      /** @type {shaka.extern.xml.Node} */
+      const manifest = /** @type {shaka.extern.xml.Node} */ (
+        /** @type {shaka.extern.xml.Node} */(mpd).children[0]);
+      manifest.children = [
+        manifest.children[0],
+        manifest.children[1],
+      ];
+    };
+    parser.configure(config);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const stream = manifest.textStreams[0];
+    expect(stream).toBeUndefined();
+  });
+
+  it('reads accessibility purpose elements', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" contentType="text">',
+      '      <Accessibility ',
+      '          schemeIdUri="urn:tva:metadata:cs:AudioPurposeCS:2007"',
+      '          value="2" />',
+      '      <Representation id="text-en" mimeType="text/webvtt">',
+      '        <BaseURL>t-en.vtt</BaseURL>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="1" mimeType="audio/mp4">',
+      '      <Accessibility ',
+      '          schemeIdUri="urn:tva:metadata:cs:AudioPurposeCS:2007"',
+      '          value="1" />',
+      '      <Representation id="audio-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const textStream = manifest.textStreams[0];
+    expect(textStream.accessibilityPurpose).toBe(
+        shaka.media.ManifestParser.AccessibilityPurpose.HARD_OF_HEARING);
+    const variant = manifest.variants[0];
+    expect(variant.video.accessibilityPurpose).toBeUndefined();
+    expect(variant.audio.accessibilityPurpose).toBe(
+        shaka.media.ManifestParser.AccessibilityPurpose.VISUALLY_IMPAIRED);
+  });
+
   it('converts Accessibility element to "kind"', async () => {
     const manifestText = [
       '<MPD minBufferTime="PT75S">',
@@ -1649,6 +1965,357 @@ describe('DashParser Manifest', () => {
     expect(textStream.kind).toBe('caption');
   });
 
+  it('converts Roles element to "forced" (old role)', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" contentType="text">',
+      '      <Accessibility schemeIdUri="urn:mpeg:dash:role:2011" ',
+      '          value="captions" />',
+      '      <Accessibility schemeIdUri="urn:mpeg:dash:role:2011" ',
+      '          value="forced_subtitle" />',
+      '      <Accessibility schemeIdUri="foobar" value="bar" />',
+      '      <Representation id="text-en" mimeType="text/webvtt">',
+      '        <BaseURL>t-en.vtt</BaseURL>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const textStream = manifest.textStreams[0];
+    expect(textStream.roles).toEqual(['captions', 'forced_subtitle']);
+    expect(textStream.forced).toBe(true);
+  });
+
+  it('converts Roles element to "forced"', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" contentType="text">',
+      '      <Accessibility schemeIdUri="urn:mpeg:dash:role:2011" ',
+      '          value="captions" />',
+      '      <Accessibility schemeIdUri="urn:mpeg:dash:role:2011" ',
+      '          value="forced-subtitle" />',
+      '      <Accessibility schemeIdUri="foobar" value="bar" />',
+      '      <Representation id="text-en" mimeType="text/webvtt">',
+      '        <BaseURL>t-en.vtt</BaseURL>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const textStream = manifest.textStreams[0];
+    expect(textStream.roles).toEqual(['captions', 'forced-subtitle']);
+    expect(textStream.forced).toBe(true);
+  });
+
+  it('supports HDR signaling via profiles', async () => {
+    // (DASH-IF IOP v4.3 10.3.3.)
+    const hdrProfile =
+        'http://dashif.org/guidelines/dash-if-uhd#hevc-hdr-pq10';
+    const manifestText = [
+      `<MPD minBufferTime="PT75S" profiles="${hdrProfile}">`,
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation codecs="hvc1.2.4.L153.B0">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+    const stream = manifest.variants[0].video;
+    expect(stream.hdr).toBe('PQ');
+  });
+
+  it('supports HDR signaling via SupplementalProperty', async () => {
+    // (DASH-IF IOP v4.3 6.2.5.1.)
+    const hdrScheme = cicpScheme('TransferCharacteristics');
+    const pq = 16;
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      `      <SupplementalProperty schemeIdUri="${hdrScheme}" value="${pq}" />`,
+      '      <Representation codecs="hvc1.2.4.L150.90">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+    const stream = manifest.variants[0].video;
+    expect(stream.hdr).toBe('PQ');
+  });
+
+  it('supports SupplementalProperty MatrixCoefficients', async () => {
+    // (DASH-IF IOP v4.3 6.2.5.1.)
+    const scheme = cicpScheme('MatrixCoefficients');
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      `      <SupplementalProperty schemeIdUri="${scheme}" value="9" />`,
+      '      <Representation codecs="hvc1.2.4.L153.B0">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+  });
+
+  it('supports SupplementalProperty ColourPrimaries', async () => {
+    // (DASH-IF IOP v4.3 6.2.5.1.)
+    const scheme = cicpScheme('ColourPrimaries');
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      `      <SupplementalProperty schemeIdUri="${scheme}" value="9" />`,
+      '      <Representation codecs="hvc1.2.4.L153.B0">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+    const stream = manifest.variants[0].video;
+    expect(stream.colorGamut).toBe('rec2020');
+  });
+
+  it('supports HDR signaling via EssentialProperty', async () => {
+    // (DASH-IF IOP v4.3 6.2.5.1.)
+    const hdrScheme = cicpScheme('TransferCharacteristics');
+    const hlg = 18;
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      `      <EssentialProperty schemeIdUri="${hdrScheme}" value="${hlg}" />`,
+      '      <Representation codecs="hvc1.2.4.L153.B0">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+    const stream = manifest.variants[0].video;
+    expect(stream.hdr).toBe('HLG');
+  });
+
+  it('supports EssentialProperty MatrixCoefficients', async () => {
+    // (DASH-IF IOP v4.3 6.2.5.1.)
+    const hdrScheme = cicpScheme('MatrixCoefficients');
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      `      <EssentialProperty schemeIdUri="${hdrScheme}" value="9" />`,
+      '      <Representation codecs="hvc1.2.4.L153.B0">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+  });
+
+  it('supports EssentialProperty ColourPrimaries', async () => {
+    // (DASH-IF IOP v4.3 6.2.5.1.)
+    const hdrScheme = cicpScheme('ColourPrimaries');
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      `      <EssentialProperty schemeIdUri="${hdrScheme}" value="9" />`,
+      '      <Representation codecs="hvc1.2.4.L153.B0">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+  });
+
+  it('supports SDR signalling via EssentialProperty', async () => {
+    // (DASH-IF IOP v4.3 6.2.5.1.)
+    const scheme = cicpScheme('TransferCharacteristics');
+    const sdrValues = [1, 6, 13, 14, 15];
+    const manifestPromises = [];
+    for (const value of sdrValues) {
+      const manifestText = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="2" mimeType="video/mp4">',
+        `      <EssentialProperty schemeIdUri="${scheme}" value="${value}" />`,
+        '      <Representation codecs="avc1.640028">',
+        '        <BaseURL>v-sd.mp4</BaseURL>',
+        '        <SegmentBase indexRange="100-200" />',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '    <AdaptationSet id="3" mimeType="audio/mp4">',
+        '      <Representation id="audio-en">',
+        '        <BaseURL>a-en.mp4</BaseURL>',
+        '        <SegmentBase indexRange="100-200" />',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+      manifestPromises.push(parser.start('dummy://foo', playerInterface));
+    }
+    const manifests = await Promise.all(manifestPromises);
+    for (const manifest of manifests) {
+      expect(manifest.variants.length).toBe(1);
+      const stream = manifest.variants[0].video;
+      expect(stream.hdr).toBe('SDR');
+    }
+  });
+
+  it('signaling last segment number via SupplementalProperty', async () => {
+    // (DASH-IF IOP v4.3 4.4.3.6.)
+    const scheme = 'http://dashif.org/guidelines/last-segment-number';
+    const value = 368;
+    const manifestText = [
+      '<MPD minBufferTime="PT75S" type="static">',
+      '  <Period id="1" duration="PT0H12M14.167S">',
+      '    <AdaptationSet id="2">',
+      `      <SupplementalProperty schemeIdUri="${scheme}" value="${value}" />`,
+      '      <Representation codecs="avc1.640028" mimeType="video/mp4">',
+      '        <SegmentTemplate startNumber="1" media="m-$Number$.mp4"',
+      '          initialization="i.mp4" timescale="12288" duration="24576"/>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(1);
+    const stream = manifest.variants[0].video;
+    await stream.createSegmentIndex();
+    goog.asserts.assert(stream.segmentIndex, 'Null segmentIndex!');
+    expect(Array.from(stream.segmentIndex).length).toBe(367);
+  });
+
   it('Does not error when image adaptation sets are present', async () => {
     const manifestText = [
       '<MPD minBufferTime="PT75S">',
@@ -1666,6 +2333,11 @@ describe('DashParser Manifest', () => {
       '      </Representation>',
       '    </AdaptationSet>',
       '    <AdaptationSet contentType="image" id="3">',
+      '      <SegmentTemplate media="$Number$.jpg" ',
+      '        duration="2" startNumber="1"/>',
+      '      <Representation id="thumbnails" width="1024" height="1152">',
+      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line max-len
+      '      </Representation>',
       '    </AdaptationSet>',
       '  </Period>',
       '</MPD>',
@@ -1678,6 +2350,91 @@ describe('DashParser Manifest', () => {
     const variant = manifest.variants[0];
     expect(variant.audio).toBeTruthy();
     expect(variant.video).toBeTruthy();
+  });
+
+  it('parse single representation of image adaptation sets', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet contentType="image" id="3">',
+      '      <SegmentTemplate media="$Number$.jpg" ',
+      '        duration="2" startNumber="1"/>',
+      '      <Representation id="thumbnails" width="1024" height="1152">',
+      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line max-len
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.imageStreams.length).toBe(1);
+    expect(manifest.presentationTimeline.getMaxSegmentDuration()).toBe(1);
+    const imageStream = manifest.imageStreams[0];
+    expect(imageStream.width).toBe(1024);
+    expect(imageStream.height).toBe(1152);
+    expect(imageStream.tilesLayout).toBe('10x20');
+  });
+
+
+  it('parse multiple representation of image adaptation sets', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="3" mimeType="audio/mp4">',
+      '      <Representation id="audio-en">',
+      '        <BaseURL>a-en.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet contentType="image" id="3">',
+      '      <SegmentTemplate media="$Number$.jpg" ',
+      '        duration="2" startNumber="1"/>',
+      '      <Representation id="thumbnails" width="1024" height="1152">',
+      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line max-len
+      '      </Representation>',
+      '      <Representation id="thumbnails" width="2048" height="1152">',
+      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="20x20"/>`, // eslint-disable-line max-len
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.imageStreams.length).toBe(2);
+    const firstImageStream = manifest.imageStreams[0];
+    expect(firstImageStream.width).toBe(1024);
+    expect(firstImageStream.height).toBe(1152);
+    expect(firstImageStream.tilesLayout).toBe('10x20');
+    const secondImageStream = manifest.imageStreams[1];
+    expect(secondImageStream.width).toBe(2048);
+    expect(secondImageStream.height).toBe(1152);
+    expect(secondImageStream.tilesLayout).toBe('20x20');
   });
 
   // Regression #2650 in v3.0.0
@@ -1723,5 +2480,1042 @@ describe('DashParser Manifest', () => {
 
     expect(uri0).toBe('http://example.com/r0/1.mp4');
     expect(uri1).toBe('http://example.com/r1/1.mp4');
+  });
+
+  // b/179025415: A "future" period (past the segment availability window end)
+  // would cause us to generate bogus segment references for that period.  This
+  // would happen upon update (once per segment duration), but not on initial
+  // load.
+  it('creates no references for future Periods', async () => {
+    // Pretend the live stream started 10 seconds ago.  This is long enough to
+    // have segments (1s each), but not long enough to have segments in the
+    // second period (30s into the live stream).
+    const availabilityStartTimeMilliseconds = Date.now() - 10e3;
+    const availabilityStartTime =
+        (new Date(availabilityStartTimeMilliseconds)).toISOString();
+    const manifestText = [
+      `<MPD type="dynamic" availabilityStartTime="${availabilityStartTime}">`,
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <SegmentTemplate media="$Number$.mp4" duration="1" />',
+      '      <Representation id="3" width="640" height="480">',
+      '        <BaseURL>http://example.com/p1/</BaseURL>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '  <Period id="4" duration="PT30S">',
+      '    <AdaptationSet id="5" mimeType="video/mp4">',
+      '      <SegmentTemplate media="$Number$.mp4" duration="1" />',
+      '      <Representation id="6" width="640" height="480">',
+      '        <BaseURL>http://example.com/p2/</BaseURL>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+
+    const video0 = manifest.variants[0].video;
+    await video0.createSegmentIndex();
+
+    // Wait two segment durations, so that the updateEvery callback fires.
+    // In the original bug, we generated bogus references during update.
+    await shaka.test.Util.delay(2);
+
+    goog.asserts.assert(video0.segmentIndex, 'Null segmentIndex!');
+    const segments = Array.from(video0.segmentIndex);
+
+    // There should be some segments, but not more than the 30 that would appear
+    // in the complete first period.
+    expect(segments.length).toBeGreaterThan(0);
+    expect(segments.length).toBeLessThanOrEqual(30);
+
+    // We should also not find /p2/ (the second period URL) in any of them.
+    const segmentUris = segments.map((s) => s.getUris()[0]);
+    for (const uri of segmentUris) {
+      expect(uri).not.toContain('/p2/');
+    }
+  });
+
+  /**
+     * @param {!Array.<number>} periods Start time of multiple periods
+     * @return {string}
+     */
+  function buildManifestWithPeriodStartTime(periods) {
+    const mpdTemplate = [
+      `<MPD type="dynamic"`,
+      'availabilityStartTime="1970-01-01T00:00:00Z"',
+      'timeShiftBufferDepth="PT10H">',
+      '    %(periods)s',
+      '</MPD>',
+    ].join('\n');
+    const periodTemplate = (id, period, duration) => {
+      return [
+        `    <Period id="${id}" start="PT${period}S">`,
+        '        <AdaptationSet mimeType="video/mp4" lang="en" group="1">',
+        '            <SegmentTemplate startNumber="1" media="l-$Number$.mp4">',
+        '                <SegmentTimeline>',
+        `                    <S t="0" d="${duration}" />`,
+        '                </SegmentTimeline>',
+        '            </SegmentTemplate>',
+        '            <Representation id="1"/>',
+        '        </AdaptationSet>',
+        '    </Period>',
+      ].join('\n');
+    };
+    const periodXmls = periods.map((period, i) => {
+      const duration = i+1 === periods.length ? 10 : periods[i+1] - period;
+      // Period start time as ID here. If we use index then there will be
+      // periods with same period ID and different start time which are invalid.
+      return periodTemplate(period, period, duration);
+    });
+    return sprintf(mpdTemplate, {
+      periods: periodXmls.join('\n'),
+    });
+  }
+
+  // Bug description: Inconsistent period start time in the manifests due
+  // to failover triggered in backend servers
+
+  // When one of the servers is down, the manifest will be served by other
+  // redundant servers. The period start time might become out of sync
+  // during the switch-over/recovery.
+
+  it('skip periods that are earlier than max period start time', async () => {
+    const sources = [
+      buildManifestWithPeriodStartTime([5, 15]),
+      buildManifestWithPeriodStartTime([6, 15]), // simulate out-of-sync of +1s
+      buildManifestWithPeriodStartTime([4, 15]), // simulate out-of-sync of -1s
+    ];
+    const segments = [];
+
+    for (const source of sources) {
+      fakeNetEngine.setResponseText('dummy://foo', source);
+      /** @type {shaka.extern.Manifest} */
+      // eslint-disable-next-line no-await-in-loop
+      const manifest = await parser.start('dummy://foo', playerInterface);
+      const video = manifest.variants[0].video;
+      // eslint-disable-next-line no-await-in-loop
+      await video.createSegmentIndex();
+      goog.asserts.assert(video.segmentIndex, 'Null segmentIndex!');
+      segments.push(Array.from(video.segmentIndex));
+    }
+
+    // Expect identical segments
+    expect(segments[0].length).toBe(2);
+    expect(segments[1].length).toBe(2);
+    expect(segments[0][0].startTime).toBe(5);
+    expect(segments[1][0].startTime).toBe(5);
+    expect(segments[0][1].startTime).toBe(15);
+    expect(segments[1][1].startTime).toBe(15);
+  });
+
+  describe('Parses ServiceDescription', () => {
+    it('with PlaybackRate and Latency', async () => {
+      const source = [
+        '<MPD minBufferTime="PT75S" type="dynamic"',
+        '     availabilityStartTime="1970-01-01T00:00:00Z">',
+        '  <ServiceDescription id="0">',
+        '    <Latency max="4000" min="1000" referenceId="0" target="2000" />',
+        '    <PlaybackRate max="1.10" min="0.95" />',
+        '  </ServiceDescription>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', source);
+
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+
+      expect(manifest.serviceDescription.targetLatency).toBe(2);
+      expect(manifest.serviceDescription.maxLatency).toBe(4);
+      expect(manifest.serviceDescription.maxPlaybackRate).toBe(1.1);
+      expect(manifest.serviceDescription.minLatency).toBe(1);
+      expect(manifest.serviceDescription.minPlaybackRate).toBe(0.95);
+    });
+
+    it('and excludes missing attributes', async () => {
+      const source = [
+        '<MPD minBufferTime="PT75S" type="dynamic"',
+        '     availabilityStartTime="1970-01-01T00:00:00Z">',
+        '  <ServiceDescription id="0">',
+        '    <Latency referenceId="0" target="2000" />',
+        '    <PlaybackRate max="1.10" min="0.95" />',
+        '  </ServiceDescription>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', source);
+
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+
+      expect(manifest.serviceDescription.targetLatency).toBe(2);
+      expect(manifest.serviceDescription.maxLatency).toBeUndefined();
+      expect(manifest.serviceDescription.maxPlaybackRate).toBe(1.1);
+      expect(manifest.serviceDescription.minLatency).toBeUndefined();
+      expect(manifest.serviceDescription.minPlaybackRate).toBe(0.95);
+    });
+  });
+
+  it('parses urn:mpeg:dash:chaining:2016', async () => {
+    const source = [
+      '<MPD minBufferTime="PT75S" type="dynamic"',
+      '     availabilityStartTime="1970-01-01T00:00:00Z">',
+      '  <SupplementalProperty schemeIdUri="urn:mpeg:dash:chaining:2016"',
+      '    value="https://nextUrl" />',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', source);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+
+    expect(manifest.nextUrl).toBe('https://nextUrl');
+  });
+
+  it('parses urn:mpeg:dash:ssr:2023', async () => { // eslint-disable-line max-len
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation bandwidth="2" codecs="avc1.4d401f"',
+      '          height="1080" width="1920">',
+      '        <SegmentTemplate startNumber="1" media="l2-$Number$.mp4"',
+      '          initialization="init.mp4" timescale="50" duration="100">',
+      '          <SegmentTimeline>',
+      '            <S t="0" d="100"/>',
+      '            <S d="100"/>',
+      '          </SegmentTimeline>',
+      '        </SegmentTemplate>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <EssentialProperty value="video_primary" ',
+      '        schemeIdUri="urn:mpeg:dash:ssr:2023" />',
+      '      <Representation bandwidth="1" codecs="avc1.4d401f"',
+      '          height="720" width="1280">',
+      '        <SegmentTemplate startNumber="1"',
+      '          media="l-$Number$-p$SubNumber$.mp4"',
+      '          initialization="init.mp4" timescale="50" duration="100">',
+      '            <SegmentTimeline>',
+      '              <S t="0" d="100" k="4"/>',
+      '              <S d="100" k="4"/>',
+      '            </SegmentTimeline>',
+      '        </SegmentTemplate>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(2);
+
+    const normalStream = manifest.variants[0].video;
+    expect(normalStream.width).toBe(1920);
+    expect(normalStream.height).toBe(1080);
+    expect(normalStream.fastSwitching).toBe(false);
+    await normalStream.createSegmentIndex();
+    goog.asserts.assert(normalStream.segmentIndex != null,
+        'Null segmentIndex!');
+
+    const firstNormalReference = normalStream.segmentIndex.get(0);
+    expect(firstNormalReference.partialReferences.length).toBe(0);
+
+    const stream = manifest.variants[1].video;
+    expect(stream.width).toBe(1280);
+    expect(stream.height).toBe(720);
+    expect(stream.fastSwitching).toBe(true);
+    await stream.createSegmentIndex();
+    goog.asserts.assert(stream.segmentIndex != null,
+        'Null segmentIndex!');
+
+    const firstReference = stream.segmentIndex.get(0);
+    expect(firstReference.partialReferences.length).toBe(4);
+  });
+
+  describe('parses partial segments correctly', () => {
+    it('without cadence', async () => {
+      const manifestText = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="1" mimeType="video/mp4">',
+        '      <Representation bandwidth="1" codecs="avc1.4d401f">',
+        '        <SegmentTemplate startNumber="1"',
+        '          media="l-$Number$-p$SubNumber$.mp4"',
+        '          initialization="init.mp4" timescale="50" duration="100">',
+        '            <SegmentTimeline>',
+        '              <S t="0" d="100" k="4"/>',
+        '              <S d="100" k="4"/>',
+        '            </SegmentTimeline>',
+        '        </SegmentTemplate>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+      const stream = manifest.variants[0].video;
+      await stream.createSegmentIndex();
+      goog.asserts.assert(stream.segmentIndex != null, 'Null segmentIndex!');
+
+      const firstReference = stream.segmentIndex.get(0);
+      expect(firstReference.startTime).toBe(0);
+      expect(firstReference.endTime).toBe(2);
+      expect(firstReference.getUris()).toEqual([]);
+      expect(firstReference.partialReferences.length).toBe(4);
+      const firstPartialReference = firstReference.partialReferences[0];
+      expect(firstPartialReference.startTime).toBe(0);
+      expect(firstPartialReference.endTime).toBe(0.5);
+      expect(firstPartialReference.getUris())
+          .toEqual(['dummy://foo/l-1-p1.mp4']);
+      const secondPartialReference = firstReference.partialReferences[1];
+      expect(secondPartialReference.startTime).toBe(0.5);
+      expect(secondPartialReference.endTime).toBe(1);
+      expect(secondPartialReference.getUris())
+          .toEqual(['dummy://foo/l-1-p2.mp4']);
+      const thirdPartialReference = firstReference.partialReferences[2];
+      expect(thirdPartialReference.startTime).toBe(1);
+      expect(thirdPartialReference.endTime).toBe(1.5);
+      expect(thirdPartialReference.getUris())
+          .toEqual(['dummy://foo/l-1-p3.mp4']);
+      const fourthPartialReference = firstReference.partialReferences[3];
+      expect(fourthPartialReference.startTime).toBe(1.5);
+      expect(fourthPartialReference.endTime).toBe(2);
+      expect(fourthPartialReference.getUris())
+          .toEqual(['dummy://foo/l-1-p4.mp4']);
+    });
+
+    it('with cadence equal to 1', async () => {
+      const manifestText = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="1" mimeType="video/mp4">',
+        '      <Representation bandwidth="1" codecs="avc1.4d401f">',
+        '        <SegmentTemplate startNumber="1"',
+        '          media="l-$Number$-p$SubNumber$.mp4"',
+        '          initialization="init.mp4" timescale="50" duration="100">',
+        '            <SegmentTimeline>',
+        '              <S t="0" d="100" k="4"/>',
+        '              <S d="100" k="4"/>',
+        '            </SegmentTimeline>',
+        '        </SegmentTemplate>',
+        '        <SegmentSequenceProperties>',
+        '          <SAP type="1" cadence="1" />',
+        '        </SegmentSequenceProperties>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+      const stream = manifest.variants[0].video;
+      await stream.createSegmentIndex();
+      goog.asserts.assert(stream.segmentIndex != null, 'Null segmentIndex!');
+
+      const firstReference = stream.segmentIndex.get(0);
+      const firstPartialReference = firstReference.partialReferences[0];
+      expect(firstPartialReference.isIndependent()).toBeTruthy();
+      const secondPartialReference = firstReference.partialReferences[1];
+      expect(secondPartialReference.isIndependent()).toBeTruthy();
+      const thirdPartialReference = firstReference.partialReferences[2];
+      expect(thirdPartialReference.isIndependent()).toBeTruthy();
+      const fourthPartialReference = firstReference.partialReferences[3];
+      expect(fourthPartialReference.isIndependent()).toBeTruthy();
+    });
+
+    it('with cadence equal to 2', async () => {
+      const manifestText = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="1" mimeType="video/mp4">',
+        '      <Representation bandwidth="1" codecs="avc1.4d401f">',
+        '        <SegmentTemplate startNumber="1"',
+        '          media="l-$Number$-p$SubNumber$.mp4"',
+        '          initialization="init.mp4" timescale="50" duration="100">',
+        '            <SegmentTimeline>',
+        '              <S t="0" d="100" k="4"/>',
+        '              <S d="100" k="4"/>',
+        '            </SegmentTimeline>',
+        '        </SegmentTemplate>',
+        '        <SegmentSequenceProperties>',
+        '          <SAP type="1" cadence="2" />',
+        '        </SegmentSequenceProperties>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+      const stream = manifest.variants[0].video;
+      await stream.createSegmentIndex();
+      goog.asserts.assert(stream.segmentIndex != null, 'Null segmentIndex!');
+
+      const firstReference = stream.segmentIndex.get(0);
+      const firstPartialReference = firstReference.partialReferences[0];
+      expect(firstPartialReference.isIndependent()).toBeTruthy();
+      const secondPartialReference = firstReference.partialReferences[1];
+      expect(secondPartialReference.isIndependent()).toBeFalsy();
+      const thirdPartialReference = firstReference.partialReferences[2];
+      expect(thirdPartialReference.isIndependent()).toBeTruthy();
+      const fourthPartialReference = firstReference.partialReferences[3];
+      expect(fourthPartialReference.isIndependent()).toBeFalsy();
+    });
+
+    it('with SegmentTemplate and $Number$', async () => {
+      const manifestText = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="1" mimeType="video/mp4">',
+        '      <Representation bandwidth="1" codecs="avc1.4d401f">',
+        '        <SegmentTemplate startNumber="1" k="4"',
+        '          media="l-$Number$-p$SubNumber$.mp4"',
+        '          initialization="init.mp4" timescale="50" duration="100">',
+        '        </SegmentTemplate>',
+        '        <SegmentSequenceProperties>',
+        '          <SAP type="1" cadence="1" />',
+        '        </SegmentSequenceProperties>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+      const stream = manifest.variants[0].video;
+      await stream.createSegmentIndex();
+      goog.asserts.assert(stream.segmentIndex != null, 'Null segmentIndex!');
+
+      const firstReference = stream.segmentIndex.get(0);
+      const firstPartialReference = firstReference.partialReferences[0];
+      expect(firstPartialReference.isIndependent()).toBeTruthy();
+      const secondPartialReference = firstReference.partialReferences[1];
+      expect(secondPartialReference.isIndependent()).toBeTruthy();
+      const thirdPartialReference = firstReference.partialReferences[2];
+      expect(thirdPartialReference.isIndependent()).toBeTruthy();
+      const fourthPartialReference = firstReference.partialReferences[3];
+      expect(fourthPartialReference.isIndependent()).toBeTruthy();
+    });
+  });
+
+  describe('supports ContentSteering', () => {
+    it('with defaultServiceLocation', async () => {
+      const manifestText = [
+        '<MPD type="static">',
+        '  <BaseURL serviceLocation="a">http://example.com/r0/</BaseURL>',
+        '  <BaseURL serviceLocation="b">http://example.com/r1/</BaseURL>',
+        '  <ContentSteering defaultServiceLocation="a,b" ',
+        'queryBeforeStart="true">http://contentsteering</ContentSteering>',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="2" mimeType="video/mp4">',
+        '      <SegmentTemplate media="$Number$.mp4" startNumber="1">',
+        '        <SegmentTimeline>',
+        '          <S t="0" d="30" />',
+        '        </SegmentTimeline>',
+        '      </SegmentTemplate>',
+        '      <Representation id="video-sd" width="640" height="480">',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+      const contentSteering = JSON.stringify({
+        'VERSION': 1,
+        'TTL': 1,
+        'RELOAD-URI': 'http://contentsteering/update',
+        'PATHWAY-PRIORITY': [],
+      });
+
+      fakeNetEngine.setResponseText('http://contentsteering', contentSteering);
+
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+
+      const video0 = manifest.variants[0].video;
+      await video0.createSegmentIndex();
+      goog.asserts.assert(video0.segmentIndex, 'Null segmentIndex!');
+      const segment0 = Array.from(video0.segmentIndex)[0];
+      const uri0 = segment0.getUris()[0];
+      const uri1 = segment0.getUris()[1];
+
+      expect(uri0).toBe('http://example.com/r0/1.mp4');
+      expect(uri1).toBe('http://example.com/r1/1.mp4');
+    });
+
+    it('without defaultServiceLocation', async () => {
+      const manifestText = [
+        '<MPD type="static">',
+        '  <BaseURL serviceLocation="a">http://example.com/r0/</BaseURL>',
+        '  <BaseURL serviceLocation="b">http://example.com/r1/</BaseURL>',
+        '  <ContentSteering',
+        'queryBeforeStart="true">http://contentsteering</ContentSteering>',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="2" mimeType="video/mp4">',
+        '      <SegmentTemplate media="$Number$.mp4" startNumber="1">',
+        '        <SegmentTimeline>',
+        '          <S t="0" d="30" />',
+        '        </SegmentTimeline>',
+        '      </SegmentTemplate>',
+        '      <Representation id="video-sd" width="640" height="480">',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+      const contentSteering = JSON.stringify({
+        'VERSION': 1,
+        'TTL': 1,
+        'RELOAD-URI': 'http://contentsteering/update',
+        'PATHWAY-PRIORITY': [
+          'b',
+          'a',
+        ],
+      });
+
+      fakeNetEngine.setResponseText('http://contentsteering', contentSteering);
+
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+
+      const video0 = manifest.variants[0].video;
+      await video0.createSegmentIndex();
+      goog.asserts.assert(video0.segmentIndex, 'Null segmentIndex!');
+      const segment0 = Array.from(video0.segmentIndex)[0];
+      const uri0 = segment0.getUris()[0];
+      const uri1 = segment0.getUris()[1];
+
+      expect(uri0).toBe('http://example.com/r1/1.mp4');
+      expect(uri1).toBe('http://example.com/r0/1.mp4');
+    });
+
+    it('with queryBeforeStart', async () => {
+      const manifestText = [
+        '<MPD type="static">',
+        '  <BaseURL serviceLocation="a">http://example.com/r0/</BaseURL>',
+        '  <BaseURL serviceLocation="b">http://example.com/r1/</BaseURL>',
+        '  <ContentSteering defaultServiceLocation="b" ',
+        'queryBeforeStart="true">http://contentsteering</ContentSteering>',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="2" mimeType="video/mp4">',
+        '      <SegmentTemplate media="$Number$.mp4" startNumber="1">',
+        '        <SegmentTimeline>',
+        '          <S t="0" d="30" />',
+        '        </SegmentTimeline>',
+        '      </SegmentTemplate>',
+        '      <Representation id="video-sd" width="640" height="480">',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+      const contentSteering = JSON.stringify({
+        'VERSION': 1,
+        'TTL': 1,
+        'RELOAD-URI': 'http://contentsteering/update',
+        'PATHWAY-PRIORITY': [
+          'a',
+        ],
+      });
+
+      fakeNetEngine.setResponseText('http://contentsteering', contentSteering);
+
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+
+      const video0 = manifest.variants[0].video;
+      await video0.createSegmentIndex();
+      goog.asserts.assert(video0.segmentIndex, 'Null segmentIndex!');
+      const segment0 = Array.from(video0.segmentIndex)[0];
+      expect(segment0.getUris().length).toBe(1);
+      const uri0 = segment0.getUris()[0];
+
+      expect(uri0).toBe('http://example.com/r0/1.mp4');
+    });
+
+    it('without queryBeforeStart', async () => {
+      const manifestText = [
+        '<MPD type="static">',
+        '  <BaseURL serviceLocation="a">http://example.com/r0/</BaseURL>',
+        '  <BaseURL serviceLocation="b">http://example.com/r1/</BaseURL>',
+        '  <ContentSteering defaultServiceLocation="b">',
+        'http://contentsteering</ContentSteering>',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="2" mimeType="video/mp4">',
+        '      <SegmentTemplate media="$Number$.mp4" startNumber="1">',
+        '        <SegmentTimeline>',
+        '          <S t="0" d="30" />',
+        '        </SegmentTimeline>',
+        '      </SegmentTemplate>',
+        '      <Representation id="video-sd" width="640" height="480">',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+      fakeNetEngine.setResponseText('http://contentsteering', 'foo');
+
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+
+      const video0 = manifest.variants[0].video;
+      await video0.createSegmentIndex();
+      goog.asserts.assert(video0.segmentIndex, 'Null segmentIndex!');
+      const segment0 = Array.from(video0.segmentIndex)[0];
+      expect(segment0.getUris().length).toBe(1);
+      const uri0 = segment0.getUris()[0];
+
+      expect(uri0).toBe('http://example.com/r1/1.mp4');
+    });
+
+    it('without serviceLocation in BaseURL', async () => {
+      const manifestText = [
+        '<MPD type="static">',
+        '  <BaseURL>http://example.com/r0/</BaseURL>',
+        '  <BaseURL>http://example.com/r1/</BaseURL>',
+        '  <ContentSteering',
+        'queryBeforeStart="true">http://contentsteering</ContentSteering>',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="2" mimeType="video/mp4">',
+        '      <SegmentTemplate media="$Number$.mp4" startNumber="1">',
+        '        <SegmentTimeline>',
+        '          <S t="0" d="30" />',
+        '        </SegmentTimeline>',
+        '      </SegmentTemplate>',
+        '      <Representation id="video-sd" width="640" height="480">',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+      fakeNetEngine.setResponseText('http://contentsteering', 'foo');
+
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+
+      const video0 = manifest.variants[0].video;
+      await video0.createSegmentIndex();
+      goog.asserts.assert(video0.segmentIndex, 'Null segmentIndex!');
+      const segment0 = Array.from(video0.segmentIndex)[0];
+      const uri0 = segment0.getUris()[0];
+      const uri1 = segment0.getUris()[1];
+
+      expect(uri0).toBe('http://example.com/r0/1.mp4');
+      expect(uri1).toBe('http://example.com/r1/1.mp4');
+    });
+
+    it('specify MPD BaseURL and AdaptationSet BaseURL', async () => {
+      const manifestText = [
+        '<MPD type="static">',
+        '  <BaseURL serviceLocation="a">http://example.com/r0/</BaseURL>',
+        '  <BaseURL serviceLocation="b">http://example.com/r1/</BaseURL>',
+        '  <ContentSteering defaultServiceLocation="a,b" ',
+        'queryBeforeStart="true">http://contentsteering</ContentSteering>',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet id="2" mimeType="video/mp4">',
+        '      <SegmentTemplate media="$Number$.mp4" startNumber="1">',
+        '        <SegmentTimeline>',
+        '          <S t="0" d="30" />',
+        '        </SegmentTimeline>',
+        '      </SegmentTemplate>',
+        '      <Representation id="video-sd" width="640" height="480">',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '    <AdaptationSet id="3" mimeType="audio/mp4">',
+        '      <BaseURL serviceLocation="c">http://example.foo/r0/</BaseURL>',
+        '      <BaseURL serviceLocation="d">http://example.foo/r1/</BaseURL>',
+        '      <SegmentTemplate media="$Number$.mp4" startNumber="1">',
+        '        <SegmentTimeline>',
+        '          <S t="0" d="30" />',
+        '        </SegmentTimeline>',
+        '      </SegmentTemplate>',
+        '      <Representation id="audio">',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+      const contentSteering = JSON.stringify({
+        'VERSION': 1,
+        'TTL': 1,
+        'RELOAD-URI': 'http://contentsteering/update',
+        'PATHWAY-PRIORITY': [
+          'a',
+          'c',
+        ],
+      });
+
+      fakeNetEngine.setResponseText('http://contentsteering', contentSteering);
+
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo', playerInterface);
+
+      const video0 = manifest.variants[0].video;
+      await video0.createSegmentIndex();
+      goog.asserts.assert(video0.segmentIndex, 'Null segmentIndex!');
+      const videoSegment0 = Array.from(video0.segmentIndex)[0];
+      expect(videoSegment0.getUris().length).toBe(1);
+      const videoUri0 = videoSegment0.getUris()[0];
+
+      expect(videoUri0).toBe('http://example.com/r0/1.mp4');
+
+      const audio0 = manifest.variants[0].audio;
+      await audio0.createSegmentIndex();
+      goog.asserts.assert(audio0.segmentIndex, 'Null segmentIndex!');
+      const audioSegment0 = Array.from(audio0.segmentIndex)[0];
+      expect(audioSegment0.getUris().length).toBe(1);
+      const audioUri0 = audioSegment0.getUris()[0];
+
+      expect(audioUri0).toBe('http://example.foo/r0/1.mp4');
+    });
+  });
+
+  it('counts gaps', async () => {
+    const manifestText = [
+      '<MPD type="static">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation id="video" bandwidth="1">',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '  <Period id="2" start="PT31S" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation id="video" bandwidth="1">',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.gapCount).toBe(1);
+  });
+
+  it('supports dvb fonts', async () => {
+    const manifestText = [
+      '<MPD type="static">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <SupplementalProperty',
+      '         schemeIdUri="urn:dvb:dash:fontdownload:2014"',
+      '         value="1" dvb:url="foo.woff"',
+      '         dvb:mimeType="application/font-woff" dvb:fontFamily="foo"/>',
+      '      <Representation id="video" bandwidth="1">',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '  <Period id="2" start="PT31S" duration="PT30S">',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <EssentialProperty schemeIdUri="urn:dvb:dash:fontdownload:2014"',
+      '         value="1" dvb:url="htpps://foo/foo2.woff"',
+      '         dvb:mimeType="application/font-woff" dvb:fontFamily="foo2"/>',
+      '      <Representation id="video" bandwidth="1">',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    await parser.start('dummy://foo', playerInterface);
+    expect(addFontSpy).toHaveBeenCalledTimes(2);
+    expect(addFontSpy).toHaveBeenCalledWith('foo', 'dummy://foo/foo.woff');
+    expect(addFontSpy).toHaveBeenCalledWith('foo2', 'htpps://foo/foo2.woff');
+  });
+
+  // DASH: Annex I
+  describe('supports flexible insertion of URL parameters', () => {
+    it('with SegmentList', async () => {
+      const source = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <SupplementalProperty',
+        '        schemeIdUri="urn:mpeg:dash:urlparam:2014"',
+        '        xmlns:up="urn:mpeg:dash:schema:urlparam:2014">',
+        '     <up:UrlQueryInfo queryTemplate="$querypart$&b=1"',
+        '          useMPDUrlQuery="true"/>',
+        '    </SupplementalProperty>',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <Representation id="1" bandwidth="1">',
+        '        <SegmentList startNumber="1" duration="10">',
+        '          <Initialization sourceURL="init.mp4" range="201-300" />',
+        '          <SegmentURL media="s1.mp4" />',
+        '        </SegmentList>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo?a=1', source);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo?a=1', playerInterface);
+      expect(manifest.variants.length).toBe(1);
+
+      const variant1 = manifest.variants[0];
+
+      await variant1.video.createSegmentIndex();
+      goog.asserts.assert(variant1.video.segmentIndex, 'Null segmentIndex!');
+
+      const variant1Ref = Array.from(variant1.video.segmentIndex)[0];
+
+      expect(variant1Ref.getUris()).toEqual(['dummy://foo/s1.mp4?a=1&b=1']);
+      expect(variant1Ref.initSegmentReference.getUris())
+          .toEqual(['dummy://foo/init.mp4?a=1&b=1']);
+    });
+
+    it('with SegmentTemplate', async () => {
+      const source = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <SupplementalProperty',
+        '        schemeIdUri="urn:mpeg:dash:urlparam:2014"',
+        '        xmlns:up="urn:mpeg:dash:schema:urlparam:2014">',
+        '     <up:UrlQueryInfo queryTemplate="$querypart$"',
+        '          useMPDUrlQuery="true"/>',
+        '    </SupplementalProperty>',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <Representation id="1" bandwidth="1">',
+        '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4"',
+        '            initialization="init.mp4">',
+        '          <Initialization sourceURL="init.mp4" range="201-300" />',
+        '          <SegmentTimeline>',
+        '            <S t="0" d="30" />',
+        '          </SegmentTimeline>',
+        '        </SegmentTemplate>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo?a=1', source);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo?a=1', playerInterface);
+      expect(manifest.variants.length).toBe(1);
+
+      const variant1 = manifest.variants[0];
+
+      await variant1.video.createSegmentIndex();
+      goog.asserts.assert(variant1.video.segmentIndex, 'Null segmentIndex!');
+
+      const variant1Ref = Array.from(variant1.video.segmentIndex)[0];
+
+      expect(variant1Ref.getUris()).toEqual(['dummy://foo/l-1.mp4?a=1']);
+      expect(variant1Ref.initSegmentReference.getUris())
+          .toEqual(['dummy://foo/init.mp4?a=1']);
+    });
+
+    it('with SupplementalProperty in AdaptationSet', async () => {
+      const source = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <SupplementalProperty',
+        '          schemeIdUri="urn:mpeg:dash:urlparam:2014"',
+        '          xmlns:up="urn:mpeg:dash:schema:urlparam:2014">',
+        '       <up:UrlQueryInfo queryTemplate="$querypart$"',
+        '            useMPDUrlQuery="true"/>',
+        '      </SupplementalProperty>',
+        '      <Representation id="1" bandwidth="1">',
+        '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4"',
+        '            initialization="init.mp4">',
+        '          <Initialization sourceURL="init.mp4" range="201-300" />',
+        '          <SegmentTimeline>',
+        '            <S t="0" d="30" />',
+        '          </SegmentTimeline>',
+        '        </SegmentTemplate>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo?a=1', source);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo?a=1', playerInterface);
+      expect(manifest.variants.length).toBe(1);
+
+      const variant1 = manifest.variants[0];
+
+      await variant1.video.createSegmentIndex();
+      goog.asserts.assert(variant1.video.segmentIndex, 'Null segmentIndex!');
+
+      const variant1Ref = Array.from(variant1.video.segmentIndex)[0];
+
+      expect(variant1Ref.getUris()).toEqual(['dummy://foo/l-1.mp4?a=1']);
+      expect(variant1Ref.initSegmentReference.getUris())
+          .toEqual(['dummy://foo/init.mp4?a=1']);
+    });
+
+    it('with EssentialProperty in AdaptationSet', async () => {
+      const source = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <EssentialProperty',
+        '          schemeIdUri="urn:mpeg:dash:urlparam:2014"',
+        '          xmlns:up="urn:mpeg:dash:schema:urlparam:2014">',
+        '       <up:UrlQueryInfo queryTemplate="$querypart$"',
+        '            useMPDUrlQuery="true"/>',
+        '      </EssentialProperty>',
+        '      <Representation id="1" bandwidth="1">',
+        '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4"',
+        '            initialization="init.mp4">',
+        '          <Initialization sourceURL="init.mp4" range="201-300" />',
+        '          <SegmentTimeline>',
+        '            <S t="0" d="30" />',
+        '          </SegmentTimeline>',
+        '        </SegmentTemplate>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo?a=1', source);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo?a=1', playerInterface);
+      expect(manifest.variants.length).toBe(1);
+
+      const variant1 = manifest.variants[0];
+
+      await variant1.video.createSegmentIndex();
+      goog.asserts.assert(variant1.video.segmentIndex, 'Null segmentIndex!');
+
+      const variant1Ref = Array.from(variant1.video.segmentIndex)[0];
+
+      expect(variant1Ref.getUris()).toEqual(['dummy://foo/l-1.mp4?a=1']);
+      expect(variant1Ref.initSegmentReference.getUris())
+          .toEqual(['dummy://foo/init.mp4?a=1']);
+    });
+
+    it('with SupplementalProperty in Representation', async () => {
+      const source = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <Representation id="1" bandwidth="1">',
+        '        <SupplementalProperty',
+        '            schemeIdUri="urn:mpeg:dash:urlparam:2014"',
+        '            xmlns:up="urn:mpeg:dash:schema:urlparam:2014">',
+        '          <up:UrlQueryInfo queryTemplate="$query:a$&b=foo"',
+        '              useMPDUrlQuery="true"/>',
+        '        </SupplementalProperty>',
+        '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4"',
+        '            initialization="init.mp4">',
+        '          <Initialization sourceURL="init.mp4" range="201-300" />',
+        '          <SegmentTimeline>',
+        '            <S t="0" d="30" />',
+        '          </SegmentTimeline>',
+        '        </SegmentTemplate>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo?a=1', source);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo?a=1', playerInterface);
+      expect(manifest.variants.length).toBe(1);
+
+      const variant1 = manifest.variants[0];
+
+      await variant1.video.createSegmentIndex();
+      goog.asserts.assert(variant1.video.segmentIndex, 'Null segmentIndex!');
+
+      const variant1Ref = Array.from(variant1.video.segmentIndex)[0];
+
+      expect(variant1Ref.getUris()).toEqual(['dummy://foo/l-1.mp4?a=1&b=foo']);
+      expect(variant1Ref.initSegmentReference.getUris())
+          .toEqual(['dummy://foo/init.mp4?a=1&b=foo']);
+    });
+
+    it('with EssentialProperty in Representation', async () => {
+      const source = [
+        '<MPD minBufferTime="PT75S">',
+        '  <Period id="1" duration="PT30S">',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <Representation id="1" bandwidth="1">',
+        '        <EssentialProperty',
+        '            schemeIdUri="urn:mpeg:dash:urlparam:2014"',
+        '            xmlns:up="urn:mpeg:dash:schema:urlparam:2014">',
+        '          <up:UrlQueryInfo queryTemplate="$query:a$"',
+        '              useMPDUrlQuery="true"/>',
+        '        </EssentialProperty>',
+        '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4"',
+        '            initialization="init.mp4">',
+        '          <Initialization sourceURL="init.mp4" range="201-300" />',
+        '          <SegmentTimeline>',
+        '            <S t="0" d="30" />',
+        '          </SegmentTimeline>',
+        '        </SegmentTemplate>',
+        '      </Representation>',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo?a=1', source);
+      /** @type {shaka.extern.Manifest} */
+      const manifest = await parser.start('dummy://foo?a=1', playerInterface);
+      expect(manifest.variants.length).toBe(1);
+
+      const variant1 = manifest.variants[0];
+
+      await variant1.video.createSegmentIndex();
+      goog.asserts.assert(variant1.video.segmentIndex, 'Null segmentIndex!');
+
+      const variant1Ref = Array.from(variant1.video.segmentIndex)[0];
+
+      expect(variant1Ref.getUris()).toEqual(['dummy://foo/l-1.mp4?a=1']);
+      expect(variant1Ref.initSegmentReference.getUris())
+          .toEqual(['dummy://foo/init.mp4?a=1']);
+    });
   });
 });

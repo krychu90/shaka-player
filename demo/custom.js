@@ -8,6 +8,13 @@
 goog.provide('shakaDemo.Custom');
 
 
+goog.require('ShakaDemoAssetInfo');
+goog.require('shakaDemo.AssetCard');
+goog.require('shakaDemo.BoolInput');
+goog.require('shakaDemo.Input');
+goog.require('shakaDemo.InputContainer');
+goog.require('shakaDemo.TextInput');
+
 /** @type {?shakaDemo.Custom} */
 let shakaDemoCustom;
 
@@ -39,6 +46,9 @@ shakaDemo.Custom = class {
     /** @private {!Set.<!ShakaDemoAssetInfo>} */
     this.assets_ = this.loadAssetInfos_();
 
+    /** @private {!HTMLInputElement} */
+    this.manifestField_;
+
     /** @private {!Array.<!shakaDemo.AssetCard>} */
     this.assetCards_ = [];
     this.savedList_ = document.createElement('div');
@@ -60,9 +70,6 @@ shakaDemo.Custom = class {
     });
     document.addEventListener('shaka-main-offline-progress', () => {
       this.updateOfflineProgress_();
-    });
-    document.addEventListener('shaka-main-locale-changed', () => {
-      this.remakeSavedList_();
     });
     document.addEventListener('shaka-main-page-changed', () => {
       if (!this.savedList_.childNodes.length &&
@@ -94,14 +101,31 @@ shakaDemo.Custom = class {
    * @param {!shakaDemo.InputContainer} container
    * @param {string} name
    * @param {function(!HTMLInputElement, !Element)} setup
-   * @param {function(!Element)} onChange
+   * @param {function(!Element, !shakaDemo.Input)} onChange
+   * @param {boolean=} isTextArea
    * @private
    */
-  makeField_(container, name, setup, onChange) {
+  makeField_(container, name, setup, onChange, isTextArea) {
     container.addRow(/* labelString= */ null, /* tooltipString= */ null);
-    const input = new shakaDemo.TextInput(container, name, onChange);
+    const input =
+        new shakaDemo.TextInput(container, name, onChange, isTextArea);
     input.extra().textContent = name;
     setup(input.input(), input.container());
+  }
+
+  /**
+   * A utility to simplify the creation of bool on the dialog.
+   * @param {!shakaDemo.InputContainer} container
+   * @param {string} name
+   * @param {function(!Element, !shakaDemo.Input)} onChange
+   * @param {boolean} value
+   * @private
+   */
+  makeBoolInput_(container, name, onChange, value) {
+    container.addRow(/* labelString= */ null, /* tooltipString= */ null);
+    const input = new shakaDemo.BoolInput(
+        container, name, onChange, /* showName= */ true);
+    input.input().checked = value;
   }
 
   /**
@@ -130,9 +154,8 @@ shakaDemo.Custom = class {
       const div = document.createElement('div');
       headersDiv.appendChild(div);
       const containerStyle = shakaDemo.InputContainer.Style.VERTICAL;
-      const headerText = shakaDemo.MessageIds.LICENSE_HEADER_TITLE;
       const container = new shakaDemo.InputContainer(
-          div, headerText, containerStyle,
+          div, 'License Header', containerStyle,
           /* docLink= */ null);
 
       const collisionCheckEntry = {
@@ -197,9 +220,7 @@ shakaDemo.Custom = class {
       const nameOnChange = (input) => {
         onChange(input.value, headerValue);
       };
-      const licenseHeaderName = shakaDemoMain.getLocalizedString(
-          shakaDemo.MessageIds.LICENSE_HEADER_NAME);
-      this.makeField_(container, licenseHeaderName, nameSetup, nameOnChange);
+      this.makeField_(container, 'Header Name', nameSetup, nameOnChange);
 
       const valueSetup = (input, container) => {
         if (headerValue) {
@@ -209,9 +230,7 @@ shakaDemo.Custom = class {
       const valueOnChange = (input) => {
         onChange(headerName, input.value);
       };
-      const licenseHeaderValue = shakaDemoMain.getLocalizedString(
-          shakaDemo.MessageIds.LICENSE_HEADER_VALUE);
-      this.makeField_(container, licenseHeaderValue, valueSetup, valueOnChange);
+      this.makeField_(container, 'Header Value', valueSetup, valueOnChange);
     };
     if (assetInProgress.licenseRequestHeaders.size == 0) {
       // It starts out with a single empty row, but each time you start filling
@@ -231,17 +250,18 @@ shakaDemo.Custom = class {
     return headersDiv;
   }
 
+
   /**
    * @param {!ShakaDemoAssetInfo} assetInProgress
    * @param {!Array.<!HTMLInputElement>} inputsToCheck
    * @return {!Element} div
    * @private
    */
-  makeAssetDialogContentsMisc_(assetInProgress, inputsToCheck) {
-    const miscDiv = document.createElement('div');
+  makeAssetDialogContentsAds_(assetInProgress, inputsToCheck) {
+    const adsDiv = document.createElement('div');
     const containerStyle = shakaDemo.InputContainer.Style.VERTICAL;
     const container = new shakaDemo.InputContainer(
-        miscDiv, /* headerText= */ null, containerStyle,
+        adsDiv, /* headerText= */ null, containerStyle,
         /* docLink= */ null);
 
     // Make the ad tag URL field.
@@ -253,12 +273,102 @@ shakaDemo.Custom = class {
     const adTagOnChange = (input) => {
       assetInProgress.adTagUri = input.value;
     };
-    const adTagURLName = shakaDemoMain.getLocalizedString(
-        shakaDemo.MessageIds.AD_TAG_URL);
-    this.makeField_(
-        container, adTagURLName, adTagSetup, adTagOnChange);
+    this.makeField_(container, 'Ad Tag URL', adTagSetup, adTagOnChange);
 
-    return miscDiv;
+    // Make the content source id field.
+    const contentSrcIdSetup = (input, container) => {
+      if (assetInProgress.imaContentSrcId) {
+        input.value = assetInProgress.imaContentSrcId;
+      }
+
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const contentSrcIdOnChange = (input) => {
+      assetInProgress.imaContentSrcId = input.value;
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const contentSrcIdName = 'Content source ID (for VOD DAI Content)';
+    this.makeField_(
+        container, contentSrcIdName, contentSrcIdSetup, contentSrcIdOnChange);
+
+    // Make the video id field.
+    const videoIdSetup = (input, container) => {
+      if (assetInProgress.imaVideoId) {
+        input.value = assetInProgress.imaVideoId;
+      }
+
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const videoIdOnChange = (input) => {
+      assetInProgress.imaVideoId = input.value;
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const videoIdName = 'Video ID (for VOD DAI Content)';
+    this.makeField_(container, videoIdName, videoIdSetup, videoIdOnChange);
+
+    // Make the asset key field.
+    const assetKeySetup = (input, container) => {
+      if (assetInProgress.imaAssetKey) {
+        input.value = assetInProgress.imaAssetKey;
+      }
+
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const assetKeyChange = (input) => {
+      assetInProgress.imaAssetKey = input.value;
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const assetKeyName = 'Asset key (for LIVE DAI Content)';
+    this.makeField_(container, assetKeyName, assetKeySetup, assetKeyChange);
+
+    // Make the manifest type field.
+    const manifestTypeSetup = (input, container) => {
+      if (assetInProgress.imaManifestType) {
+        input.value = assetInProgress.imaManifestType;
+      }
+
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const manifestTypeChange = (input) => {
+      assetInProgress.imaManifestType = input.value;
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const manifestTypeName = 'Manifest type (for DAI Content)';
+    this.makeField_(
+        container, manifestTypeName, manifestTypeSetup, manifestTypeChange);
+
+    // Make the MediaTailor URL field.
+    const mediaTailorSetup = (input, container) => {
+      if (assetInProgress.mediaTailorUrl) {
+        input.value = assetInProgress.mediaTailorUrl;
+      }
+    };
+    const mediaTailorOnChange = (input) => {
+      assetInProgress.setMediaTailor(input.value);
+      this.manifestField_.required =
+        this.checkManifestRequired_(assetInProgress);
+    };
+    const mediaTailorName = 'Media Tailor URL';
+    this.makeField_(
+        container, mediaTailorName, mediaTailorSetup, mediaTailorOnChange);
+
+    // Make the use IMA checkbox
+    const useIMAOnChange = (input) => {
+      assetInProgress.useIMA = input.checked;
+    };
+    const useIMAName = 'Use IMA';
+    const useIMA = assetInProgress.useIMA;
+    this.makeBoolInput_(container, useIMAName, useIMAOnChange, useIMA);
+
+    return adsDiv;
   }
 
   /**
@@ -284,14 +394,14 @@ shakaDemo.Custom = class {
       const licenseServerURL = licenseServerUrlInput.value;
       const customDRMSystem = customDrmSystemInput.value;
       if (licenseServerURL) {
-        // Make a license server entry for every common DRM plugin.
         assetInProgress.licenseServers.clear();
-        for (const drmSystem of shakaDemo.Main.commonDrmSystems) {
-          assetInProgress.licenseServers.set(drmSystem, licenseServerURL);
-        }
         if (customDRMSystem) {
-          // Make a custom entry too.
           assetInProgress.licenseServers.set(customDRMSystem, licenseServerURL);
+        } else {
+          // Make a license server entry for every common DRM plugin.
+          for (const drmSystem of shakaDemo.Main.commonDrmSystems) {
+            assetInProgress.licenseServers.set(drmSystem, licenseServerURL);
+          }
         }
       } else {
         assetInProgress.licenseServers.clear();
@@ -314,10 +424,8 @@ shakaDemo.Custom = class {
     const licenseOnChange = (input) => {
       setLicenseServerURLs();
     };
-    const licenseServerURLName = shakaDemoMain.getLocalizedString(
-        shakaDemo.MessageIds.LICENSE_SERVER_URL);
     this.makeField_(
-        container, licenseServerURLName, licenseSetup, licenseOnChange);
+        container, 'Custom License Server URL', licenseSetup, licenseOnChange);
 
     // Make the license certificate URL field.
     const certSetup = (input, container) => {
@@ -328,10 +436,8 @@ shakaDemo.Custom = class {
     const certOnChange = (input) => {
       assetInProgress.certificateUri = input.value;
     };
-    const licenseCertificateURLName = shakaDemoMain.getLocalizedString(
-        shakaDemo.MessageIds.LICENSE_CERTIFICATE_URL);
     this.makeField_(
-        container, licenseCertificateURLName, certSetup, certOnChange);
+        container, 'Custom License Certificate URL', certSetup, certOnChange);
 
     // Make the drm system field.
     const drmSetup = (input, container) => {
@@ -347,12 +453,319 @@ shakaDemo.Custom = class {
     const drmOnChange = (input) => {
       setLicenseServerURLs();
     };
-    const DRMSystemName = shakaDemoMain.getLocalizedString(
-        shakaDemo.MessageIds.DRM_SYSTEM);
-    this.makeField_(
-        container, DRMSystemName, drmSetup, drmOnChange);
+    this.makeField_(container, 'Custom DRM System', drmSetup, drmOnChange);
 
     return drmDiv;
+  }
+
+  /**
+   * @param {!ShakaDemoAssetInfo} assetInProgress
+   * @param {!Array.<!HTMLInputElement>} inputsToCheck
+   * @return {!Element} div
+   * @private
+   */
+  makeAssetDialogContentsExtraTracks_(assetInProgress, inputsToCheck) {
+    const extraTracksDiv = document.createElement('div');
+    const containerStyle = shakaDemo.InputContainer.Style.FLEX;
+    const container = new shakaDemo.InputContainer(
+        extraTracksDiv, /* headerText= */ null, containerStyle,
+        /* docLink= */ null);
+    container.getClassList().add('wide-input');
+    container.setDefaultRowClass('wide-input');
+
+    const thumbnailsUrlSetup = (input, container) => {
+      if (assetInProgress.extraThumbnail.length) {
+        input.value = assetInProgress.extraThumbnail[0];
+      }
+    };
+    const thumbnailsUrlOnChange = (input) => {
+      assetInProgress.extraThumbnail = [];
+      assetInProgress.addExtraThumbnail(input.value);
+    };
+
+    this.makeField_(
+        container, 'Thumbnails URL', thumbnailsUrlSetup, thumbnailsUrlOnChange);
+
+    /**
+     * @type {!Array.<{
+     *   uri: ?string,
+     *   div: !Element,
+     * }>}
+     */
+    const collisionCheckEntries = [];
+
+    // Because this field can theoretically contain an unlimited number of
+    // values, it has to take up an entire section by itself.
+    const makeEmptyRowForText = () => {
+      makePreFilledRowForText(
+          /* textUrl= */ null, /* textLanguage= */ null);
+    };
+    /** @type {function(?string, ?string)} */
+    const makePreFilledRowForText = (textUrl, textLanguage) => {
+      const div = document.createElement('div');
+      extraTracksDiv.appendChild(div);
+      const containerStyle = shakaDemo.InputContainer.Style.VERTICAL;
+      const container = new shakaDemo.InputContainer(
+          div, 'Subtitle', containerStyle,
+          /* docLink= */ null);
+
+      const collisionCheckEntry = {
+        uri: textUrl,
+        div,
+      };
+      collisionCheckEntries.push(collisionCheckEntry);
+
+      // Don't add a new row for a row that was pre-filled.
+      let firstTime = !textUrl;
+      const onChange = (newTextUrl, newTextLanguage) => {
+        if (textUrl) {
+          // In case the subtitle url changed, remove the old subtitle.
+          assetInProgress.removeExtraText(textUrl);
+        }
+        // Set the new values.
+        textUrl = newTextUrl;
+        collisionCheckEntry.uri = newTextUrl;
+        textLanguage = newTextLanguage;
+        if (!textUrl || !textLanguage) {
+          if (!firstTime) {
+            // The user has set a field that used to be filled to empty.
+            // This signals that they probably want to remove this subtitle.
+            extraTracksDiv.removeChild(div);
+          }
+          return;
+        }
+        if (firstTime) {
+          firstTime = false;
+          // You have filled out this row for the first time; add a new row, in
+          // case the user wants to add more subtitles.
+          makeEmptyRowForText();
+          // Update the componentHandler, to account for the new MDL elements.
+          componentHandler.upgradeDom();
+        }
+        assetInProgress.extraText.push({
+          uri: String(textUrl),
+          language: String(textLanguage),
+          kind: 'subtitle',
+          mime: '',
+        });
+        // Eliminate any OTHER subtitles with the same name. Assume this newly
+        // added/modified one is the "correct" one.
+        for (const entry of collisionCheckEntries) {
+          if (entry == collisionCheckEntry) {
+            // You can't "collide" with yourself.
+            continue;
+          }
+          if (textUrl != entry.uri) {
+            // It's not a collision.
+            continue;
+          }
+          // Remove the entry for the old field from the array.
+          const idx = collisionCheckEntries.indexOf(entry);
+          collisionCheckEntries.splice(idx, 1);
+          // Remove the div for the old field from the overall extra tracks div.
+          extraTracksDiv.removeChild(entry.div);
+          break;
+        }
+      };
+
+      const nameSetup = (input, container) => {
+        if (textUrl) {
+          input.value = textUrl;
+        }
+      };
+      const nameOnChange = (input) => {
+        onChange(input.value, textLanguage);
+      };
+      this.makeField_(container, 'Subtitle URL', nameSetup, nameOnChange);
+
+      const valueSetup = (input, container) => {
+        if (textLanguage) {
+          input.value = textLanguage;
+        }
+      };
+      const valueOnChange = (input) => {
+        onChange(textUrl, input.value);
+      };
+      this.makeField_(
+          container, 'Subtitle Language', valueSetup, valueOnChange);
+    };
+    if (!assetInProgress.extraText.length) {
+      // It starts out with a single empty row, but each time you start filling
+      // out one for the first time it adds a new one. Empty rows are ignored in
+      // the actual data.
+      makeEmptyRowForText();
+    } else {
+      // Make a row for each subtitles.
+      for (const extraText of assetInProgress.extraText) {
+        makePreFilledRowForText(extraText.uri, extraText.language);
+      }
+      // ...and also an empty one at the end.
+      makeEmptyRowForText();
+    }
+
+    // Because this field can theoretically contain an unlimited number of
+    // values, it has to take up an entire section by itself.
+    const makeEmptyRowForChapter = () => {
+      makePreFilledRowForChapter(
+          /* chapterUrl= */ null, /* chapterLanguage= */ null);
+    };
+    /** @type {function(?string, ?string)} */
+    const makePreFilledRowForChapter = (chapterUrl, chapterLanguage) => {
+      const div = document.createElement('div');
+      extraTracksDiv.appendChild(div);
+      const containerStyle = shakaDemo.InputContainer.Style.VERTICAL;
+      const container = new shakaDemo.InputContainer(
+          div, 'Chapter', containerStyle,
+          /* docLink= */ null);
+
+      const collisionCheckEntry = {
+        url: chapterUrl,
+        div,
+      };
+      collisionCheckEntries.push(collisionCheckEntry);
+
+      // Don't add a new row for a row that was pre-filled.
+      let firstTime = !chapterUrl;
+      const onChange = (newChapterUrl, newChapterLanguage) => {
+        if (chapterUrl) {
+          // In case the chapter url changed, remove the old chapter.
+          assetInProgress.removeExtraChapter(chapterUrl);
+        }
+        // Set the new values.
+        chapterUrl = newChapterUrl;
+        collisionCheckEntry.uri = newChapterUrl;
+        chapterLanguage = newChapterLanguage;
+        if (!chapterUrl || !chapterLanguage) {
+          if (!firstTime) {
+            // The user has set a field that used to be filled to empty.
+            // This signals that they probably want to remove this chapter.
+            extraTracksDiv.removeChild(div);
+          }
+          return;
+        }
+        if (firstTime) {
+          firstTime = false;
+          // You have filled out this row for the first time; add a new row, in
+          // case the user wants to add more chapters.
+          makeEmptyRowForChapter();
+          // Update the componentHandler, to account for the new MDL elements.
+          componentHandler.upgradeDom();
+        }
+        assetInProgress.extraChapter.push({
+          uri: String(chapterUrl),
+          language: String(chapterLanguage),
+          mime: '',
+        });
+        // Eliminate any OTHER chapters with the same name. Assume this newly
+        // added/modified one is the "correct" one.
+        for (const entry of collisionCheckEntries) {
+          if (entry == collisionCheckEntry) {
+            // You can't "collide" with yourself.
+            continue;
+          }
+          if (chapterUrl != entry.uri) {
+            // It's not a collision.
+            continue;
+          }
+          // Remove the entry for the old field from the array.
+          const idx = collisionCheckEntries.indexOf(entry);
+          collisionCheckEntries.splice(idx, 1);
+          // Remove the div for the old field from the overall extra tracks div.
+          extraTracksDiv.removeChild(entry.div);
+          break;
+        }
+      };
+
+      const nameSetup = (input, container) => {
+        if (chapterUrl) {
+          input.value = chapterUrl;
+        }
+      };
+      const nameOnChange = (input) => {
+        onChange(input.value, chapterLanguage);
+      };
+      this.makeField_(container, 'Chapter URL', nameSetup, nameOnChange);
+
+      const valueSetup = (input, container) => {
+        if (chapterLanguage) {
+          input.value = chapterLanguage;
+        }
+      };
+      const valueOnChange = (input) => {
+        onChange(chapterUrl, input.value);
+      };
+      this.makeField_(container, 'Chapter Language', valueSetup, valueOnChange);
+    };
+    if (!assetInProgress.extraChapter.length) {
+      // It starts out with a single empty row, but each time you start filling
+      // out one for the first time it adds a new one. Empty rows are ignored in
+      // the actual data.
+      makeEmptyRowForChapter();
+    } else {
+      // Make a row for each chapter.
+      for (const extraChapter of assetInProgress.extraChapter) {
+        makePreFilledRowForChapter(extraChapter.uri, extraChapter.language);
+      }
+      // ...and also an empty one at the end.
+      makeEmptyRowForChapter();
+    }
+
+    return extraTracksDiv;
+  }
+
+  /**
+   * @param {!ShakaDemoAssetInfo} assetInProgress
+   * @param {!Array.<!HTMLInputElement>} inputsToCheck
+   * @return {!Element} div
+   * @private
+   */
+  makeAssetDialogContentsExtra_(assetInProgress, inputsToCheck) {
+    const extraConfigDiv = document.createElement('div');
+    const containerStyle = shakaDemo.InputContainer.Style.FLEX;
+    const container = new shakaDemo.InputContainer(
+        extraConfigDiv, /* headerText= */ null, containerStyle,
+        /* docLink= */ null);
+    container.getClassList().add('wide-input');
+    container.setDefaultRowClass('wide-input');
+
+    const extraSetup = (input, container) => {
+      input.setAttribute('rows', 10);
+
+      if (assetInProgress.extraConfig) {
+        // Pretty-print the extra config.
+        input.value = JSON.stringify(
+            assetInProgress.extraConfig,
+            /* replacer= */ null, /* spacing= */ 2);
+      }
+
+      inputsToCheck.push(input);
+
+      // Make an error that shows up if you did not provide valid JSON.
+      const error = document.createElement('span');
+      error.classList.add('mdl-textfield__error');
+      error.textContent = 'Invalid JSON configuration';
+
+      container.appendChild(error);
+    };
+    const extraOnChange = (inputElement, inputWrapper) => {
+      try {
+        if (!inputElement.value) {
+          assetInProgress.extraConfig = null;
+        } else {
+          const config = /** @type {!Object} */(JSON.parse(inputElement.value));
+          assetInProgress.extraConfig = config;
+        }
+        inputWrapper.setValid(true);
+      } catch (exception) {
+        inputWrapper.setValid(false);
+      }
+    };
+    const extraConfigLabel = 'Extra Shaka Player configuration (JSON)';
+    this.makeField_(
+        container, extraConfigLabel, extraSetup, extraOnChange,
+        /* isTextArea= */ true);
+
+    return extraConfigDiv;
   }
 
   /**
@@ -377,21 +790,18 @@ shakaDemo.Custom = class {
       // Make an error that shows up if you did not provide an URL.
       const error = document.createElement('span');
       error.classList.add('mdl-textfield__error');
-      error.textContent = shakaDemoMain.getLocalizedString(
-          shakaDemo.MessageIds.MANIFEST_URL_ERROR);
+      error.textContent = 'Must have a manifest URL, or IMA DAI id fields';
       container.appendChild(error);
 
       // Add a regex that will detect empty strings.
-      input.required = true;
+      input.required = this.checkManifestRequired_(assetInProgress);
       input.pattern = '^(?!([\r\n\t\f\v ]+)$).*$';
+      this.manifestField_ = input;
     };
     const manifestOnChange = (input) => {
-      assetInProgress.manifestUri = input.value;
+      assetInProgress.manifestUri = input.value.trim();
     };
-    const manifestURLName = shakaDemoMain.getLocalizedString(
-        shakaDemo.MessageIds.MANIFEST_URL);
-    this.makeField_(
-        container, manifestURLName, manifestSetup, manifestOnChange);
+    this.makeField_(container, 'Manifest URL', manifestSetup, manifestOnChange);
 
     // Make the name field.
     const nameSetup = (input, container) => {
@@ -401,8 +811,7 @@ shakaDemo.Custom = class {
       // Make an error that shows up if you have an empty/duplicate name.
       const error = document.createElement('span');
       error.classList.add('mdl-textfield__error');
-      error.textContent = shakaDemoMain.getLocalizedString(
-          shakaDemo.MessageIds.NAME_ERROR);
+      error.textContent = 'Must be a unique name.';
       container.appendChild(error);
 
       // Make a regex that will detect duplicates.
@@ -423,10 +832,7 @@ shakaDemo.Custom = class {
     const nameOnChange = (input) => {
       assetInProgress.name = input.value;
     };
-    const nameName = shakaDemoMain.getLocalizedString(
-        shakaDemo.MessageIds.NAME);
-    this.makeField_(
-        container, nameName, nameSetup, nameOnChange);
+    this.makeField_(container, 'Name', nameSetup, nameOnChange);
 
     // Make the icon field.
     const iconSetup = (input, container) => {
@@ -453,13 +859,35 @@ shakaDemo.Custom = class {
         iconDiv.appendChild(img);
       }
     };
+    this.makeField_(container, 'Icon URL', iconSetup, iconOnChange);
 
-    const iconURLName = shakaDemoMain.getLocalizedString(
-        shakaDemo.MessageIds.ICON_URL);
-    this.makeField_(
-        container, iconURLName, iconSetup, iconOnChange);
+    // Make the MIME type field.
+    const mimeTypeSetup = (input, container) => {
+      if (assetInProgress.mimeType) {
+        input.value = assetInProgress.mimeType;
+      }
+    };
+
+    const mimeTypeOnChange = (input) => {
+      assetInProgress.mimeType = input.value || null;
+    };
+    this.makeField_(container, 'MIME Type', mimeTypeSetup, mimeTypeOnChange);
 
     return mainDiv;
+  }
+
+  /**
+   * @param {!ShakaDemoAssetInfo} assetInProgress
+   * @private
+   */
+  checkManifestRequired_(assetInProgress) {
+    // The manifest field is required unless we're getting the manifest
+    // from the Google Ad Manager using IMA ids.
+    const isDaiAdManifest = (assetInProgress.imaContentSrcId &&
+        assetInProgress.imaVideoId) || assetInProgress.imaAssetKey != null;
+    // Or if we are getting it from AWS Elemental MediaTailor.
+    const isMediaTailor = !!assetInProgress.mediaTailorUrl;
+    return !isDaiAdManifest && !isMediaTailor;
   }
 
   /**
@@ -472,9 +900,7 @@ shakaDemo.Custom = class {
     const finishDiv = document.createElement('tr');
 
     const buttonStyle = shakaDemo.Custom.ButtonStyle_.RAISED;
-    const saveString =
-        shakaDemoMain.getLocalizedString(shakaDemo.MessageIds.SAVE_BUTTON);
-    finishDiv.appendChild(this.makeButton_(saveString, buttonStyle, () => {
+    finishDiv.appendChild(this.makeButton_('Save', buttonStyle, () => {
       for (const input of inputsToCheck) {
         if (!input.validity.valid) {
           return;
@@ -486,9 +912,7 @@ shakaDemo.Custom = class {
       this.remakeSavedList_();
       this.dialog_.close();
     }));
-    const cancelString =
-        shakaDemoMain.getLocalizedString(shakaDemo.MessageIds.CANCEL_BUTTON);
-    finishDiv.appendChild(this.makeButton_(cancelString, buttonStyle, () => {
+    finishDiv.appendChild(this.makeButton_('Cancel', buttonStyle, () => {
       this.dialog_.close();
     }));
 
@@ -515,7 +939,11 @@ shakaDemo.Custom = class {
         assetInProgress, inputsToCheck);
     const headersDiv = this.makeAssetDialogContentsHeaders_(
         assetInProgress, inputsToCheck);
-    const miscDiv = this.makeAssetDialogContentsMisc_(
+    const adsDiv = this.makeAssetDialogContentsAds_(
+        assetInProgress, inputsToCheck);
+    const extraTracksDiv = this.makeAssetDialogContentsExtraTracks_(
+        assetInProgress, inputsToCheck);
+    const extraConfigDiv = this.makeAssetDialogContentsExtra_(
         assetInProgress, inputsToCheck);
     const finishDiv = this.makeAssetDialogContentsFinish_(
         assetInProgress, inputsToCheck);
@@ -524,9 +952,8 @@ shakaDemo.Custom = class {
     const tabDiv = document.createElement('tr');
     const tabsToHide = [];
     const buttonsToSwitch = [];
-    const addTabButton = (messageId, tabToShow, startOn) => {
+    const addTabButton = (name, tabToShow, startOn) => {
       const buttonStyle = shakaDemo.Custom.ButtonStyle_.PLAIN;
-      const name = shakaDemoMain.getLocalizedString(messageId);
       const button = this.makeButton_(name, buttonStyle, () => {
         for (const tab of tabsToHide) {
           tab.classList.add('hidden');
@@ -546,21 +973,21 @@ shakaDemo.Custom = class {
         tabToShow.classList.add('hidden');
       }
     };
-    addTabButton(
-        shakaDemo.MessageIds.MAIN_TAB, mainDiv, /* startOn= */ true);
-    addTabButton(
-        shakaDemo.MessageIds.DRM_TAB, drmDiv, /* startOn= */ false);
-    addTabButton(
-        shakaDemo.MessageIds.HEADERS_TAB, headersDiv, /* startOn= */ false);
-    addTabButton(
-        shakaDemo.MessageIds.MISC_TAB, miscDiv, /* startOn= */ false);
+    addTabButton('Main', mainDiv, /* startOn= */ true);
+    addTabButton('Drm', drmDiv, /* startOn= */ false);
+    addTabButton('Headers', headersDiv, /* startOn= */ false);
+    addTabButton('Ads', adsDiv, /* startOn= */ false);
+    addTabButton('Extra Tracks', extraTracksDiv, /* startOn= */ false);
+    addTabButton('Extra Config', extraConfigDiv, /* startOn= */ false);
 
     // Append the divs in the desired order.
     this.dialog_.appendChild(tabDiv);
     this.dialog_.appendChild(mainDiv);
     this.dialog_.appendChild(drmDiv);
     this.dialog_.appendChild(headersDiv);
-    this.dialog_.appendChild(miscDiv);
+    this.dialog_.appendChild(adsDiv);
+    this.dialog_.appendChild(extraTracksDiv);
+    this.dialog_.appendChild(extraConfigDiv);
     this.dialog_.appendChild(finishDiv);
     this.dialog_.appendChild(iconDiv);
 
@@ -642,24 +1069,23 @@ shakaDemo.Custom = class {
     const savedList = this.savedList_;
     const isFeatured = false;
     return new shakaDemo.AssetCard(savedList, asset, isFeatured, (c) => {
-      c.addButton(shakaDemo.MessageIds.PLAY, () => {
-        shakaDemoMain.loadAsset(asset);
-        this.updateSelected_();
-      });
-      c.addButton(shakaDemo.MessageIds.EDIT_CUSTOM, async () => {
+      c.addBaseButtons();
+      c.addButton('Edit', async () => {
         if (asset.unstoreCallback) {
           await asset.unstoreCallback();
+          this.saveAssetInfos_(this.assets_);
+          this.remakeSavedList_();
         }
         this.showAssetDialog_(asset);
       });
-      c.addButton(shakaDemo.MessageIds.DELETE_CUSTOM, async () => {
+      c.addButton('Delete', async () => {
         this.assets_.delete(asset);
         if (asset.unstoreCallback) {
           await asset.unstoreCallback();
         }
         this.saveAssetInfos_(this.assets_);
         this.remakeSavedList_();
-      }, shakaDemo.MessageIds.DELETE_CUSTOM);
+      }, 'Delete this custom asset?');
       c.addStoreButton();
     });
   }
@@ -686,15 +1112,10 @@ shakaDemo.Custom = class {
         textElement.textContent = text;
         this.savedList_.appendChild(textElement);
       };
-      makeMessage('title',
-          shakaDemoMain.getLocalizedString(
-              shakaDemo.MessageIds.CUSTOM_INTRO_ONE));
-      makeMessage('body-2',
-          shakaDemoMain.getLocalizedString(
-              shakaDemo.MessageIds.CUSTOM_INTRO_TWO));
+      makeMessage('title', 'Try Shaka Player with your own content!');
+      makeMessage('body-2', 'Press the button below to add a custom asset.');
       makeMessage('body-1',
-          shakaDemoMain.getLocalizedString(
-              shakaDemo.MessageIds.CUSTOM_INTRO_THREE));
+          'Custom assets will remain even after reloading the page.');
     } else {
       // Make asset cards for the assets.
       this.assetCards_ = Array.from(this.assets_).map((asset) => {

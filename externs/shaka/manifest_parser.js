@@ -47,9 +47,10 @@ shaka.extern.ManifestParser = class {
    * configuration changes.  Will be called at least once before start().
    *
    * @param {shaka.extern.ManifestConfiguration} config
+   * @param {(function():boolean)=} isPreloadFn
    * @exportDoc
    */
-  configure(config) {}
+  configure(config, isPreloadFn) {}
 
   /**
    * Initialize and start the parser. When |start| resolves, it should return
@@ -94,6 +95,31 @@ shaka.extern.ManifestParser = class {
    * @exportDoc
    */
   onExpirationUpdated(sessionId, expiration) {}
+
+  /**
+   * Tells the parser that the initial variant has been chosen.
+   *
+   * @param {shaka.extern.Variant} variant
+   * @exportDoc
+   */
+  onInitialVariantChosen(variant) {}
+
+  /**
+   * Tells the parser that a location should be banned. This is called on
+   * retry.
+   *
+   * @param {string} uri
+   * @exportDoc
+   */
+  banLocation(uri) {}
+
+  /**
+   * Set media element.
+   *
+   * @param {HTMLMediaElement} mediaElement
+   * @exportDoc
+   */
+  setMediaElement(mediaElement) {}
 };
 
 
@@ -105,7 +131,17 @@ shaka.extern.ManifestParser = class {
  *   onTimelineRegionAdded: function(shaka.extern.TimelineRegionInfo),
  *   onEvent: function(!Event),
  *   onError: function(!shaka.util.Error),
- *   isLowLatencyMode: function():boolean
+ *   isLowLatencyMode: function():boolean,
+ *   isAutoLowLatencyMode: function():boolean,
+ *   enableLowLatencyMode: function(),
+ *   updateDuration: function(),
+ *   newDrmInfo: function(shaka.extern.Stream),
+ *   onManifestUpdated: function(),
+ *   getBandwidthEstimate: function():number,
+ *   onMetadata: function(string, number, ?number,
+ *                        !Array.<shaka.extern.MetadataFrame>),
+ *   disableStream: function(!shaka.extern.Stream),
+ *   addFont: function(string, string)
  * }}
  *
  * @description
@@ -131,6 +167,27 @@ shaka.extern.ManifestParser = class {
  *   Should be called when an error occurs.
  * @property {function():boolean} isLowLatencyMode
  *   Return true if low latency streaming mode is enabled.
+ * @property {function():boolean} isAutoLowLatencyMode
+ *   Return true if auto low latency streaming mode is enabled.
+ * @property {function()} enableLowLatencyMode
+ *   Enable low latency streaming mode.
+ * @property {function()} updateDuration
+ *   Update the presentation duration based on PresentationTimeline.
+ * @property {function(shaka.extern.Stream)} newDrmInfo
+ *   Inform the player of new DRM info that needs to be processed for the given
+ *   stream.
+ * @property {function()} onManifestUpdated
+ *   Should be called when the manifest is updated.
+ * @property {function():number} getBandwidthEstimate
+ *   Get the estimated bandwidth in bits per second.
+ * @property {function(string, number, ?number,
+ *                     !Array.<shaka.extern.MetadataFrame>)} onMetadata
+ *   Called when an metadata is found in the manifest.
+ * @property {function(!shaka.extern.Stream)} disableStream
+ *   Called to temporarily disable a stream i.e. disabling all variant
+ *   containing said stream.
+ * @property {function(string, string)} addFont
+ *   Called when a new font needs to be added.
  * @exportDoc
  */
 shaka.extern.ManifestParser.PlayerInterface;
@@ -144,4 +201,3 @@ shaka.extern.ManifestParser.PlayerInterface;
  * @exportDoc
  */
 shaka.extern.ManifestParser.Factory;
-

@@ -4,15 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('ShakaDemoAssetInfo');
-goog.require('shaka.test.Loader');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.util.EventManager');
-goog.requireType('shaka.Player');
-goog.requireType('shaka.net.NetworkingEngine.RequestType');
-
 describe('Player', () => {
   const Util = shaka.test.Util;
   const Feature = shakaAssets.Feature;
@@ -20,12 +11,14 @@ describe('Player', () => {
   /** @type {!jasmine.Spy} */
   let onErrorSpy;
 
-  /** @type {shaka.extern.SupportType} */
-  let support;
   /** @type {!HTMLVideoElement} */
   let video;
+  /** @type {!HTMLElement} */
+  let adContainer;
   /** @type {shaka.Player} */
   let player;
+  /** @type {shaka.extern.IAdManager} */
+  let adManager;
   /** @type {!shaka.util.EventManager} */
   let eventManager;
 
@@ -37,17 +30,40 @@ describe('Player', () => {
   beforeAll(async () => {
     video = shaka.test.UiUtils.createVideoElement();
     document.body.appendChild(video);
+    adContainer =
+      /** @type {!HTMLElement} */ (document.createElement('div'));
+    document.body.appendChild(adContainer);
     compiledShaka =
         await shaka.test.Loader.loadShaka(getClientArg('uncompiled'));
-    support = await compiledShaka.Player.probeSupport();
   });
 
-  beforeEach(() => {
-    player = new compiledShaka.Player(video);
+  beforeEach(async () => {
+    player = new compiledShaka.Player();
+    adManager = player.getAdManager();
+    await player.attach(video);
+
+    // Make sure we are playing the lowest res available to avoid test flake
+    // based on network issues.  Note that disabling ABR and setting a low
+    // abr.defaultBandwidthEstimate would not be sufficient, because it
+    // would only affect the choice of track on the first period.  When we
+    // cross a period boundary, the default bandwidth estimate will no
+    // longer be in effect, and AbrManager may choose higher res tracks for
+    // the new period.  Using abr.restrictions.maxHeight will let us force
+    // AbrManager to the lowest resolution, which is its fallback when these
+    // soft restrictions cannot be met.
+    player.configure('abr.restrictions.maxHeight', 1);
+
+    // Make sure that live streams are synced against a good clock.
+    player.configure('manifest.dash.clockSyncUri',
+        'https://shaka-player-demo.appspot.com/time.txt');
+
+    // Disable stall detection, which can interfere with playback tests.
+    player.configure('streaming.stallEnabled', false);
 
     // Grab event manager from the uncompiled library:
     eventManager = new shaka.util.EventManager();
     waiter = new shaka.test.Waiter(eventManager);
+    waiter.setPlayer(player);
 
     onErrorSpy = jasmine.createSpy('onError');
     onErrorSpy.and.callFake((event) => fail(event.detail));
@@ -58,10 +74,13 @@ describe('Player', () => {
     eventManager.release();
 
     await player.destroy();
+    player.releaseAllMutexes();
+    shaka.util.Dom.removeAllChildren(adContainer);
   });
 
   afterAll(() => {
     document.body.removeChild(video);
+    document.body.removeChild(adContainer);
   });
 
   describe('plays', () => {
@@ -77,11 +96,12 @@ describe('Player', () => {
       const wit = asset.focus ? fit : it;
       wit(testName, async () => {
         const idFor = shakaAssets.identifierForKeySystem;
-        if (!asset.isClear() &&
+        if (!asset.isClear() && !asset.isAes128() &&
             !asset.drm.some((keySystem) => {
               // Demo assets use an enum here, which we look up in idFor.
               // Command-line assets use a direct key system ID.
-              return support.drm[idFor(keySystem)] || support.drm[keySystem];
+              return window['shakaSupport'].drm[idFor(keySystem)] ||
+                 window['shakaSupport'].drm[keySystem];
             })) {
           pending('None of the required key systems are supported.');
         }
@@ -94,32 +114,20 @@ describe('Player', () => {
           if (asset.features.includes(Feature.MP4)) {
             mimeTypes.push('video/mp4');
           }
+          if (asset.features.includes(Feature.MP2TS)) {
+            mimeTypes.push('video/mp2t');
+          }
+          if (asset.features.includes(Feature.CONTAINERLESS)) {
+            mimeTypes.push('audio/aac');
+          }
+          if (asset.features.includes(Feature.DOLBY_VISION_3D)) {
+            mimeTypes.push('video/mp4; codecs="dvh1.20.01"');
+          }
           if (mimeTypes.length &&
-              !mimeTypes.some((type) => support.media[type])) {
+              !mimeTypes.some((type) => window['shakaSupport'].media[type])) {
             pending('None of the required MIME types are supported.');
           }
         }
-
-        // Make sure we are playing the lowest res available to avoid test flake
-        // based on network issues.  Note that disabling ABR and setting a low
-        // abr.defaultBandwidthEstimate would not be sufficient, because it
-        // would only affect the choice of track on the first period.  When we
-        // cross a period boundary, the default bandwidth estimate will no
-        // longer be in effect, and AbrManager may choose higher res tracks for
-        // the new period.  Using abr.restrictions.maxHeight will let us force
-        // AbrManager to the lowest resolution, which is its fallback when these
-        // soft restrictions cannot be met.
-        player.configure('abr.restrictions.maxHeight', 1);
-
-        // Make sure that live streams are synced against a good clock.
-        player.configure('manifest.dash.clockSyncUri',
-            'https://shaka-player-demo.appspot.com/time.txt');
-
-        // Make sure we don't get stuck on gaps that only appear in some
-        // browsers (Safari, Firefox).
-        // TODO(https://github.com/google/shaka-player/issues/1702):
-        // Is this necessary because of a bug in Shaka Player?
-        player.configure('streaming.jumpLargeGaps', true);
 
         // Add asset-specific configuration.
         player.configure(asset.getConfiguration());
@@ -128,12 +136,19 @@ describe('Player', () => {
         const networkingEngine = player.getNetworkingEngine();
         asset.applyFilters(networkingEngine);
 
-        await player.load(asset.manifestUri);
+        // Rather than awaiting the load() method, catch any load() errors and
+        // wait on the 'canplay' event.  This has the advantage that we will
+        // get better logging of the media state on a timeout, since that
+        // capabilitiy is built into the waiter for media element events.
+        const manifestUri = await getManifestUri(asset);
+        player.load(manifestUri).catch(fail);
+        await waiter.timeoutAfter(60).waitForEvent(video, 'canplay');
+
         if (asset.features) {
           const isLive = asset.features.includes(Feature.LIVE);
           expect(player.isLive()).toBe(isLive);
         }
-        video.play();
+        await video.play();
 
         // Wait for the video to start playback.  If it takes longer than 20
         // seconds, fail the test.
@@ -221,20 +236,88 @@ describe('Player', () => {
   }
 
   /**
-   * @param {!Object.<string, string>} headers
-   * @param {shaka.net.NetworkingEngine.RequestType} requestType
-   * @param {shaka.extern.Request} request
+   * @param {ShakaDemoAssetInfo} asset
+   * @return {!Promise.<string>}
    */
-  function addLicenseRequestHeaders(headers, requestType, request) {
-    const RequestType = compiledShaka.net.NetworkingEngine.RequestType;
-    if (requestType != RequestType.LICENSE) {
-      return;
+  async function getManifestUri(asset) {
+    let manifestUri = asset.manifestUri;
+    // If it's a server side dai asset, request ad-containing manifest
+    // from the ad manager.
+    if (asset.imaAssetKey || (asset.imaContentSrcId && asset.imaVideoId)) {
+      manifestUri = await getManifestUriFromAdManager(asset);
     }
+    // If it's a MediaTailor asset, request ad-containing manifest
+    // from the ad manager.
+    if (asset.mediaTailorUrl) {
+      manifestUri = await getManifestUriFromMediaTailorAdManager(asset);
+    }
+    return manifestUri;
+  }
 
-    // Add these to the existing headers.  Do not clobber them!
-    // For PlayReady, there will already be headers in the request.
-    for (const k in headers) {
-      request.headers[k] = headers[k];
+  /**
+   * @param {ShakaDemoAssetInfo} asset
+   * @return {!Promise.<string>}
+   */
+  async function getManifestUriFromAdManager(asset) {
+    try {
+      adManager.initServerSide(adContainer, video);
+      let request;
+      if (asset.imaAssetKey != null) {
+        // LIVE stream
+        request = new google.ima.dai.api.LiveStreamRequest();
+        request.assetKey = asset.imaAssetKey;
+      } else {
+        // VOD
+        goog.asserts.assert(asset.imaContentSrcId != null &&
+            asset.imaVideoId != null, 'Asset should have ima ids!');
+        request = new google.ima.dai.api.VODStreamRequest();
+        request.contentSourceId = asset.imaContentSrcId;
+        request.videoId = asset.imaVideoId;
+      }
+      switch (asset.imaManifestType) {
+        case 'DASH':
+        case 'dash':
+        case 'MPD':
+        case 'mpd':
+          request.format = google.ima.dai.api.StreamRequest.StreamFormat.DASH;
+          break;
+        case 'HLS':
+        case 'hls':
+        case 'M3U8':
+        case 'm3u8':
+          request.format = google.ima.dai.api.StreamRequest.StreamFormat.HLS;
+          break;
+      }
+
+      const uri = await adManager.requestServerSideStream(
+          request, /* backupUri= */ asset.manifestUri);
+      return uri;
+    // eslint-disable-next-line no-restricted-syntax
+    } catch (error) {
+      fail(error);
+      return asset.manifestUri;
+    }
+  }
+
+  /**
+   * @param {ShakaDemoAssetInfo} asset
+   * @return {!Promise.<string>}
+   */
+  async function getManifestUriFromMediaTailorAdManager(asset) {
+    try {
+      const netEngine = player.getNetworkingEngine();
+      goog.asserts.assert(netEngine, 'There should be a net engine.');
+      adManager.initMediaTailor(adContainer, netEngine, video);
+      goog.asserts.assert(asset.mediaTailorUrl != null,
+          'Media Tailor info not be null!');
+      const uri = await adManager.requestMediaTailorStream(
+          asset.mediaTailorUrl, asset.mediaTailorAdsParams,
+          /* backupUri= */ asset.manifestUri);
+      return uri;
+    // eslint-disable-next-line no-restricted-syntax
+    } catch (error) {
+      fail(error);
+      return asset.manifestUri;
     }
   }
 });

@@ -4,17 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.Player');
-goog.require('shaka.ads.AdManager');
-goog.require('shaka.test.FakeAd');
-goog.require('shaka.test.FakeAdManager');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.ui.Locales');
-goog.require('shaka.util.EventManager');
-goog.requireType('shaka.ui.Localization');
-
 describe('Ad UI', () => {
   const UiUtils = shaka.test.UiUtils;
   /** @type {!HTMLLinkElement} */
@@ -36,6 +25,17 @@ describe('Ad UI', () => {
     shaka.Player.setAdManagerFactory(() => new shaka.test.FakeAdManager());
   });
 
+  beforeEach(async () => {
+    container =
+      /** @type {!HTMLElement} */ (document.createElement('div'));
+    document.body.appendChild(container);
+
+    video = shaka.test.UiUtils.createVideoElement();
+    container.appendChild(video);
+    await UiUtils.createUIThroughAPI(container, video);
+    adManager = video['ui'].getControls().getPlayer().getAdManager();
+  });
+
   afterEach(async () => {
     await UiUtils.cleanupUI();
   });
@@ -43,17 +43,6 @@ describe('Ad UI', () => {
   afterAll(() => {
     document.head.removeChild(cssLink);
     shaka.Player.setAdManagerFactory(() => new shaka.ads.AdManager());
-  });
-
-  beforeEach(() => {
-    container =
-      /** @type {!HTMLElement} */ (document.createElement('div'));
-    document.body.appendChild(container);
-
-    video = shaka.test.UiUtils.createVideoElement();
-    container.appendChild(video);
-    UiUtils.createUIThroughAPI(container, video);
-    adManager = video['ui'].getControls().getPlayer().getAdManager();
   });
 
   it('is invisible if no ad is playing', () => {
@@ -65,7 +54,7 @@ describe('Ad UI', () => {
   it('becomes visible if an ad is playing', async () => {
     const eventManager = new shaka.util.EventManager();
     const waiter = new shaka.test.Waiter(eventManager);
-    const p = waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+    const p = waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
     ad = new shaka.test.FakeAd(/* skipIn= */ null,
         /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -83,10 +72,10 @@ describe('Ad UI', () => {
     const eventManager = new shaka.util.EventManager();
     const waiter = new shaka.test.Waiter(eventManager);
     const pStart =
-        waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+        waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
     const pStop =
-        waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STOPPED);
+        waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STOPPED);
 
     ad = new shaka.test.FakeAd(/* skipIn= */ null,
         /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -105,9 +94,7 @@ describe('Ad UI', () => {
     UiUtils.confirmElementHidden(adControlsContainer);
   });
 
-  // TODO: Skip button isn't currently used. Re-enable this suit
-  // once we have other, non-IMA ad integrations.
-  xdescribe('skip button', () => {
+  describe('skip button', () => {
     /** @type {!HTMLButtonElement} */
     let skipButton;
 
@@ -120,7 +107,7 @@ describe('Ad UI', () => {
     it('is invisible if an unskippable ad is playing', async () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
-      const p = waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+      const p = waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ null,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -134,7 +121,7 @@ describe('Ad UI', () => {
     it('becomes visible if a skippable ad is playing', async () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
-      const p = waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+      const p = waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ 10,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -148,7 +135,7 @@ describe('Ad UI', () => {
     it('correctly shows the time until the ad can be skipped', async () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
-      const p = waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+      const p = waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ 10,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -165,7 +152,7 @@ describe('Ad UI', () => {
     it('is disabled if skip count is greater than 0', async () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
-      const p = waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+      const p = waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ 10,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -180,9 +167,9 @@ describe('Ad UI', () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
       const pStart =
-          waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+          waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
       const pSkip = waiter.waitForEvent(
-          adManager, shaka.ads.AdManager.AD_SKIP_STATE_CHANGED);
+          adManager, shaka.ads.Utils.AD_SKIP_STATE_CHANGED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ 0,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -199,9 +186,9 @@ describe('Ad UI', () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
       const pStart =
-          waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+          waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
       const pSkip = waiter.waitForEvent(
-          adManager, shaka.ads.AdManager.AD_SKIP_STATE_CHANGED);
+          adManager, shaka.ads.Utils.AD_SKIP_STATE_CHANGED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ 10,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -237,7 +224,7 @@ describe('Ad UI', () => {
     it('displays correct ad time', async () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
-      const p = waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+      const p = waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ null,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -280,7 +267,7 @@ describe('Ad UI', () => {
           const eventManager = new shaka.util.EventManager();
           const waiter = new shaka.test.Waiter(eventManager);
           const p = waiter.waitForEvent(
-              adManager, shaka.ads.AdManager.AD_STARTED);
+              adManager, shaka.ads.Utils.AD_STARTED);
 
           ad = new shaka.test.FakeAd(/* skipIn= */ null,
           /* position= */ position, /* totalAdsInPod= */ adsInPod);
@@ -314,7 +301,7 @@ describe('Ad UI', () => {
     it('dissappears when an ad is playing', async () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
-      const p = waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+      const p = waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ null,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -342,7 +329,7 @@ describe('Ad UI', () => {
     it('is hidden when an ad is playing', async () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
-      const p = waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+      const p = waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ null,
           /* position= */ 1, /* totalAdsInPod= */ 1);
@@ -357,10 +344,10 @@ describe('Ad UI', () => {
       const eventManager = new shaka.util.EventManager();
       const waiter = new shaka.test.Waiter(eventManager);
       const pStart =
-          waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STARTED);
+          waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STARTED);
 
       const pStop =
-          waiter.waitForEvent(adManager, shaka.ads.AdManager.AD_STOPPED);
+          waiter.waitForEvent(adManager, shaka.ads.Utils.AD_STOPPED);
 
       ad = new shaka.test.FakeAd(/* skipIn= */ null,
           /* position= */ 1, /* totalAdsInPod= */ 1);

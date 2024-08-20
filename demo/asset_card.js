@@ -4,9 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-
 goog.provide('shakaDemo.AssetCard');
 
+goog.require('goog.asserts');
+goog.require('shakaAssets');
+goog.require('shakaDemo.Tooltips');
+goog.requireType('ShakaDemoAssetInfo');
 
 /**
  * Creates and contains an MDL card that presents info about the given asset.
@@ -74,7 +77,11 @@ shakaDemo.AssetCard = class {
       img.src = asset.iconUri;
       img.alt = '';  // Not necessary to understand the page
 
-      picture.appendChild(webpSource);
+      // It can only be guaranteed that they have a webp version if they are on
+      // our server.
+      if (asset.iconUri.startsWith('https://storage.googleapis.com')) {
+        picture.appendChild(webpSource);
+      }
       picture.appendChild(pngSource);
       picture.appendChild(img);
 
@@ -101,11 +108,9 @@ shakaDemo.AssetCard = class {
     this.progressCircleSvg_.appendChild(this.progressCircleBack_);
     this.progressCircleSvg_.appendChild(this.progressCircleBar_);
     this.progressCircle_.appendChild(this.progressCircleSvg_);
-    // You can't use access the classList of an svg on IE, so set the class
-    // attribute instead.
-    this.progressCircleSvg_.setAttribute('class', 'progress-circle-svg');
-    this.progressCircleBack_.setAttribute('class', 'progress-circle-back');
-    this.progressCircleBar_.setAttribute('class', 'progress-circle-bar');
+    this.progressCircleSvg_.classList.add('progress-circle-svg');
+    this.progressCircleBack_.classList.add('progress-circle-back');
+    this.progressCircleBar_.classList.add('progress-circle-bar');
 
     parentDiv.appendChild(this.card_);
     // Remake buttons AFTER appending to parent div, so that any tooltips can
@@ -132,7 +137,7 @@ shakaDemo.AssetCard = class {
 
   /**
    * @param {string} icon
-   * @param {!shakaDemo.MessageIds} title
+   * @param {string} title
    * @private
    */
   addFeatureIcon_(icon, title) {
@@ -188,18 +193,17 @@ shakaDemo.AssetCard = class {
 
   /**
    * Modify an asset to make it clear that it is unsupported.
-   * @param {!shakaDemo.MessageIds} unsupportedReason
+   * @param {string} unsupportedReason
    */
   markAsUnsupported(unsupportedReason) {
     this.card_.classList.add('asset-card-unsupported');
-    this.makeUnsupportedButton_(
-        shakaDemo.MessageIds.UNSUPPORTED, unsupportedReason);
+    this.makeUnsupportedButton_('Not Available', unsupportedReason);
   }
 
   /**
    * Make a button that represents the lack of a working button.
-   * @param {?shakaDemo.MessageIds} buttonName
-   * @param {!shakaDemo.MessageIds} unsupportedReason
+   * @param {?string} buttonName
+   * @param {string} unsupportedReason
    * @return {!Element}
    * @private
    */
@@ -239,6 +243,57 @@ shakaDemo.AssetCard = class {
   remakeButtons() {
     shaka.util.Dom.removeAllChildren(this.actions_);
     this.remakeButtonsFn_(this);
+  }
+
+  /** Adds basic buttons to the card ("play" and "preload"). */
+  addBaseButtons() {
+    let disableButtons = false;
+    this.addButton('Play', async () => {
+      if (disableButtons) {
+        return;
+      }
+      disableButtons = true;
+      await shakaDemoMain.loadAsset(this.asset_);
+      this.remakeButtons();
+    });
+    let preloadName = 'Start Preload';
+    if (this.asset_.preloadManager) {
+      preloadName = this.asset_.preloaded ? 'Preloaded!' : 'Preloading...';
+    } else if (this.asset_.preloadFailed) {
+      preloadName = 'Failed to Preload!';
+    }
+    const preloadButton = this.addButton(preloadName, async () => {
+      if (disableButtons) {
+        return;
+      }
+      disableButtons = true;
+      this.asset_.preloaded = false;
+      if (this.asset_.preloadManager) {
+        await this.asset_.preloadManager.destroy();
+        this.asset_.preloadManager = null;
+        this.remakeButtons();
+      } else {
+        try {
+          await shakaDemoMain.preloadAsset(this.asset_);
+          this.remakeButtons();
+          if (this.asset_.preloadManager) {
+            await this.asset_.preloadManager.waitForFinish();
+            this.asset_.preloaded = true;
+          } else {
+            this.asset_.preloadFailed = true;
+          }
+        } catch (error) {
+          this.asset_.preloadManager = null;
+          this.asset_.preloadFailed = true;
+          throw error;
+        } finally {
+          this.remakeButtons();
+        }
+      }
+    });
+    if (this.asset_.preloadFailed) {
+      preloadButton.disabled = true;
+    }
   }
 
   /**
@@ -304,16 +359,15 @@ shakaDemo.AssetCard = class {
       return;
     }
 
-    this.makeYesNoDialogue_(parentDiv,
-        shakaDemo.MessageIds.DELETE_STORED_PROMPT, async () => {
-          deleteButton.disabled = true;
-          await this.asset_.unstoreCallback();
-        });
+    this.makeYesNoDialogue_(parentDiv, 'Delete the offline copy?', async () => {
+      deleteButton.disabled = true;
+      await this.asset_.unstoreCallback();
+    });
   }
 
   /**
    * @param {!Element} parentDiv
-   * @param {!shakaDemo.MessageIds} text
+   * @param {string} text
    * @param {function():Promise} callback
    * @private
    */
@@ -328,14 +382,14 @@ shakaDemo.AssetCard = class {
 
     const textElement = document.createElement('h2');
     textElement.classList.add('mdl-typography--title');
-    textElement.textContent = shakaDemoMain.getLocalizedString(text);
+    textElement.textContent = text;
     dialog.appendChild(textElement);
 
     const buttonsDiv = document.createElement('div');
     dialog.appendChild(buttonsDiv);
-    const makeButton = (textId, fn) => {
+    const makeButton = (text, fn) => {
       const button = document.createElement('button');
-      button.textContent = shakaDemoMain.getLocalizedString(textId);
+      button.textContent = text;
       button.classList.add('mdl-button');
       button.classList.add('mdl-button--colored');
       button.classList.add('mdl-js-button');
@@ -346,12 +400,12 @@ shakaDemo.AssetCard = class {
       buttonsDiv.appendChild(button);
       button.blur();
     };
-    makeButton(shakaDemo.MessageIds.PROMPT_YES, async () => {
+    makeButton('Yes', async () => {
       dialog.close();
       await callback();
       this.remakeButtons();
     });
-    makeButton(shakaDemo.MessageIds.PROMPT_NO, () => {
+    makeButton('No', () => {
       dialog.close();
     });
 
@@ -383,9 +437,9 @@ shakaDemo.AssetCard = class {
   /**
    * Adds a button to the bottom of the card that will call |onClick| when
    * clicked. For example, a play or delete button.
-   * @param {?shakaDemo.MessageIds} name
+   * @param {?string} name
    * @param {function()} onclick
-   * @param {shakaDemo.MessageIds=} yesNoDialogText
+   * @param {string=} yesNoDialogText
    * @return {!HTMLButtonElement}
    */
   addButton(name, onclick, yesNoDialogText) {
@@ -395,7 +449,7 @@ shakaDemo.AssetCard = class {
     button.classList.add('mdl-button--colored');
     button.classList.add('mdl-js-button');
     button.classList.add('mdl-js-ripple-effect');
-    button.textContent = name ? shakaDemoMain.getLocalizedString(name) : '';
+    button.textContent = name || '';
     button.addEventListener('click', () => {
       if (!button.hasAttribute('disabled')) {
         if (yesNoDialogText) {

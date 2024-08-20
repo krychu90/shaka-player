@@ -19,11 +19,20 @@
 import argparse
 import json
 import logging
+import os
 import platform
+import re
 
 import build
 import gendeps
 import shakaBuildHelpers
+
+
+# Set a higher default for capture_timeout in grid mode.  If the test gets
+# queued by the grid, this may prevent Karma from killing the session while
+# waiting.
+LOCAL_CAPTURE_TIMEOUT = 1 * 60 * 1000  # 1m in ms
+SELENIUM_CAPTURE_TIMEOUT = 10 * 60 * 1000  # 10m in ms
 
 
 class _HandleMixedListsAction(argparse.Action):
@@ -59,6 +68,21 @@ class _HandleKeyValuePairs(argparse.Action):
     merged[key] = value
     setattr(namespace, self.dest, merged)
 
+def _KeyValueValidator(argument):
+    '''To validate the option has a key value pair format.
+
+      When you forget to provide the option in key=value format,
+      it reminds you by throwing an error before executing any tests.
+    '''
+
+    keyValuePair = [str for str in argument.split('=') if str != ''];
+
+    if len(keyValuePair) == 2:
+      return argument
+    else:
+      raise argparse.ArgumentTypeError(
+        'Received %s but expecting format of key=value' % argument
+      ) 
 
 def _IntGreaterThanZero(x):
   i = int(x)
@@ -74,17 +98,19 @@ def _GetDefaultBrowsers():
     # For MP4 support on Linux Firefox, install gstreamer1.0-libav.
     # Opera on Linux only supports MP4 for Ubuntu 15.04+, so it is not in the
     # default list of browsers for Linux at this time.
-    return ['Chrome','Firefox']
+    return ['Chrome','Edge','Firefox']
 
   if shakaBuildHelpers.is_darwin():
-    return ['Chrome','Firefox','Safari']
+    return ['Chrome','Edge','Firefox','Safari']
 
   if shakaBuildHelpers.is_windows() or shakaBuildHelpers.is_cygwin():
-    return ['Chrome','Firefox','IE']
+    return ['Chrome','Edge','Firefox']
 
   raise Error('Unrecognized system: %s' % platform.uname()[0])
 
 
+# TODO(joeyparrish): When internal tools using this Launcher system are removed,
+# simplify this whole mess.
 class Launcher:
   """A stateful object for parsing arguments and running Karma commands.
 
@@ -111,7 +137,7 @@ class Launcher:
 
     running_commands = self.parser.add_argument_group(
         'Running',
-        'These commands affect how tests are ran.')
+        'These commands affect how tests are run.')
     logging_commands = self.parser.add_argument_group(
         'Logging',
         'These commands affect what gets logged and how the logs will appear.')
@@ -141,17 +167,6 @@ class Launcher:
              'browser to connect to it.',
         action='store_true')
     running_commands.add_argument(
-        '--single-run',
-        help='Run the test when browsers capture and exit.',
-        dest='single_run',
-        action='store_true',
-        default=True)
-    running_commands.add_argument(
-        '--no-single-run',
-        help='Do not shut down Karma when tests are complete.',
-        dest='single_run',
-        action='store_false')
-    running_commands.add_argument(
         '--random',
         help='Run the tests in a random order. This can be used with --seed '
              'to control the random order. If used without --seed, a seed '
@@ -164,7 +179,8 @@ class Launcher:
         type=int)
     running_commands.add_argument(
         '--filter',
-        help='Specify a regular expression to limit which tests run.',
+        help='Specify a regular expression to limit which tests run. Or, use'
+             '`--filter offline` to filter to all offline playback tests.',
         type=str,
         dest='filter')
     running_commands.add_argument(
@@ -183,8 +199,14 @@ class Launcher:
         action='store_true')
     running_commands.add_argument(
         '--drm',
-        help='Run tests that require DRM.',
+        help='Run tests that require DRM (on by default).',
+        default=True,
         action='store_true')
+    running_commands.add_argument(
+        '--no-drm', '--nodrm',
+        help='Skip tests that require DRM (opposite of --drm).',
+        dest='drm',
+        action='store_false')
     running_commands.add_argument(
         '--quarantined',
         help='Run tests that have been quarantined.',
@@ -215,9 +237,9 @@ class Launcher:
     running_commands.add_argument(
         '--capture-timeout',
         help='Kill the browser if it does not capture in the given time [ms]. '
-             '(default %(default)s)',
-        type=int,
-        default=60000)
+             '(default {} for local, {} for Selenium)'.format(
+                 LOCAL_CAPTURE_TIMEOUT, SELENIUM_CAPTURE_TIMEOUT),
+        type=int)
     running_commands.add_argument(
         '--delay-tests',
         help='Insert an artificial delay between tests, in seconds. '
@@ -230,6 +252,11 @@ class Launcher:
         const=2,
         nargs='?')
     running_commands.add_argument(
+        '--spec-hide-passed',
+        help='If provided, configure the spec reporter to hide passing tests.',
+        action='store_true',
+        default=False)
+    running_commands.add_argument(
         '--test-custom-asset',
         help='Run asset playback tests on a custom manifest URI.',
         type=str,
@@ -239,7 +266,7 @@ class Launcher:
         help='Configure license servers for the custom asset playback test. '
              'May be specified multiple times to configure multiple key '
              'systems.',
-        type=str,
+        type=_KeyValueValidator,
         metavar='KEY_SYSTEM_ID=LICENSE_SERVER_URI',
         action=_HandleKeyValuePairs)
     running_commands.add_argument(
@@ -253,6 +280,13 @@ class Launcher:
         help="Don't use Babel to convert ES6 to ES5.",
         dest='babel',
         action='store_false')
+    running_commands.add_argument(
+        '--grid-address',
+        help='Address (hostname:port) of a Selenium grid to run tests on.')
+    running_commands.add_argument(
+        '--grid-config',
+        help='Path to a yaml config defining Selenium grid browsers. '
+             '(See docs/selenium-grid-config.md)')
 
 
     logging_commands.add_argument(
@@ -308,6 +342,12 @@ class Launcher:
         help='Specify the hostname to be used when capturing browsers. This '
              'defaults to localhost.',
         default='localhost')
+    networking_commands.add_argument(
+        '--tls-key',
+        help='Specify a TLS key to serve tests over HTTPs.')
+    networking_commands.add_argument(
+        '--tls-cert',
+        help='Specify a TLS cert to serve tests over HTTPs.')
 
 
     pre_launch_commands.add_argument(
@@ -340,27 +380,34 @@ class Launcher:
     pass_through = [
       'auto_watch',
       'babel',
+      'browsers',
       'capture_timeout',
       'colors',
+      'delay_tests',
       'drm',
+      'exclude_browsers',
       'external',
-      'filter',
+      'grid_address',
+      'grid_config',
       'hostname',
       'html_coverage_report',
       'log_level',
       'logging',
+      'no_browsers',
       'port',
       'quarantined',
       'quick',
       'random',
+      'reporters',
       'report_slower_than',
       'seed',
-      'single_run',
-      'uncompiled',
-      'delay_tests',
+      'spec_hide_passed',
       'test_custom_asset',
       'test_custom_license_server',
       'test_timeout',
+      'tls_key',
+      'tls_cert',
+      'uncompiled',
     ]
 
     # Check each value before setting it to avoid passing null values.
@@ -369,8 +416,20 @@ class Launcher:
       if value is not None:
         self.karma_config[name] = value
 
-    if self.parsed_args.reporters:
-      self.karma_config['reporters'] = self.parsed_args.reporters
+    filterValue = getattr(self.parsed_args, 'filter', None)
+    if filterValue is not None:
+      if str(filterValue) == 'offline':
+        self.karma_config['filter'] = '(Offline|Storage|DownloadProgress|ManifestConverter|Indexeddb)'
+      else:
+        self.karma_config['filter'] = filterValue
+
+    if not self.parsed_args.capture_timeout:
+      # The default for capture_timeout depends on whether or not we are using
+      # a Selenium grid.
+      if self.parsed_args.grid_config:
+        self.karma_config['capture_timeout'] = SELENIUM_CAPTURE_TIMEOUT
+      else:
+        self.karma_config['capture_timeout'] = LOCAL_CAPTURE_TIMEOUT
 
   def ResolveBrowsers(self, default_browsers):
     """Decide what browsers we should use.
@@ -379,25 +438,7 @@ class Launcher:
        additional logic to derive a browser list from the parsed arguments.
     """
     assert(default_browsers and len(default_browsers))
-
-    if self.parsed_args.no_browsers:
-      logging.warning('In this mode browsers must manually connect to karma.')
-    elif self.parsed_args.browsers:
-      self.karma_config['browsers'] = self.parsed_args.browsers
-    else:
-      logging.warning('Using default browsers: %s', default_browsers)
-      self.karma_config['browsers'] = default_browsers
-
-    # Check if there are any browsers that we should remove
-    if self.parsed_args.exclude_browsers and 'browsers' in self.karma_config:
-      all_browsers = set(self.karma_config['browsers'])
-      bad_browsers = set(self.parsed_args.exclude_browsers)
-      if bad_browsers - all_browsers:
-        raise RuntimeError('Attempting to exclude unselected browsers: %s' %
-                           ','.join(bad_browsers - all_browsers))
-
-      good_browsers = all_browsers - bad_browsers
-      self.karma_config['browsers'] = list(good_browsers)
+    self.karma_config['default_browsers'] = default_browsers
 
   def RunCommand(self, karma_conf):
     """Build a command and send it to Karma for execution.

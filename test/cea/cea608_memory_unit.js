@@ -4,11 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.cea.Cea608Memory');
-goog.require('shaka.cea.CeaUtils');
-goog.require('shaka.test.CeaUtils');
-goog.require('shaka.text.Cue');
-
 describe('Cea608Memory', () => {
   const CeaUtils = shaka.test.CeaUtils;
 
@@ -17,7 +12,7 @@ describe('Cea608Memory', () => {
   /** @type {!shaka.cea.Cea608Memory} */
   let memory;
 
-  /** @type {!string} */
+  /** @type {string} */
   const stream = 'CC1';
 
   beforeEach(() => {
@@ -36,6 +31,9 @@ describe('Cea608Memory', () => {
     const caption = memory.forceEmit(startTime, endTime);
 
     const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    topLevelCue.line = 10;
+    topLevelCue.lineInterpretation =
+        shaka.text.Cue.lineInterpretation.PERCENTAGE;
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, text),
     ];
@@ -51,11 +49,12 @@ describe('Cea608Memory', () => {
   it('adds and emits a series of special characters from the buffer', () => {
     const startTime = 1;
     const endTime = 2;
-    const expectedText = '½¿èôÇ©ë»ö{ß│';
+    const expectedText = '½¿ èôÇ©ë»ö{ß│';
     const charGroups = [
       {
         set: CharSet.SPECIAL_NORTH_AMERICAN,
-        chars: [0x32, 0x33, 0x3a, 0x3e], // ½, ¿, è, ô
+        // Note TS is not at either end to avoid side effect of trim()
+        chars: [0x32, 0x33, 0x39, 0x3a, 0x3e], // ½, ¿, TS, è, ô
       },
 
       {
@@ -84,6 +83,9 @@ describe('Cea608Memory', () => {
     }
 
     const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    topLevelCue.line = 10;
+    topLevelCue.lineInterpretation =
+        shaka.text.Cue.lineInterpretation.PERCENTAGE;
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, expectedText),
     ];
@@ -118,6 +120,9 @@ describe('Cea608Memory', () => {
     }
 
     const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    topLevelCue.line = 10;
+    topLevelCue.lineInterpretation =
+        shaka.text.Cue.lineInterpretation.PERCENTAGE;
     topLevelCue.nestedCues = [
       CeaUtils.createStyledCue(startTime, endTime,
           expectedText, /* underline= */ true,
@@ -169,6 +174,9 @@ describe('Cea608Memory', () => {
     // ...
     // So we expect that test\n\ntest is emitted
     const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    topLevelCue.line = 36.66;
+    topLevelCue.lineInterpretation =
+        shaka.text.Cue.lineInterpretation.PERCENTAGE;
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, text),
       CeaUtils.createLineBreakCue(startTime, endTime),
@@ -210,6 +218,9 @@ describe('Cea608Memory', () => {
     memory.eraseChar(); // Erase the last 't' from 'testt'
 
     const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    topLevelCue.line = 10;
+    topLevelCue.lineInterpretation =
+        shaka.text.Cue.lineInterpretation.PERCENTAGE;
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, expectedText),
     ];
@@ -281,6 +292,9 @@ describe('Cea608Memory', () => {
 
       // Expected text is 's\nt\nt\ne'
       const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+      topLevelCue.line = 31.33;
+      topLevelCue.lineInterpretation =
+          shaka.text.Cue.lineInterpretation.PERCENTAGE;
       topLevelCue.nestedCues = [
         CeaUtils.createDefaultCue(startTime, endTime, 's'),
         CeaUtils.createLineBreakCue(startTime, endTime),
@@ -289,6 +303,100 @@ describe('Cea608Memory', () => {
         CeaUtils.createDefaultCue(startTime, endTime, 't'),
         CeaUtils.createLineBreakCue(startTime, endTime),
         CeaUtils.createDefaultCue(startTime, endTime, 'e'),
+      ];
+
+      const expectedCaption = {
+        stream,
+        cue: topLevelCue,
+      };
+
+      // Force out the new memory.
+      const caption = memory.forceEmit(startTime, endTime);
+      expect(caption).toEqual(expectedCaption);
+    });
+
+    it('does not move rows if source row index is negative', () => {
+      const startTime = 1;
+      const endTime = 2;
+      const text = 'test';
+
+      // Add the text to the buffer, each character on separate rows.
+      // At this point, the memory looks like:
+      // [1]: t
+      // [2]: e
+      // [3]: s
+      // [4]: t
+      for (const c of text) {
+        memory.addChar(CharSet.BASIC_NORTH_AMERICAN,
+            c.charCodeAt(0));
+        memory.setRow(memory.getRow() + 1); // increment row
+      }
+
+      const srcRowIdx = -1;
+      const dstRowIdx = 2;
+      const rowsToMove = 3;
+      memory.moveRows(dstRowIdx, srcRowIdx, rowsToMove);
+
+      // Expected text is 't\ne\ns\nt'
+      const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+      topLevelCue.line = 31.33;
+      topLevelCue.lineInterpretation =
+          shaka.text.Cue.lineInterpretation.PERCENTAGE;
+      topLevelCue.nestedCues = [
+        CeaUtils.createDefaultCue(startTime, endTime, 't'),
+        CeaUtils.createLineBreakCue(startTime, endTime),
+        CeaUtils.createDefaultCue(startTime, endTime, 'e'),
+        CeaUtils.createLineBreakCue(startTime, endTime),
+        CeaUtils.createDefaultCue(startTime, endTime, 's'),
+        CeaUtils.createLineBreakCue(startTime, endTime),
+        CeaUtils.createDefaultCue(startTime, endTime, 't'),
+      ];
+
+      const expectedCaption = {
+        stream,
+        cue: topLevelCue,
+      };
+
+      // Force out the new memory.
+      const caption = memory.forceEmit(startTime, endTime);
+      expect(caption).toEqual(expectedCaption);
+    });
+
+    it('does not move rows if destination row index is negative', () => {
+      const startTime = 1;
+      const endTime = 2;
+      const text = 'test';
+
+      // Add the text to the buffer, each character on separate rows.
+      // At this point, the memory looks like:
+      // [1]: t
+      // [2]: e
+      // [3]: s
+      // [4]: t
+      for (const c of text) {
+        memory.addChar(CharSet.BASIC_NORTH_AMERICAN,
+            c.charCodeAt(0));
+        memory.setRow(memory.getRow() + 1); // increment row
+      }
+
+      const srcRowIdx = 1;
+      const dstRowIdx = -2;
+      const rowsToMove = 3;
+      memory.moveRows(dstRowIdx, srcRowIdx, rowsToMove);
+
+      // Expected text is 't\ne\ns\nt'
+      const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+      topLevelCue.line = 31.33;
+      topLevelCue.lineInterpretation =
+          shaka.text.Cue.lineInterpretation.PERCENTAGE;
+      topLevelCue.nestedCues = [
+        CeaUtils.createDefaultCue(startTime, endTime, 't'),
+        CeaUtils.createLineBreakCue(startTime, endTime),
+        CeaUtils.createDefaultCue(startTime, endTime, 'e'),
+        CeaUtils.createLineBreakCue(startTime, endTime),
+        CeaUtils.createDefaultCue(startTime, endTime, 's'),
+        CeaUtils.createLineBreakCue(startTime, endTime),
+        CeaUtils.createDefaultCue(startTime, endTime, 't'),
       ];
 
       const expectedCaption = {

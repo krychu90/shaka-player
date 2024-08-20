@@ -4,11 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.abr.SimpleAbrManager');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.PlayerConfiguration');
-
 describe('SimpleAbrManager', () => {
   const sufficientBWMultiplier = 1.06;
   const defaultBandwidthEstimate = 500e3; // 500kbps
@@ -68,6 +63,7 @@ describe('SimpleAbrManager', () => {
     config = shaka.util.PlayerConfiguration.createDefault().abr;
     config.defaultBandwidthEstimate = defaultBandwidthEstimate;
     config.useNetworkInformation = false;
+    config.minTimeToSwitch = 0;
 
     variants = manifest.variants;
 
@@ -91,7 +87,7 @@ describe('SimpleAbrManager', () => {
     config.defaultBandwidthEstimate = 3e6;
     abrManager.configure(config);
     const chosen = abrManager.chooseVariant();
-    expect(chosen.id).toBe(104);
+    expect(chosen.id).toBe(103);
   });
 
   it('can handle empty variants', () => {
@@ -150,27 +146,27 @@ describe('SimpleAbrManager', () => {
       abrManager.setVariants(variants);
       abrManager.chooseVariant();
 
-      abrManager.segmentDownloaded(1000, bytesPerSecond);
-      abrManager.segmentDownloaded(1000, bytesPerSecond);
+      abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+      abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
       abrManager.enable();
 
       // Make another call to segmentDownloaded() so switchCallback() is
       // called.
-      abrManager.segmentDownloaded(1000, bytesPerSecond);
+      abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
       // Expect variants 2 to be chosen for bandwidth = 5e5
       // and variant 5 - for bandwidth = 6e5
       const expectedVariant = (bandwidth == 6e5) ? variants[5] : variants[2];
 
-      expect(switchCallback).toHaveBeenCalledWith(expectedVariant);
+      expect(switchCallback).toHaveBeenCalledWith(expectedVariant, false, 0);
     });
   }
 
   it('can handle 0 duration segments', () => {
     // Makes sure bandwidth estimate doesn't get set to NaN
     // when a 0 duration segment is encountered.
-    // https://github.com/google/shaka-player/issues/582
+    // https://github.com/shaka-project/shaka-player/issues/582
     const bandwidth = 5e5;
     const bytesPerSecond = sufficientBWMultiplier * bandwidth / 8.0;
 
@@ -178,12 +174,12 @@ describe('SimpleAbrManager', () => {
     abrManager.chooseVariant();
 
     // 0 duration segment shouldn't cause us to get stuck on the lowest variant
-    abrManager.segmentDownloaded(0, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(0, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     abrManager.enable();
 
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     expect(abrManager.getBandwidthEstimate()).toBeTruthy();
   });
@@ -198,19 +194,19 @@ describe('SimpleAbrManager', () => {
     // bandwidth.
     const bytesPerSecond = sufficientBWMultiplier * bandwidth / 8.0;
 
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     abrManager.enable();
 
     // Make another call to segmentDownloaded() so switchCallback() is
     // called.
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     // Expect variants 4 to be chosen
-    const expectedVariant = variants[4];
+    const expectedVariant = variants[3];
 
-    expect(switchCallback).toHaveBeenCalledWith(expectedVariant);
+    expect(switchCallback).toHaveBeenCalledWith(expectedVariant, false, 0);
   });
 
   it('does not call switchCallback() if not enabled', () => {
@@ -221,9 +217,9 @@ describe('SimpleAbrManager', () => {
     abrManager.chooseVariant();
 
     // Don't enable AbrManager.
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
     expect(switchCallback).not.toHaveBeenCalled();
   });
 
@@ -234,12 +230,12 @@ describe('SimpleAbrManager', () => {
     abrManager.setVariants(variants);
     abrManager.chooseVariant();
 
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     abrManager.enable();
 
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
     expect(switchCallback).toHaveBeenCalled();
     switchCallback.calls.reset();
 
@@ -247,23 +243,23 @@ describe('SimpleAbrManager', () => {
     bandwidth = 2e6;
     bytesPerSecond = sufficientBWMultiplier * bandwidth / 8.0;
 
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     // Stay inside switch interval.
     Date.now = () => (config.switchInterval - 2) * 1e3;
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     expect(switchCallback).not.toHaveBeenCalled();
 
     // Move outside switch interval.
     Date.now = () => (config.switchInterval + 2) * 1e3;
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     expect(switchCallback).toHaveBeenCalled();
   });
@@ -277,18 +273,46 @@ describe('SimpleAbrManager', () => {
     abrManager.setVariants(variants);
     abrManager.chooseVariant();
 
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     abrManager.enable();
 
     // Make another call to segmentDownloaded(). switchCallback() will be
     // called to upgrade.
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     // The second parameter is missing to indicate that the buffer should not be
     // cleared.
-    expect(switchCallback).toHaveBeenCalledWith(jasmine.any(Object));
+    expect(switchCallback).toHaveBeenCalledWith(jasmine.any(Object), false, 0);
+  });
+
+  it('does clear the buffer on upgrade with safemargin to 4', () => {
+    // Simulate some segments being downloaded at a high rate, to trigger an
+    // upgrade.
+    const bandwidth = 5e5;
+    const bytesPerSecond = sufficientBWMultiplier * bandwidth / 8.0;
+
+    // Set the clear buffer to true and the safe margin to 4.
+    config.clearBufferSwitch = true;
+    config.safeMarginSwitch = 4;
+    abrManager.configure(config);
+
+    abrManager.setVariants(variants);
+    abrManager.chooseVariant();
+
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+
+    abrManager.enable();
+
+    // Make another call to segmentDownloaded(). switchCallback() will be
+    // called to upgrade.
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+
+    // The second parameter is missing to indicate that the buffer should not be
+    // cleared.
+    expect(switchCallback).toHaveBeenCalledWith(jasmine.any(Object), true, 4);
   });
 
   it('does not clear the buffer on downgrade', () => {
@@ -304,18 +328,18 @@ describe('SimpleAbrManager', () => {
     abrManager.setVariants(variants);
     abrManager.chooseVariant();
 
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     abrManager.enable();
 
     // Make another call to segmentDownloaded(). switchCallback() will be
     // called to downgrade.
-    abrManager.segmentDownloaded(1000, bytesPerSecond);
+    abrManager.segmentDownloaded(1000, bytesPerSecond, true);
 
     // The second parameter is missing to indicate that the buffer should not be
     // cleared.
-    expect(switchCallback).toHaveBeenCalledWith(jasmine.any(Object));
+    expect(switchCallback).toHaveBeenCalledWith(jasmine.any(Object), false, 0);
   });
 
   it('will respect restrictions', () => {

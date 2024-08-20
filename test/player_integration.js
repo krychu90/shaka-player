@@ -4,22 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.Uri');
-goog.require('shaka.Player');
-goog.require('shaka.log');
-goog.require('shaka.media.DrmEngine');
-goog.require('shaka.media.TimeRangesUtils');
-goog.require('shaka.test.FakeAbrManager');
-goog.require('shaka.test.FakeTextDisplayer');
-goog.require('shaka.test.Loader');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.Functional');
-goog.require('shaka.util.Iterables');
-
 describe('Player', () => {
   /** @type {!jasmine.Spy} */
   let onErrorSpy;
@@ -36,6 +20,8 @@ describe('Player', () => {
   /** @type {shaka.test.Waiter} */
   let waiter;
 
+  const Util = shaka.test.Util;
+
   beforeAll(async () => {
     video = shaka.test.UiUtils.createVideoElement();
     document.body.appendChild(video);
@@ -46,11 +32,16 @@ describe('Player', () => {
 
   beforeEach(async () => {
     await shaka.test.TestScheme.createManifests(compiledShaka, '_compiled');
-    player = new compiledShaka.Player(video);
+    player = new compiledShaka.Player();
+    await player.attach(video);
+
+    // Disable stall detection, which can interfere with playback tests.
+    player.configure('streaming.stallEnabled', false);
 
     // Grab event manager from the uncompiled library:
     eventManager = new shaka.util.EventManager();
     waiter = new shaka.test.Waiter(eventManager);
+    waiter.setPlayer(player);
 
     onErrorSpy = jasmine.createSpy('onError');
     onErrorSpy.and.callFake((event) => {
@@ -63,10 +54,51 @@ describe('Player', () => {
     eventManager.release();
 
     await player.destroy();
+    player.releaseAllMutexes();
   });
 
   afterAll(() => {
     document.body.removeChild(video);
+  });
+
+  describe('seek range', () => {
+    // Regression test for Issue #3675.
+    it('has a reasonable seek range after going from live to VOD', async () => {
+      const netEngine = player.getNetworkingEngine();
+      const startTime = Date.now();
+      netEngine.registerRequestFilter((type, request) => {
+        if (type != shaka.net.NetworkingEngine.RequestType.MANIFEST) {
+          return;
+        }
+        // Simulate a live stream by providing different manifests over time.
+        const time = (Date.now() - startTime) / 1000;
+        const manifestNumber = Math.min(5, Math.floor(0.5 + time / 2));
+        request.uris = [
+          '/base/test/test/assets/3675/dash_' + manifestNumber + '.mpd',
+        ];
+        console.log('getting manifest', request.uris);
+      });
+
+      // Play the stream.
+      await player.load('/base/test/test/assets/3675/dash_0.mpd');
+      await video.play();
+
+      // Wait for the stream to be over.
+      eventManager.listen(player, 'error', Util.spyFunc(onErrorSpy));
+      /** @type {shaka.test.Waiter} */
+      const waiter = new shaka.test.Waiter(eventManager)
+          .setPlayer(player)
+          .timeoutAfter(40)
+          .failOnTimeout(true);
+      await waiter.waitForEnd(video);
+
+      // The stream should have transitioned to VOD by now.
+      expect(player.isLive()).toBe(false);
+
+      // Check that the final seek range is as expected.
+      const seekRange = player.seekRange();
+      expect(seekRange.end).toBeCloseTo(14);
+    });
   });
 
   describe('attach', () => {
@@ -85,12 +117,79 @@ describe('Player', () => {
     });
   });  // describe('attach')
 
+  describe('destroy', () => {
+    // Regression test for:
+    // https://github.com/shaka-project/shaka-player/issues/4850
+    it('does not leave any lingering timers', async () => {
+      shaka.util.Timer.activeTimers.clear();
+
+      // Unlike the other tests in this file, this uses an uncompiled build of
+      // Shaka, so that we don't need to expose shaka.util.Timer.activeTimers.
+      player = new shaka.Player();
+      await player.attach(video);
+
+      // Disable stall detection, which can interfere with playback tests.
+      player.configure('streaming.stallEnabled', false);
+
+      waiter.setPlayer(player);
+
+      // Play the video for a little while.
+      await player.load('test:sintel');
+      await video.play();
+      await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
+
+      // Destroy the player.
+      await player.destroy();
+
+      // Are there any timers left?
+      for (const timer of shaka.util.Timer.activeTimers.keys()) {
+        const stackTrace = shaka.util.Timer.activeTimers.get(timer);
+        fail('Lingering timer exists! Stack trace of creation: ' + stackTrace);
+      }
+    });
+  });
+
+  describe('updateStartTime() in manifestparsed event handler', () => {
+    it('does not get segments prior to startTime', async () => {
+      player.addEventListener('manifestparsed', () => {
+        player.updateStartTime(24);
+      });
+      const results = {
+        requestedVideoSegment0: false,
+        requestedVideoSegment1: false,
+        requestedVideoSegment2: false,
+      };
+      const expected = {
+        requestedVideoSegment0: false,
+        requestedVideoSegment1: false,
+        requestedVideoSegment2: true,
+      };
+      player.getNetworkingEngine().registerRequestFilter(
+          (type, request) => {
+            if (request.uris[0] == 'test:sintel/video/0') {
+              results.requestedVideoSegment0 = true;
+            }
+            if (request.uris[0] == 'test:sintel/video/1') {
+              results.requestedVideoSegment1 = true;
+            }
+            if (request.uris[0] == 'test:sintel/video/2') {
+              results.requestedVideoSegment2 = true;
+            }
+          });
+      await player.load('test:sintel_compiled');
+      await video.play();
+      await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 25, 30);
+      expect(results).toEqual(expected);
+    });
+  });
+
+
   describe('getStats', () => {
     it('gives stats about current stream', async () => {
       // This is tested more in player_unit.js.  This is here to test the public
       // API and to check for renaming.
       await player.load('test:sintel_compiled');
-      video.play();
+      await video.play();
       await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
 
       const stats = player.getStats();
@@ -104,6 +203,9 @@ describe('Player', () => {
         corruptedFrames: jasmine.any(Number),
         estimatedBandwidth: jasmine.any(Number),
 
+        gapsJumped: jasmine.any(Number),
+        stallsDetected: jasmine.any(Number),
+
         completionPercent: jasmine.any(Number),
         loadLatency: jasmine.any(Number),
         manifestTimeSeconds: jasmine.any(Number),
@@ -115,6 +217,13 @@ describe('Player', () => {
         liveLatency: jasmine.any(Number),
 
         maxSegmentDuration: jasmine.any(Number),
+
+        manifestSizeBytes: jasmine.any(Number),
+        bytesDownloaded: jasmine.any(Number),
+
+        nonFatalErrorCount: jasmine.any(Number),
+        manifestPeriodCount: jasmine.any(Number),
+        manifestGapCount: jasmine.any(Number),
 
         // We should have loaded the first Period by now, so we should have a
         // history.
@@ -158,7 +267,7 @@ describe('Player', () => {
 
     it('does not cause cues to be null', async () => {
       await player.load('test:sintel_compiled');
-      video.play();
+      await video.play();
       await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
 
       // This TextTrack was created as part of load() when we set up the
@@ -180,89 +289,7 @@ describe('Player', () => {
       }
     });
 
-    it('is called automatically if language prefs match', async () => {
-      // If the text is a match for the user's preferences, and audio differs
-      // from text, we enable text display automatically.
-
-      // NOTE: This is also a regression test for #1696, in which a change
-      // to this feature broke StreamingEngine initialization.
-
-      const preferredTextLanguage = 'fa';  // The same as in the content itself
-      player.configure({preferredTextLanguage: preferredTextLanguage});
-
-      // Now load a version of Sintel with delayed setup of video & audio
-      // streams and wait for completion.
-      await player.load('test:sintel_realistic_compiled');
-      // By this point, a MediaSource error would be thrown in a repro of bug
-      // #1696.
-
-      // Make sure the automatic setting took effect.
-      expect(player.isTextTrackVisible()).toBe(true);
-
-      // Make sure the content we tested with has text tracks, that the config
-      // we used matches the text language, and that the audio language differs.
-      // These will catch any changes to the underlying content that would
-      // invalidate the test setup.
-      expect(player.getTextTracks().length).not.toBe(0);
-      const textTrack = player.getTextTracks()[0];
-      expect(textTrack.language).toBe(preferredTextLanguage);
-
-      const variantTrack = player.getVariantTracks()[0];
-      expect(variantTrack.language).not.toBe(textTrack.language);
-    });
-
-    it('is not called automatically without language pref match', async () => {
-      // If the text preference doesn't match the content, we do not enable text
-      // display automatically.
-
-      const preferredTextLanguage = 'xx';  // Differs from the content itself
-      player.configure({preferredTextLanguage: preferredTextLanguage});
-
-      // Now load the content and wait for completion.
-      await player.load('test:sintel_realistic_compiled');
-
-      // Make sure the automatic setting did not happen.
-      expect(player.isTextTrackVisible()).toBe(false);
-
-      // Make sure the content we tested with has text tracks, that the config
-      // we used does not match the text language, and that the text and audio
-      // languages do not match each other (to keep this distinct from the next
-      // test case).  This will catch any changes to the underlying content that
-      // would invalidate the test setup.
-      expect(player.getTextTracks().length).not.toBe(0);
-      const textTrack = player.getTextTracks()[0];
-      expect(textTrack.language).not.toBe(preferredTextLanguage);
-
-      const variantTrack = player.getVariantTracks()[0];
-      expect(variantTrack.language).not.toBe(textTrack.language);
-    });
-
-    it('is not called automatically with audio and text match', async () => {
-      // If the audio and text tracks use the same language, we do not enable
-      // text display automatically, no matter the text preference.
-
-      const preferredTextLanguage = 'und';  // The same as in the content itself
-      player.configure({preferredTextLanguage: preferredTextLanguage});
-
-      // Now load the content and wait for completion.
-      await player.load('test:sintel_compiled');
-
-      // Make sure the automatic setting did not happen.
-      expect(player.isTextTrackVisible()).toBe(false);
-
-      // Make sure the content we tested with has text tracks, that the
-      // config we used matches the content, and that the text and audio
-      // languages match each other.  This will catch any changes to the
-      // underlying content that would invalidate the test setup.
-      expect(player.getTextTracks().length).not.toBe(0);
-      const textTrack = player.getTextTracks()[0];
-      expect(textTrack.language).toBe(preferredTextLanguage);
-
-      const variantTrack = player.getVariantTracks()[0];
-      expect(variantTrack.language).toBe(textTrack.language);
-    });
-
-    // Repro for https://github.com/google/shaka-player/issues/1879.
+    // Repro for https://github.com/shaka-project/shaka-player/issues/1879.
     it('appends cues when enabled initially', async () => {
       let cues = [];
       /** @const {!shaka.test.FakeTextDisplayer} */
@@ -279,7 +306,7 @@ describe('Player', () => {
       await player.load('test:sintel_realistic_compiled');
 
       // Play until a time at which the external cues would be on screen.
-      video.play();
+      await video.play();
       await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 4, 20);
 
       expect(player.isTextTrackVisible()).toBe(true);
@@ -301,7 +328,7 @@ describe('Player', () => {
       const locationUri = new goog.Uri(location.href);
       const partialUri = new goog.Uri('/base/test/test/assets/text-clip.vtt');
       const absoluteUri = locationUri.resolve(partialUri);
-      const newTrack = player.addTextTrack(
+      const newTrack = await player.addTextTrackAsync(
           absoluteUri.toString(), 'en', 'subtitles', 'text/vtt');
 
       expect(player.getTextTracks()).toEqual([newTrack]);
@@ -311,7 +338,7 @@ describe('Player', () => {
       await waiter.waitForEvent(player, 'texttrackvisibility');
 
       // Play until a time at which the external cues would be on screen.
-      video.play();
+      await video.play();
       await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 4, 20);
 
       expect(player.isTextTrackVisible()).toBe(true);
@@ -319,7 +346,7 @@ describe('Player', () => {
       expect(cues.length).toBeGreaterThan(0);
     });
 
-    // https://github.com/google/shaka-player/issues/2553
+    // https://github.com/shaka-project/shaka-player/issues/2553
     it('does not change the selected track', async () => {
       player.configure('streaming.alwaysStreamText', false);
       await player.load('test:forced_subs_simulation_compiled');
@@ -349,7 +376,200 @@ describe('Player', () => {
       player.setTextTrackVisibility(true);
       expect(getTracksActive()).toEqual([false, true]);
     });
+
+    // https://github.com/shaka-project/shaka-player/issues/4821
+    it('loads a single text stream', async () => {
+      player.configure({preferredTextLanguage: 'en'});
+      await player.load('test:sintel_no_text_compiled');
+
+      // Add preferred language text track.
+      const locationUri = new goog.Uri(location.href);
+      const partialUri = new goog.Uri('/base/test/test/assets/text-clip.vtt');
+      const absoluteUri = locationUri.resolve(partialUri);
+      await player.addTextTrackAsync(
+          absoluteUri.toString(), 'en', 'subtitles', 'text/vtt');
+
+      // Add alternate language text track.
+      // Two text tracks with same timings but different text
+      // are necessary for test.
+      const partialUri2 =
+      new goog.Uri('/base/test/test/assets/text-clip-alt.vtt');
+      const absoluteUri2 = locationUri.resolve(partialUri2);
+      await player.addTextTrackAsync(
+          absoluteUri2.toString(), 'fr', 'subtitles', 'text/vtt');
+
+      const textTracks = player.getTextTracks();
+      expect(textTracks.length).toBe(2);
+      expect(textTracks[0].language).toBe('en');
+      expect(textTracks[1].language).toBe('fr');
+
+      // Enable text visibilty and immediately change language.
+      // Only one set of cues should be active.
+      // Cues should be of the selected language track.
+      player.setTextTrackVisibility(true);
+      player.selectTextLanguage('fr');
+      video.currentTime = 5;
+      await video.play();
+      await waiter.waitForMovementOrFailOnTimeout(video, 10);
+
+      expect(video.textTracks[0].activeCues.length).toBe(1);
+      expect(player.getTextTracks()[1].active).toBe(true);
+    });
   });  // describe('setTextTrackVisibility')
+
+  describe('autoShowText', () => {
+    async function textMatchesAudioDoesNot() {
+      const preferredTextLanguage = 'fa';  // The same as in the content
+      player.configure({preferredTextLanguage: preferredTextLanguage});
+
+      // NOTE: This is also a regression test for #1696, in which a change to
+      // this feature broke StreamingEngine initialization.
+
+      // Now load a version of Sintel with delayed setup of video & audio
+      // streams and wait for completion.
+      await player.load('test:sintel_realistic_compiled');
+      // By this point, a MediaSource error would be thrown in a repro of bug
+      // #1696.
+
+      // Make sure the content we tested with has text tracks, that the config
+      // we used matches the text language, and that the audio language differs.
+      // These will catch any changes to the underlying content that would
+      // invalidate the test setup.
+      expect(player.getTextTracks().length).not.toBe(0);
+      const textTrack = player.getTextTracks()[0];
+      expect(textTrack.language).toBe(preferredTextLanguage);
+
+      const variantTrack = player.getVariantTracks()[0];
+      expect(variantTrack.language).not.toBe(textTrack.language);
+    }
+
+    async function textDoesNotMatch() {
+      const preferredTextLanguage = 'xx';  // Differs from the content
+      player.configure({preferredTextLanguage: preferredTextLanguage});
+
+      // Now load the content and wait for completion.
+      await player.load('test:sintel_realistic_compiled');
+
+      // Make sure the content we tested with has text tracks, that the config
+      // we used does not match the text language, and that the text and audio
+      // languages do not match each other (to keep this distinct from the next
+      // test case).  This will catch any changes to the underlying content that
+      // would invalidate the test setup.
+      expect(player.getTextTracks().length).not.toBe(0);
+      const textTrack = player.getTextTracks()[0];
+      expect(textTrack.language).not.toBe(preferredTextLanguage);
+
+      const variantTrack = player.getVariantTracks()[0];
+      expect(variantTrack.language).not.toBe(textTrack.language);
+    }
+
+    async function textAndAudioMatch() {
+      const preferredTextLanguage = 'und';  // The same as in the content
+      player.configure({preferredTextLanguage: preferredTextLanguage});
+
+      // Now load the content and wait for completion.
+      await player.load('test:sintel_compiled');
+
+      // Make sure the content we tested with has text tracks, that the config
+      // we used matches the content, and that the text and audio languages
+      // match each other.  This will catch any changes to the underlying
+      // content that would invalidate the test setup.
+      expect(player.getTextTracks().length).not.toBe(0);
+      const textTrack = player.getTextTracks()[0];
+      expect(textTrack.language).toBe(preferredTextLanguage);
+
+      const variantTrack = player.getVariantTracks()[0];
+      expect(variantTrack.language).toBe(textTrack.language);
+    }
+
+    describe('IF_SUBTITLES_MAY_BE_NEEDED', () => {
+      beforeEach(() => {
+        player.configure(
+            'autoShowText',
+            shaka.config.AutoShowText.IF_SUBTITLES_MAY_BE_NEEDED);
+      });
+
+      it('enables text if text matches and audio does not', async () => {
+        await textMatchesAudioDoesNot();
+        expect(player.isTextTrackVisible()).toBe(true);
+      });
+
+      it('disables text if text does not match', async () => {
+        await textDoesNotMatch();
+        expect(player.isTextTrackVisible()).toBe(false);
+      });
+
+      it('disables text if both text and audio match', async () => {
+        await textAndAudioMatch();
+        expect(player.isTextTrackVisible()).toBe(false);
+      });
+    });  // IF_SUBTITLES_MAY_BE_NEEDED
+
+    describe('IF_PREFERRED_TEXT_LANGUAGE', () => {
+      beforeEach(() => {
+        player.configure(
+            'autoShowText',
+            shaka.config.AutoShowText.IF_PREFERRED_TEXT_LANGUAGE);
+      });
+
+      it('enables text if text matches and audio does not', async () => {
+        await textMatchesAudioDoesNot();
+        expect(player.isTextTrackVisible()).toBe(true);
+      });
+
+      it('disables text if text does not match', async () => {
+        await textDoesNotMatch();
+        expect(player.isTextTrackVisible()).toBe(false);
+      });
+
+      it('enables text if both text and audio match', async () => {
+        await textAndAudioMatch();
+        expect(player.isTextTrackVisible()).toBe(true);
+      });
+    });  // IF_PREFERRED_TEXT_LANGUAGE
+
+    describe('ALWAYS', () => {
+      beforeEach(() => {
+        player.configure('autoShowText', shaka.config.AutoShowText.ALWAYS);
+      });
+
+      it('enables text if text matches and audio does not', async () => {
+        await textMatchesAudioDoesNot();
+        expect(player.isTextTrackVisible()).toBe(true);
+      });
+
+      it('enables text if text does not match', async () => {
+        await textDoesNotMatch();
+        expect(player.isTextTrackVisible()).toBe(true);
+      });
+
+      it('enables text if both text and audio match', async () => {
+        await textAndAudioMatch();
+        expect(player.isTextTrackVisible()).toBe(true);
+      });
+    });  // ALWAYS
+
+    describe('NEVER', () => {
+      beforeEach(() => {
+        player.configure('autoShowText', shaka.config.AutoShowText.NEVER);
+      });
+
+      it('disables text if text matches and audio does not', async () => {
+        await textMatchesAudioDoesNot();
+        expect(player.isTextTrackVisible()).toBe(false);
+      });
+
+      it('disables text if text does not match', async () => {
+        await textDoesNotMatch();
+        expect(player.isTextTrackVisible()).toBe(false);
+      });
+
+      it('disables text if both text and audio match', async () => {
+        await textAndAudioMatch();
+        expect(player.isTextTrackVisible()).toBe(false);
+      });
+    });  // NEVER
+  });  // AutoShowText
 
   describe('plays', () => {
     it('with external text tracks', async () => {
@@ -360,7 +580,7 @@ describe('Player', () => {
       const locationUri = new goog.Uri(location.href);
       const partialUri = new goog.Uri('/base/test/test/assets/text-clip.vtt');
       const absoluteUri = locationUri.resolve(partialUri);
-      const newTrack = player.addTextTrack(
+      const newTrack = await player.addTextTrackAsync(
           absoluteUri.toString(), 'en', 'subtitles', 'text/vtt');
 
       expect(newTrack.language).toBe('en');
@@ -381,7 +601,7 @@ describe('Player', () => {
 
     it('at higher playback rates', async () => {
       await player.load('test:sintel_compiled');
-      video.play();
+      await video.play();
       await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
 
       // Enabling trick play should change our playback rate to the same rate.
@@ -396,6 +616,26 @@ describe('Player', () => {
       expect(video.playbackRate).toBe(1);
     });
 
+    it('in sequence mode', async () => {
+      if (!shaka.util.Platform.supportsSequenceMode()) {
+        pending('Sequence mode is not supported by the platform.');
+      }
+      await player.load('test:sintel_sequence_compiled');
+      expect(player.getManifest().sequenceMode).toBe(true);
+
+      // Ensure the video plays.
+      await video.play();
+      await waiter.timeoutAfter(20).waitUntilPlayheadReaches(video, 5);
+
+      // Seek the video, and see if it can continue playing from that point.
+      // If this is a multiple of 10, it tends to flake on Tizen with stall
+      // detection disabled.  So use 25.
+      video.currentTime = 25;
+
+      // Expect that we can then reach the end of the video.
+      await waiter.timeoutAfter(40).waitForEnd(video);
+    });
+
     // Regression test for #2326.
     //
     // 1. Construct an instance with a video element.
@@ -407,9 +647,8 @@ describe('Player', () => {
     // even if one is not specified in load().
     it('immediately after construction with MIME type', async () => {
       const testSchemeMimeType = 'application/x-test-manifest';
-      player = new compiledShaka.Player(video);
       await player.load('test:sintel_compiled', 0, testSchemeMimeType);
-      video.play();
+      await video.play();
       await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
     });
 
@@ -445,10 +684,10 @@ describe('Player', () => {
       expect(configuredTextDisplayer).toBe(textDisplayer);
     });
 
-    // Regression test for https://github.com/google/shaka-player/issues/1187
+    // Regression test for https://github.com/shaka-project/shaka-player/issues/1187
     it('does not throw on destroy', async () => {
       await player.load('test:sintel_compiled');
-      video.play();
+      await video.play();
       await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
       await player.unload();
       // Before we fixed #1187, the call to destroy() on textDisplayer was
@@ -476,7 +715,7 @@ describe('Player', () => {
     // and the track selection was ignored.  Because this bug involved
     // interactions between Player and StreamingEngine, it is an integration
     // test and not a unit test.
-    // https://github.com/google/shaka-player/issues/1119
+    // https://github.com/shaka-project/shaka-player/issues/1119
     it('allows early selection of specific tracks', async () => {
       /** @type {!jasmine.Spy} */
       const streamingListener = jasmine.createSpy('listener');
@@ -486,7 +725,8 @@ describe('Player', () => {
       // uncompiled version.  Then we will get assertions.
       eventManager.unlisten(player, 'error');
       await player.destroy();
-      player = new shaka.Player(video);  // NOTE: MUST BE UNCOMPILED
+      player = new shaka.Player();  // NOTE: MUST BE UNCOMPILED
+      await player.attach(video);
       player.configure({abr: {enabled: false}});
       eventManager.listen(player, 'error', Util.spyFunc(onErrorSpy));
 
@@ -511,7 +751,7 @@ describe('Player', () => {
     // switchingPeriods_ in Player.  Because this bug involved interactions
     // between Player and StreamingEngine, it is an integration test and not a
     // unit test.
-    // https://github.com/google/shaka-player/issues/1119
+    // https://github.com/shaka-project/shaka-player/issues/1119
     it('allows selection of tracks in subsequent loads', async () => {
       /** @type {!jasmine.Spy} */
       const streamingListener = jasmine.createSpy('listener');
@@ -521,7 +761,8 @@ describe('Player', () => {
       // uncompiled version.  Then we will get assertions.
       eventManager.unlisten(player, 'error');
       await player.destroy();
-      player = new shaka.Player(video);  // NOTE: MUST BE UNCOMPILED
+      player = new shaka.Player();  // NOTE: MUST BE UNCOMPILED
+      await player.attach(video);
       player.configure({abr: {enabled: false}});
       eventManager.listen(player, 'error', Util.spyFunc(onErrorSpy));
 
@@ -609,7 +850,9 @@ describe('Player', () => {
       eventManager.listen(video, 'waiting', checkOnEvent);
       eventManager.listen(player, 'trackschanged', checkOnEvent);
 
-      const waiter = (new shaka.test.Waiter(eventManager)).timeoutAfter(10);
+      const waiter = new shaka.test.Waiter(eventManager)
+          .setPlayer(player)
+          .timeoutAfter(10);
       const canPlayThrough = waiter.waitForEvent(video, 'canplaythrough');
 
       await player.load('test:sintel_compiled', 5);
@@ -650,6 +893,71 @@ describe('Player', () => {
     });
   });
 
+  describe('mediaQualityChanges', () => {
+    /** @type {!jasmine.Spy} */
+    let onQualityChange;
+    /** @type {!shaka.test.Waiter} */
+    let waiter;
+
+    const qualityChange1 = jasmine.objectContaining({
+      mediaQuality: jasmine.objectContaining({
+        bandwidth: 1,
+        codecs: 'mp4a.40.2',
+        contentType: 'audio',
+        mimeType: 'audio/mp4',
+      }),
+      type: 'mediaqualitychanged',
+      position: jasmine.any(Number),
+    });
+    const qualityChange2 = jasmine.objectContaining({
+      mediaQuality: jasmine.objectContaining({
+        bandwidth: 1,
+        codecs: 'avc1.42c01e',
+        contentType: 'video',
+        mimeType: 'video/mp4',
+      }),
+      type: 'mediaqualitychanged',
+      position: jasmine.any(Number),
+    });
+
+    beforeEach(() => {
+      onQualityChange = jasmine.createSpy('onQualityChange');
+      // const spyFunc = Util.spyFunc(onQualityChange);
+      player.addEventListener('mediaqualitychanged',
+          Util.spyFunc(onQualityChange));
+      waiter = new shaka.test.Waiter(eventManager)
+          .setPlayer(player)
+          .timeoutAfter(10)
+          .failOnTimeout(true);
+    });
+
+    it('emits audio/video quality changes at start when enabled', async () => {
+      player.configure('streaming.observeQualityChanges', true);
+
+      await player.load('test:sintel_compiled');
+      await video.play();
+
+      // Wait for the video to start playback.  If it takes longer than 10
+      // seconds, fail the test.
+      await waiter.waitForMovementOrFailOnTimeout(video, 10);
+      expect(onQualityChange).toHaveBeenCalledTimes(2);
+      expect(onQualityChange).toHaveBeenCalledWith(qualityChange1);
+      expect(onQualityChange).toHaveBeenCalledWith(qualityChange2);
+    });
+
+    it('does not emit quality changes at start when disabled', async () => {
+      player.configure('streaming.observeQualityChanges', false);
+
+      await player.load('test:sintel_compiled');
+      await video.play();
+
+      // Wait for the video to start playback.  If it takes longer than 10
+      // seconds, fail the test.
+      await waiter.waitForMovementOrFailOnTimeout(video, 10);
+      expect(onQualityChange).not.toHaveBeenCalled();
+    });
+  });
+
   describe('buffering', () => {
     const startBuffering = jasmine.objectContaining({buffering: true});
     const endBuffering = jasmine.objectContaining({buffering: false});
@@ -663,6 +971,7 @@ describe('Player', () => {
       player.addEventListener('buffering', Util.spyFunc(onBuffering));
 
       waiter = new shaka.test.Waiter(eventManager)
+          .setPlayer(player)
           .timeoutAfter(10)
           .failOnTimeout(true);
     });
@@ -713,50 +1022,58 @@ describe('Player', () => {
     });
 
     it('buffers ahead of the playhead', async () => {
+      if (window.ManagedMediaSource) {
+        pending('ManagedMediaSource has buffer control signals.');
+      }
       player.configure('streaming.bufferingGoal', 10);
 
       await player.load('test:sintel_long_compiled');
       video.pause();
-      await waitUntilBuffered(10);
+      await waiter.waitUntilBuffered(video, 10);
 
       player.configure('streaming.bufferingGoal', 30);
-      await waitUntilBuffered(30);
+      await waiter.waitUntilBuffered(video, 30);
 
       player.configure('streaming.bufferingGoal', 60);
-      await waitUntilBuffered(60);
-      await Util.delay(0.2);
+      await waiter.waitUntilBuffered(video, 60);
+      await Util.delay(1);
       expect(getBufferedAhead()).toBeLessThan(70);  // 60 + segment_size
 
       // We don't remove buffered content ahead of the playhead, so seek to
       // clear the buffer.
       player.configure('streaming.bufferingGoal', 10);
       video.currentTime = 120;
-      await waitUntilBuffered(10);
-      await Util.delay(0.2);
+      await waiter.waitUntilBuffered(video, 10);
+      await Util.delay(1);
       expect(getBufferedAhead()).toBeLessThan(20);  // 10 + segment_size
     });
 
     it('clears buffer behind playhead', async () => {
+      if (window.ManagedMediaSource) {
+        pending('ManagedMediaSource has buffer control signals.');
+      }
       player.configure('streaming.bufferingGoal', 30);
       player.configure('streaming.bufferBehind', 30);
 
       await player.load('test:sintel_long_compiled');
       video.pause();
-      await waitUntilBuffered(30);
+      await waiter.waitUntilBuffered(video, 30);
       video.currentTime = 20;
-      await waitUntilBuffered(30);
+      await waiter.waitUntilBuffered(video, 30);
 
       expect(getBufferedBehind()).toBe(20);  // Buffered to start still.
       video.currentTime = 50;
-      await waitUntilBuffered(30);
-      expect(getBufferedBehind()).toBeLessThan(30);
+      await waiter.waitUntilBuffered(video, 30);
+      await Util.delay(1);
+      expect(getBufferedBehind()).toBeLessThan(40);  // 30 + segment_size
 
       player.configure('streaming.bufferBehind', 10);
       // We only evict content when we append a segment, so increase the
       // buffering goal so we append another segment.
       player.configure('streaming.bufferingGoal', 40);
-      await waitUntilBuffered(40);
-      expect(getBufferedBehind()).toBeLessThan(10);
+      await waiter.waitUntilBuffered(video, 40);
+      await Util.delay(1);
+      expect(getBufferedBehind()).toBeLessThanOrEqual(10);
     });
 
     function getBufferedAhead() {
@@ -773,19 +1090,6 @@ describe('Player', () => {
         return 0;
       }
       return video.currentTime - start;
-    }
-
-    async function waitUntilBuffered(amount) {
-      for (const _ of shaka.util.Iterables.range(25)) {
-        shaka.util.Functional.ignored(_);
-        // We buffer from an internal segment, so this shouldn't take long to
-        // buffer.
-        await Util.delay(0.1);  // eslint-disable-line no-await-in-loop
-        if (getBufferedAhead() >= amount) {
-          return;
-        }
-      }
-      throw new Error('Timeout waiting to buffer');
     }
   });  // describe('buffering')
 
@@ -854,7 +1158,9 @@ describe('Player', () => {
 
       /** @type {shaka.test.Waiter} */
       const waiter = new shaka.test.Waiter(eventManager)
-          .timeoutAfter(1).failOnTimeout(true);
+          .setPlayer(player)
+          .timeoutAfter(1)
+          .failOnTimeout(true);
 
       await waiter.waitForPromise(abrEnabled, 'AbrManager enabled');
 
@@ -874,7 +1180,9 @@ describe('Player', () => {
 
       /** @type {shaka.test.Waiter} */
       const waiter = new shaka.test.Waiter(eventManager)
-          .timeoutAfter(1).failOnTimeout(true);
+          .setPlayer(player)
+          .timeoutAfter(1)
+          .failOnTimeout(true);
 
       await waiter.waitForPromise(abrEnabled, 'AbrManager enabled');
 
@@ -891,7 +1199,8 @@ describe('Player', () => {
     drmIt('unloads properly after DRM error', async () => {
       const drmSupport = await shaka.media.DrmEngine.probeSupport();
       if (!drmSupport['com.widevine.alpha'] &&
-          !drmSupport['com.microsoft.playready']) {
+          !drmSupport['com.microsoft.playready'] &&
+          !drmSupport['com.chromecast.playready']) {
         pending('Skipping DRM error test, only runs on Widevine and PlayReady');
       }
 
@@ -910,13 +1219,244 @@ describe('Player', () => {
         'com.widevine.alpha': bogusUrl,
         'com.microsoft.playready': bogusUrl,
       });
-      await player.load('test:sintel-enc_compiled');
+
+      // This load may be interrupted, so ignore errors and don't wait.
+      const loadPromise =
+          player.load('test:sintel-enc_compiled').catch(() => {});
 
       await errorPromise;
       expect(unloadPromise).not.toBeNull();
+
       if (unloadPromise) {
         await unloadPromise;
       }
+
+      // This should be done, and errors ignored.  But don't leave any Promise
+      // unresolved.
+      await loadPromise;
     });
   });  // describe('unloading')
+
+  describe('addChaptersTrack', () => {
+    it('adds external chapters in vtt format', async () => {
+      await player.load('test:sintel_no_text_compiled');
+      const locationUri = new goog.Uri(location.href);
+      const partialUri1 = new goog.Uri('/base/test/test/assets/chapters.vtt');
+      const absoluteUri1 = locationUri.resolve(partialUri1);
+      await player.addChaptersTrack(absoluteUri1.toString(), 'en');
+
+      // Data should be available as soon as addChaptersTrack resolves.
+      // See https://github.com/shaka-project/shaka-player/issues/4186
+      const chapters = player.getChapters('en');
+      expect(chapters.length).toBe(3);
+      const chapter1 = chapters[0];
+      expect(chapter1.title).toBe('Chapter 1');
+      expect(chapter1.startTime).toBe(0);
+      expect(chapter1.endTime).toBe(5);
+      const chapter2 = chapters[1];
+      expect(chapter2.title).toBe('Chapter 2');
+      expect(chapter2.startTime).toBe(5);
+      expect(chapter2.endTime).toBe(10);
+      const chapter3 = chapters[2];
+      expect(chapter3.title).toBe('Chapter 3');
+      expect(chapter3.startTime).toBe(10);
+      expect(chapter3.endTime).toBe(20);
+
+      const partialUri2 = new goog.Uri('/base/test/test/assets/chapters2.vtt');
+      const absoluteUri2 = locationUri.resolve(partialUri2);
+      await player.addChaptersTrack(absoluteUri2.toString(), 'en');
+
+      const chaptersUpdated = player.getChapters('en');
+      expect(chaptersUpdated.length).toBe(6);
+      const chapterUpdated1 = chaptersUpdated[0];
+      expect(chapterUpdated1.title).toBe('Chapter 1');
+      expect(chapterUpdated1.startTime).toBe(0);
+      expect(chapterUpdated1.endTime).toBe(5);
+      const chapterUpdated2 = chaptersUpdated[1];
+      expect(chapterUpdated2.title).toBe('Chapter 2');
+      expect(chapterUpdated2.startTime).toBe(5);
+      expect(chapterUpdated2.endTime).toBe(10);
+      const chapterUpdated3 = chaptersUpdated[2];
+      expect(chapterUpdated3.title).toBe('Chapter 3');
+      expect(chapterUpdated3.startTime).toBe(10);
+      expect(chapterUpdated3.endTime).toBe(20);
+      const chapterUpdated4 = chaptersUpdated[3];
+      expect(chapterUpdated4.title).toBe('Chapter 4');
+      expect(chapterUpdated4.startTime).toBe(20);
+      expect(chapterUpdated4.endTime).toBe(30);
+      const chapterUpdated5 = chaptersUpdated[4];
+      expect(chapterUpdated5.title).toBe('Chapter 5');
+      expect(chapterUpdated5.startTime).toBe(30);
+      expect(chapterUpdated5.endTime).toBe(40);
+      const chapterUpdated6 = chaptersUpdated[5];
+      expect(chapterUpdated6.title).toBe('Chapter 6');
+      expect(chapterUpdated6.startTime).toBe(40);
+      expect(chapterUpdated6.endTime).toBe(61.349);
+    });
+
+    it('adds external chapters in srt format', async () => {
+      await player.load('test:sintel_no_text_compiled');
+      const locationUri = new goog.Uri(location.href);
+      const partialUri = new goog.Uri('/base/test/test/assets/chapters.srt');
+      const absoluteUri = locationUri.resolve(partialUri);
+      await player.addChaptersTrack(absoluteUri.toString(), 'es');
+
+      const chapters = player.getChapters('es');
+      expect(chapters.length).toBe(3);
+      const chapter1 = chapters[0];
+      expect(chapter1.title).toBe('Chapter 1');
+      expect(chapter1.startTime).toBe(0);
+      expect(chapter1.endTime).toBe(5);
+      const chapter2 = chapters[1];
+      expect(chapter2.title).toBe('Chapter 2');
+      expect(chapter2.startTime).toBe(5);
+      expect(chapter2.endTime).toBe(30);
+      const chapter3 = chapters[2];
+      expect(chapter3.title).toBe('Chapter 3');
+      expect(chapter3.startTime).toBe(30);
+      expect(chapter3.endTime).toBe(61.349);
+    });
+  });  // describe('addChaptersTrack')
+
+  it('requires a license server for HLS ClearKey content', async () => {
+    const expectedError = Util.jasmineError(new shaka.util.Error(
+        shaka.util.Error.Severity.CRITICAL,
+        shaka.util.Error.Category.DRM,
+        shaka.util.Error.Code.NO_LICENSE_SERVER_GIVEN,
+        'org.w3.clearkey'));
+    await expectAsync(player.load('test:sintel-hls-clearkey'))
+        .toBeRejectedWith(expectedError);
+  });
+
+  describe('addThumbnailsTrack', () => {
+    it('appends thumbnails for external thumbnails with sprites',
+        async () => {
+          await player.load('test:sintel_no_text_compiled');
+          const locationUri = new goog.Uri(location.href);
+          const partialUri =
+              new goog.Uri('/base/test/test/assets/thumbnails-sprites.vtt');
+          const absoluteUri = locationUri.resolve(partialUri);
+          const newTrack =
+              await player.addThumbnailsTrack(absoluteUri.toString());
+
+          expect(player.getImageTracks()).toEqual([newTrack]);
+
+          const thumbnail1 = await player.getThumbnails(newTrack.id, 0);
+          expect(thumbnail1.startTime).toBe(0);
+          expect(thumbnail1.duration).toBe(5);
+          expect(thumbnail1.height).toBe(90);
+          expect(thumbnail1.positionX).toBe(0);
+          expect(thumbnail1.positionY).toBe(0);
+          expect(thumbnail1.width).toBe(160);
+          const thumbnail2 = await player.getThumbnails(newTrack.id, 10);
+          expect(thumbnail2.startTime).toBe(5);
+          expect(thumbnail2.duration).toBe(25);
+          expect(thumbnail2.height).toBe(90);
+          expect(thumbnail2.positionX).toBe(160);
+          expect(thumbnail2.positionY).toBe(0);
+          expect(thumbnail2.width).toBe(160);
+          const thumbnail3 = await player.getThumbnails(newTrack.id, 40);
+          expect(thumbnail3.startTime).toBe(30);
+          expect(thumbnail3.duration).toBe(30);
+          expect(thumbnail3.height).toBe(90);
+          expect(thumbnail3.positionX).toBe(160);
+          expect(thumbnail3.positionY).toBe(90);
+          expect(thumbnail3.width).toBe(160);
+
+          const thumbnails = await player.getAllThumbnails(newTrack.id);
+          expect(thumbnails.length).toBe(3);
+        });
+
+    it('appends thumbnails for external thumbnails without sprites',
+        async () => {
+          await player.load('test:sintel_no_text_compiled');
+          const locationUri = new goog.Uri(location.href);
+          const partialUri =
+              new goog.Uri('/base/test/test/assets/thumbnails.vtt');
+          const absoluteUri = locationUri.resolve(partialUri);
+          const newTrack =
+              await player.addThumbnailsTrack(absoluteUri.toString());
+
+          expect(player.getImageTracks()).toEqual([newTrack]);
+
+          const thumbnail1 = await player.getThumbnails(newTrack.id, 0);
+          expect(thumbnail1.startTime).toBe(0);
+          expect(thumbnail1.duration).toBe(5);
+          const thumbnail2 = await player.getThumbnails(newTrack.id, 10);
+          expect(thumbnail2.startTime).toBe(5);
+          expect(thumbnail2.duration).toBe(25);
+          const thumbnail3 = await player.getThumbnails(newTrack.id, 40);
+          expect(thumbnail3.startTime).toBe(30);
+          expect(thumbnail3.duration).toBe(30);
+
+          const thumbnails = await player.getAllThumbnails(newTrack.id);
+          expect(thumbnails.length).toBe(3);
+        });
+  });  // describe('addThumbnailsTrack')
+
+  it('preload', async () => {
+    const preloadManager = await player.preload('test:sintel_compiled');
+    await preloadManager.waitForFinish();
+    await player.load(preloadManager);
+    await video.play();
+    await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
+  });
+
+  it('detachAndSavePreload', async () => {
+    await player.load('test:sintel_compiled');
+    await video.play();
+    const preloadManager = await player.detachAndSavePreload();
+    await player.attach(video);
+    await player.load(preloadManager);
+    await video.play();
+    await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
+  });
+
+  it('unloadAndSavePreload', async () => {
+    await player.load('test:sintel_compiled');
+    await video.play();
+    const preloadManager = await player.unloadAndSavePreload();
+    await player.load(preloadManager);
+    await video.play();
+    await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
+  });
+
+  describe('supports nextUrl', () => {
+    const urlWithNextUrl = 'test:sintel_next_url_compiled';
+
+    it('with preload', async () => {
+      player.configure('streaming.preloadNextUrlWindow', 30);
+      await player.load(urlWithNextUrl);
+      await video.play();
+      await waiter.timeoutAfter(30).waitForEnd(video);
+      expect(player.getAssetUri()).toBe(urlWithNextUrl);
+      // Delay needed to load the next URL.
+      await shaka.test.Util.delay(1);
+      expect(player.getAssetUri()).not.toBe(urlWithNextUrl);
+    });
+
+    it('without preload', async () => {
+      player.configure('streaming.preloadNextUrlWindow', 0);
+      await player.load(urlWithNextUrl);
+      await video.play();
+      await waiter.timeoutAfter(30).waitForEnd(video);
+      expect(player.getAssetUri()).toBe(urlWithNextUrl);
+      // Delay needed to load the next URL.
+      await shaka.test.Util.delay(1);
+      expect(player.getAssetUri()).not.toBe(urlWithNextUrl);
+    });
+  });
+
+  describe('buffer gap', () => {
+    // Regression test for issue #6339.
+    it('skip initial buffer gap', async () => {
+      if (window.ManagedMediaSource) {
+        pending('Skipping test, only runs on MSE');
+      }
+      // Ensure the video has loaded.
+      await player.load('/base/test/test/assets/6339/master.mpd');
+      await waiter.timeoutAfter(10).waitForEvent(video, 'loadeddata');
+      expect(video.currentTime).toBeGreaterThanOrEqual(0);
+    });
+  });
 });

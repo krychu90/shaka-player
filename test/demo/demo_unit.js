@@ -4,11 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.test.FakeDemoMain');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.StringUtils');
-goog.require('shakaDemo.MessageIds');
-
 describe('Demo', () => {
   beforeEach(() => {
     // Make mock versions of misc third-party libraries.
@@ -38,24 +33,11 @@ describe('Demo', () => {
     await shakaDemoMain.cleanup();
   });
 
-  it('has all messages defined', async () => {
-    const englishBuffer =
-        await shaka.test.Util.fetch('/base/demo/locales/en.json');
-    const englishMessages = JSON.parse(shaka.util.StringUtils.fromUTF8(
-        englishBuffer));
-    const sourceBuffer =
-        await shaka.test.Util.fetch('/base/demo/locales/source.json');
-    const sourceMessages = JSON.parse(shaka.util.StringUtils.fromUTF8(
-        sourceBuffer));
-
-    for (const id of Object.values(shakaDemo.MessageIds)) {
-      expect(englishMessages[id]).withContext(`id=${id}, English`).toBeTruthy();
-      expect(sourceMessages[id]).withContext(`id=${id}, source`).toBeTruthy();
-    }
-  });
-
   describe('config', () => {
     it('does not have entries for invalid config options', () => {
+      const exceptions = new Set()
+          .add('preferredAudioCodecs')
+          .add('preferredVideoCodecs');
       // We determine whether a config option has been made or not by looking at
       // which config values have been queried (via the fake main object's
       // |getCurrentConfigValue| method).
@@ -69,7 +51,8 @@ describe('Demo', () => {
         knownValueNames.add(valueName);
       });
       for (const valueName of configQueryData) {
-        if (!knownValueNames.has(valueName)) {
+        if (!knownValueNames.has(valueName) &&
+          !exceptions.has(valueName)) {
           fail('Demo has a config field for unknown value "' + valueName + '"');
         }
       }
@@ -95,10 +78,16 @@ describe('Demo', () => {
     function checkConfig(checkValueNameFn) {
       const configPrimitives = new Set(['number', 'string', 'boolean']);
       const exceptions = new Set()
-          .add('preferredVariantRole')
-          .add('preferredTextRole')
           .add('playRangeStart')
-          .add('playRangeEnd');
+          .add('playRangeEnd')
+          .add('manifest.dash.keySystemsByURI')
+          .add('manifest.hls.ignoreManifestProgramDateTimeForTypes')
+          .add('manifest.mss.keySystemsBySystemId')
+          .add('drm.keySystemsMapping')
+          .add('manifest.raiseFatalErrorOnManifestUpdateRequestFailure')
+          .add('drm.persistentSessionOnlinePlayback')
+          .add('drm.persistentSessionsMetadata')
+          .add('mediaSource.modifyCueCallback');
 
       /**
        * @param {!Object} section
@@ -108,13 +97,14 @@ describe('Demo', () => {
         for (const key in section) {
           const name = (accumulatedName) ? (accumulatedName + '.' + key) : key;
           const value = section[key];
-          if (configPrimitives.has(typeof value)) {
-            if (!exceptions.has(name)) {
+
+          if (!exceptions.has(name)) {
+            if (configPrimitives.has(typeof value)) {
               checkValueNameFn(name);
+            } else {
+              // It's a sub-section.
+              check(value, name);
             }
-          } else {
-            // It's a sub-section.
-            check(value, name);
           }
         }
       };

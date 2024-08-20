@@ -36,9 +36,9 @@ const HTTP_IN_HEX = 0x68747470;
 
 const RequestType = shaka.net.NetworkingEngine.RequestType;
 
-player.getNetworkingEngine().registerResponseFilter(async (type, response) => {
-  // NOTE: If the system requires an ALR for segments instead of manifests,
-  // change this to RequestType.SEGMENT.
+player.getNetworkingEngine().registerResponseFilter(async (type, response, context) => {
+  // NOTE: If the system requires an ALR for both manifests and segments,
+  // remove this RequestType check.
   if (type != RequestType.MANIFEST) {
     return;
   }

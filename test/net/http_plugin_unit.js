@@ -4,15 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-
-goog.require('shaka.net.HttpFetchPlugin');
-goog.require('shaka.net.HttpXHRPlugin');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.net.NetworkingEngine.RequestType');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.BufferUtils');
-goog.require('shaka.util.Error');
-
 /**
  * Add a set of http plugin tests, for the given scheme plugin.
  *
@@ -25,6 +16,9 @@ function httpPluginTests(usingFetch) {
 
   // A dummy progress callback.
   const progressUpdated = (elapsedMs, bytes, bytesRemaining) => {};
+
+  // A dummy headers callback.
+  const headersReceived = (headers) => {};
 
   /** @type {shaka.extern.RetryParameters} */
   let retryParameters;
@@ -168,7 +162,9 @@ function httpPluginTests(usingFetch) {
     request.method = 'POST';
     request.headers['BAZ'] = '123';
 
-    await plugin(request.uris[0], request, requestType, progressUpdated)
+    await plugin(
+        request.uris[0], request, requestType, progressUpdated, headersReceived,
+        {})
         .promise;
 
     const actual = mostRecentRequest();
@@ -189,8 +185,8 @@ function httpPluginTests(usingFetch) {
       request.body = null;
       request.method = 'GET';
 
-      await plugin(request.uris[0], request, requestType, progressUpdated)
-          .promise;
+      await plugin(request.uris[0], request, requestType, progressUpdated,
+          headersReceived, {}).promise;
 
       const actual = jasmine.Fetch.requests.mostRecent();
       expect(actual).toBeTruthy();
@@ -205,8 +201,9 @@ function httpPluginTests(usingFetch) {
 
       const request = shaka.net.NetworkingEngine.makeRequest(
           [uri], retryParameters, Util.spyFunc(streamDataCallback));
-      const response =
-          await plugin(uri, request, requestType, progressUpdated).promise;
+      const response = await plugin(
+          uri, request, requestType, progressUpdated, headersReceived, {})
+          .promise;
 
       expect(mostRecentRequest().url).toBe(uri);
       expect(response).toBeTruthy();
@@ -232,7 +229,7 @@ function httpPluginTests(usingFetch) {
         shaka.util.Error.Severity.RECOVERABLE,
         shaka.util.Error.Category.NETWORK,
         shaka.util.Error.Code.BAD_HTTP_STATUS,
-        uri, 202, '', jasmine.any(Object), requestType);
+        uri, 202, '', jasmine.any(Object), requestType, uri);
     await testFails(uri, expected);
   });
 
@@ -242,7 +239,7 @@ function httpPluginTests(usingFetch) {
         shaka.util.Error.Severity.CRITICAL,
         shaka.util.Error.Category.NETWORK,
         shaka.util.Error.Code.BAD_HTTP_STATUS,
-        uri, 401, '', jasmine.any(Object), requestType);
+        uri, 401, '', jasmine.any(Object), requestType, uri);
     await testFails(uri, expected);
   });
 
@@ -252,7 +249,7 @@ function httpPluginTests(usingFetch) {
         shaka.util.Error.Severity.CRITICAL,
         shaka.util.Error.Category.NETWORK,
         shaka.util.Error.Code.BAD_HTTP_STATUS,
-        uri, 403, '', jasmine.any(Object), requestType);
+        uri, 403, '', jasmine.any(Object), requestType, uri);
     await testFails(uri, expected);
   });
 
@@ -262,7 +259,7 @@ function httpPluginTests(usingFetch) {
         shaka.util.Error.Severity.RECOVERABLE,
         shaka.util.Error.Category.NETWORK,
         shaka.util.Error.Code.BAD_HTTP_STATUS,
-        uri, 404, 'ABC', {'foo': 'BAR'}, requestType);
+        uri, 404, 'ABC', {'foo': 'BAR'}, requestType, uri);
     await testFails(uri, expected);
   });
 
@@ -297,9 +294,10 @@ function httpPluginTests(usingFetch) {
     const request = shaka.net.NetworkingEngine.makeRequest(
         ['https://foo.bar/cache'], retryParameters);
 
-    const response =
-        await plugin(request.uris[0], request, requestType, progressUpdated)
-            .promise;
+    const response = await plugin(
+        request.uris[0], request, requestType, progressUpdated, headersReceived,
+        {})
+        .promise;
     expect(response).toBeTruthy();
     expect(response.fromCache).toBe(true);
   });
@@ -312,8 +310,8 @@ function httpPluginTests(usingFetch) {
       uri = 'https://foo.bar/timeout';
       const request = shaka.net.NetworkingEngine.makeRequest(
           [uri], retryParameters);
-      const operation = plugin(
-          request.uris[0], request, requestType, progressUpdated);
+      const operation = plugin(request.uris[0], request, requestType,
+          progressUpdated, headersReceived, {});
 
       /** @type {jasmine.Fetch.RequestStub} */
       const actual = jasmine.Fetch.requests.mostRecent();
@@ -354,8 +352,8 @@ function httpPluginTests(usingFetch) {
       uri = 'https://foo.bar/';
       const request = shaka.net.NetworkingEngine.makeRequest(
           [uri], retryParameters);
-      operation = plugin(
-          request.uris[0], request, requestType, progressUpdated);
+      operation = plugin(request.uris[0], request, requestType, progressUpdated,
+          headersReceived, {});
       requestPromise = operation.promise;
     }
 
@@ -388,8 +386,9 @@ function httpPluginTests(usingFetch) {
   async function testSucceeds(uri, overrideUri) {
     const request = shaka.net.NetworkingEngine.makeRequest(
         [uri], retryParameters);
-    const response =
-        await plugin(uri, request, requestType, progressUpdated).promise;
+    const response = await plugin(
+        uri, request, requestType, progressUpdated, headersReceived, {})
+        .promise;
 
     expect(mostRecentRequest().url).toBe(uri);
     expect(response).toBeTruthy();
@@ -410,7 +409,9 @@ function httpPluginTests(usingFetch) {
     const request = shaka.net.NetworkingEngine.makeRequest(
         [uri], retryParameters);
 
-    const p = plugin(uri, request, requestType, progressUpdated).promise;
+    const p = plugin(
+        uri, request, requestType, progressUpdated, headersReceived, {})
+        .promise;
     if (expected.code == shaka.util.Error.Code.TIMEOUT) {
       jasmine.clock().tick(5000);
     }

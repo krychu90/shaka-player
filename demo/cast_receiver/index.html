@@ -52,7 +52,6 @@ UNCOMPILED_JS = [
   // This file contains goog.require calls for all exported library classes.
   '../../shaka-player.uncompiled.js',
   // These are the individual parts of the receiver app.
-  '../common/message_ids.js',
   '../common/asset.js',
   '../common/assets.js',
   'receiver_app.js',
@@ -63,7 +62,7 @@ UNCOMPILED_JS = [
     <script defer src="../load.js"></script>
   </head>
   <body>
-    <div data-shaka-player-container id="videoContainer">
+    <div data-shaka-player-container id="video-container">
       <video autoplay data-shaka-player id="video"></video>
     </div>
     <!-- Covers everything else while idle -->

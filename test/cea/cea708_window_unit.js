@@ -4,10 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.cea.Cea708Window');
-goog.require('shaka.cea.CeaUtils');
-goog.require('shaka.test.CeaUtils');
-goog.require('shaka.text.Cue');
 
 describe('Cea708Window', () => {
   const CeaUtils = shaka.test.CeaUtils;
@@ -15,26 +11,26 @@ describe('Cea708Window', () => {
   /** @type {!shaka.cea.Cea708Window} */
   let window;
 
-  /** @type {!number} */
+  /** @type {number} */
   const serviceNumber = 1; // We will arbitrarily pick service 1 for all tests.
 
-  /** @type {!string} */
+  /** @type {string} */
   const stream = `svc${serviceNumber}`;
 
-  /** @type {!number} */
+  /** @type {number} */
   const rowCount = 10;
 
-  /** @type {!number} */
+  /** @type {number} */
   const colCount = 32;
 
-  /** @type {!number} */
+  /** @type {number} */
   const startTime = 1;
 
-  /** @type {!number} */
+  /** @type {number} */
   const endTime = 2;
 
   beforeEach(() => {
-    window = new shaka.cea.Cea708Window(/* windowNum= */ 0);
+    window = new shaka.cea.Cea708Window(/* windowNum= */ 0, serviceNumber);
     window.defineWindow(
         /* visible= */ true, /* verticalAnchor= */ 0,
         /* horAnchor= */ 0, /* anchorId= */ 0, /* relativeToggle= */ false,
@@ -48,7 +44,8 @@ describe('Cea708Window', () => {
       window.setCharacter(c);
     }
 
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, 0, rowCount, colCount);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, text),
     ];
@@ -76,7 +73,8 @@ describe('Cea708Window', () => {
 
       const caption = window.forceEmit(endTime, serviceNumber);
 
-      const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+      const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+          serviceNumber, 0, rowCount, colCount);
       topLevelCue.nestedCues = [
         CeaUtils.createDefaultCue(startTime, endTime, text1),
         CeaUtils.createLineBreakCue(startTime, endTime),
@@ -108,7 +106,8 @@ describe('Cea708Window', () => {
 
       const caption = window.forceEmit(endTime, serviceNumber);
 
-      const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+      const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+          serviceNumber, 0, rowCount, colCount);
       topLevelCue.nestedCues = [
         CeaUtils.createDefaultCue(startTime, endTime, text1),
         CeaUtils.createLineBreakCue(startTime, endTime),
@@ -172,7 +171,8 @@ describe('Cea708Window', () => {
     }
 
     // These three stylings should correspond to three nested cues.
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, 0, rowCount, colCount);
     topLevelCue.nestedCues = [
       CeaUtils.createStyledCue(startTime, endTime, text1, /* underline= */ true,
           /* italics= */ true, textColor1,
@@ -195,7 +195,8 @@ describe('Cea708Window', () => {
 
   describe('handles justification of cues', () => {
     const text = 'test';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, 0, rowCount, colCount);
     it('justifies the text left', () => {
       for (const c of text) {
         window.setCharacter(c);
@@ -273,7 +274,8 @@ describe('Cea708Window', () => {
 
     // The second text should have overwritten the first text,
     // and all the styles should have been cleared.
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, 0, rowCount, colCount);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, text2),
     ];
@@ -294,7 +296,8 @@ describe('Cea708Window', () => {
     }
     window.backspace();
 
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, 0, rowCount, colCount);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, backspacedText),
     ];
@@ -326,7 +329,8 @@ describe('Cea708Window', () => {
 
     // There should be two spaces between the words on the first row,
     // and then the last row with text should appear 3 linebreaks later.
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, 0, rowCount, colCount);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, text1+'  '+text2),
       CeaUtils.createLineBreakCue(startTime, endTime),
@@ -351,7 +355,8 @@ describe('Cea708Window', () => {
 
     // Since column size is 32, the buffer should have only taken the first
     // 32 chars, and omitted the two extra ones at the end.
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, 0, rowCount, colCount);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, trimmedText),
     ];
@@ -373,6 +378,116 @@ describe('Cea708Window', () => {
 
     window.toggle(); // The window was hidden, but is now toggled to visible.
     expect(window.isVisible()).toBe(true);
+  });
+
+  describe('correctly handles the window anchors', () => {
+    it('handles bottom of video window anchors', () => {
+      window = new shaka.cea.Cea708Window(/* windowNum= */ 0,
+          /* serviceNumber= */ 1);
+      window.defineWindow(
+          /* visible= */ true, /* verticalAnchor= */ 99,
+          /* horAnchor= */ 50, /* anchorId= */ 7, /* relativeToggle= */ true,
+          rowCount, colCount);
+      window.setStartTime(startTime);
+
+      const text = 'test word';
+      for (const c of text) {
+        window.setCharacter(c);
+      }
+
+      const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+      topLevelCue.nestedCues = [
+        CeaUtils.createDefaultCue(startTime, endTime, text),
+      ];
+
+      const caption = window.forceEmit(endTime, serviceNumber);
+
+      const region = new shaka.text.CueRegion();
+      region.id = 'svc1win0';
+      region.height = rowCount;
+      region.width = colCount;
+      region.heightUnits = shaka.text.CueRegion.units.LINES;
+      region.widthUnits = shaka.text.CueRegion.units.LINES;
+      region.viewportAnchorX = 50;
+      region.viewportAnchorY = 99;
+      region.regionAnchorX = 50;
+      region.regionAnchorY = 100;
+      region.viewportAnchorUnits = shaka.text.CueRegion.units.PERCENTAGE;
+
+      expect(caption.cue.region).toEqual(region);
+    });
+
+    it('handles top of video window anchors', () => {
+      window = new shaka.cea.Cea708Window(/* windowNum= */ 0,
+          /* serviceNumber= */ 2);
+      window.defineWindow(
+          /* visible= */ true, /* verticalAnchor= */ 0,
+          /* horAnchor= */ 50, /* anchorId= */ 1, /* relativeToggle= */ true,
+          rowCount, colCount);
+      window.setStartTime(startTime);
+
+      const text = 'test word';
+      for (const c of text) {
+        window.setCharacter(c);
+      }
+
+      const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+      topLevelCue.nestedCues = [
+        CeaUtils.createDefaultCue(startTime, endTime, text),
+      ];
+
+      const caption = window.forceEmit(endTime, serviceNumber);
+
+      const region = new shaka.text.CueRegion();
+      region.id = 'svc2win0';
+      region.height = rowCount;
+      region.width = colCount;
+      region.heightUnits = shaka.text.CueRegion.units.LINES;
+      region.widthUnits = shaka.text.CueRegion.units.LINES;
+      region.viewportAnchorX = 50;
+      region.viewportAnchorY = 0;
+      region.regionAnchorX = 50;
+      region.regionAnchorY = 0;
+      region.viewportAnchorUnits = shaka.text.CueRegion.units.PERCENTAGE;
+
+      expect(caption.cue.region).toEqual(region);
+    });
+
+    it('handles bottom right of video window anchors using line values', () => {
+      window = new shaka.cea.Cea708Window(/* windowNum= */ 0,
+          /* serviceNumbe= */ 3);
+      window.defineWindow(
+          /* visible= */ true, /* verticalAnchor= */ 74,
+          /* horAnchor= */ 209, /* anchorId= */ 8, /* relativeToggle= */ false,
+          rowCount, colCount);
+      window.setStartTime(startTime);
+
+      const text = 'test word';
+      for (const c of text) {
+        window.setCharacter(c);
+      }
+
+      const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+      topLevelCue.nestedCues = [
+        CeaUtils.createDefaultCue(startTime, endTime, text),
+      ];
+
+      const caption = window.forceEmit(endTime, serviceNumber);
+
+      const region = new shaka.text.CueRegion();
+      region.id = 'svc3win0';
+      region.height = rowCount;
+      region.width = colCount;
+      region.heightUnits = shaka.text.CueRegion.units.LINES;
+      region.widthUnits = shaka.text.CueRegion.units.LINES;
+      region.viewportAnchorX = 209;
+      region.viewportAnchorY = 74;
+      region.regionAnchorX = 100;
+      region.regionAnchorY = 100;
+      region.viewportAnchorUnits = shaka.text.CueRegion.units.LINES;
+
+      expect(caption.cue.region).toEqual(region);
+    });
   });
 });
 

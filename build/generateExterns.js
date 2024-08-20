@@ -626,6 +626,11 @@ function createExternAssignment(name, node, alwaysIncludeConstructor) {
       // Example extern: /** @const {string} */ foo.version;
       return '';
 
+    case 'BinaryExpression':
+      // Example code: /** @const {string} @export */ foo.version = 'a' + 'b';
+      // Example extern: /** @const {string} */ foo.version;
+      return '';
+
     default:
       assert.fail('Unexpected export type: ' + node.type);
       return '';  // Shouldn't be hit, but linter wants a return statement.
@@ -818,7 +823,7 @@ function main(args) {
   // foo.bar.baz, foo and foo.bar will both need to be declared first.
   const namespaces = new Set();
   const namespaceDeclarations = [];
-  for (const name of names) {
+  for (const name of Array.from(names).sort()) {
     // Add the full name "foo.bar.baz" and its prototype ahead of time.  We
     // should never generate these as namespaces.
     namespaces.add(name);

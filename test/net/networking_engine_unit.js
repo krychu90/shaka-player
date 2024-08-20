@@ -4,17 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.net.Backoff');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.net.NetworkingEngine.RequestType');
-goog.require('shaka.test.StatusPromise');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.AbortableOperation');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.Networking');
-goog.require('shaka.util.PublicPromise');
-goog.requireType('shaka.net.NetworkingEngine.PendingRequest');
-
 describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
   const StatusPromise = shaka.test.StatusPromise;
   const Util = shaka.test.Util;
@@ -90,6 +79,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
       rejectScheme.and.callFake(() => {
         if (rejectScheme.calls.count() == 1) {
@@ -109,6 +100,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
       rejectScheme.and.callFake(() => {
         if (rejectScheme.calls.count() < 3) {
@@ -128,6 +121,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
 
       // It is expected to fail with the most recent error, but at a CRITICAL
@@ -166,6 +161,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
           fuzzFactor: 0,
           backoffFactor: 2,
           timeout: 0,
+          stallTimeout: 0,
+          connectionTimeout: 0,
         });
 
         await expectAsync(
@@ -182,6 +179,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
           fuzzFactor: 0,
           backoffFactor: 2,
           timeout: 0,
+          stallTimeout: 0,
+          connectionTimeout: 0,
         });
 
         await expectAsync(
@@ -201,6 +200,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
           fuzzFactor: 1,
           backoffFactor: 1,
           timeout: 0,
+          stallTimeout: 0,
+          connectionTimeout: 0,
         });
 
         await expectAsync(
@@ -222,6 +223,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
       request.uris = ['reject://foo', 'resolve://foo'];
       await networkingEngine.request(requestType, request).promise;
@@ -236,6 +239,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
 
       error.severity = shaka.util.Error.Severity.CRITICAL;
@@ -369,6 +374,23 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
       expect(resolveScheme).toHaveBeenCalled();
       expect(resolveScheme.calls.argsFor(0)[0]).toBe('resolve://foo');
     });
+
+    it('sets the time to 1st byte of the request when headers are available',
+        async () => {
+          const request = createRequest('resolve://foo');
+          request.method = 'POST';
+
+          resolveScheme.and.callFake(
+              (uri, requestPassed, requestTypePassed, progressCallback,
+                  headersCallback) => {
+                requestPassed.requestStartTime = 1;
+                headersCallback();
+                expect(requestPassed.timeToFirstByte).toBeGreaterThan(0);
+                return shaka.util.AbortableOperation
+                    .completed(createResponse());
+              });
+          await networkingEngine.request(requestType, request).promise;
+        });
 
     it('fills in defaults for partial request objects', async () => {
       const originalRequest = /** @type {shaka.extern.Request} */ ({
@@ -542,6 +564,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
       filter.and.returnValue(Promise.reject(new Error('')));
 
@@ -558,6 +582,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
       filter.and.throwError(error);
 
@@ -765,6 +791,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
       /** @type {!shaka.test.StatusPromise} */
       const r = new StatusPromise(
@@ -844,6 +872,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
 
       /** @type {!shaka.util.PublicPromise} */
@@ -917,6 +947,8 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
         backoffFactor: 0,
         fuzzFactor: 0,
         timeout: 0,
+        stallTimeout: 0,
+        connectionTimeout: 0,
       });
 
       retrySpy = jasmine.createSpy('retry listener');
@@ -1132,6 +1164,7 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
 
   describe('progress events', () => {
     it('forwards progress events to caller', async () => {
+      const requestLikeObject = jasmine.objectContaining({method: 'GET'});
       /** @const {!shaka.util.PublicPromise} */
       const delay = new shaka.util.PublicPromise();
       resolveScheme.and.callFake((uri, req, type, progress) => {
@@ -1151,14 +1184,40 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
           requestType, createRequest('resolve://'));
       await Util.shortDelay();  // Allow Promises to resolve.
       expect(onProgress).toHaveBeenCalledTimes(2);
-      expect(onProgress).toHaveBeenCalledWith(1, 2);
-      expect(onProgress).toHaveBeenCalledWith(4, 5);
+      expect(onProgress).toHaveBeenCalledWith(1, 2, true, requestLikeObject);
+      expect(onProgress).toHaveBeenCalledWith(4, 5, true, requestLikeObject);
       onProgress.calls.reset();
 
       delay.resolve();
       await resp.promise;
       expect(onProgress).toHaveBeenCalledTimes(1);
-      expect(onProgress).toHaveBeenCalledWith(7, 8);
+      expect(onProgress).toHaveBeenCalledWith(7, 8, true, requestLikeObject);
+    });
+
+    it('appends request packet number', async () => {
+      /** @const {!shaka.util.PublicPromise} */
+      const delay = new shaka.util.PublicPromise();
+      resolveScheme.and.callFake((uri, req, type, progress) => {
+        progress(1, 2, 3);
+
+        const p = (async () => {
+          await delay;
+          progress(4, 5, 6);
+          return createResponse();
+        })();
+        return new shaka.util.AbortableOperation(p, () => {});
+      });
+
+      /** @const {shaka.net.NetworkingEngine.PendingRequest} */
+      const resp = networkingEngine.request(
+          requestType, createRequest('resolve://'));
+      await Util.shortDelay();  // Allow Promises to resolve.
+      expect(onProgress).toHaveBeenCalledWith(1, 2, true,
+          jasmine.objectContaining({packetNumber: 1}));
+      delay.resolve();
+      await resp.promise;
+      expect(onProgress).toHaveBeenCalledWith(4, 5, true,
+          jasmine.objectContaining({packetNumber: 2}));
     });
 
     it('doesn\'t forward progress events for non-SEGMENT', async () => {
@@ -1211,6 +1270,11 @@ describe('NetworkingEngine', /** @suppress {accessControls} */ () => {
 
   /** @return {shaka.extern.Response} */
   function createResponse() {
-    return {uri: '', data: new ArrayBuffer(5), headers: {}};
+    return {
+      uri: '',
+      originalUri: '',
+      data: new ArrayBuffer(5),
+      headers: {},
+    };
   }
 });  // describe('NetworkingEngine')

@@ -4,15 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.test.Dash');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.ManifestParser');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.PlayerConfiguration');
-goog.requireType('shaka.dash.DashParser');
-
 describe('DashParser SegmentTemplate', () => {
   const Dash = shaka.test.Dash;
   const ManifestParser = shaka.test.ManifestParser;
@@ -46,13 +37,29 @@ describe('DashParser SegmentTemplate', () => {
 
     playerInterface = {
       networkingEngine: fakeNetEngine,
+      modifyManifestRequest: (request, manifestInfo) => {},
+      modifySegmentRequest: (request, segmentInfo) => {},
       filter: (manifest) => Promise.resolve(),
       makeTextStreamsForClosedCaptions: (manifest) => {},
       onTimelineRegionAdded: fail,  // Should not have any EventStream elements.
       onEvent: fail,
       onError: fail,
       isLowLatencyMode: () => false,
+      isAutoLowLatencyMode: () => false,
+      enableLowLatencyMode: () => {},
+      updateDuration: () => {},
+      newDrmInfo: (stream) => {},
+      onManifestUpdated: () => {},
+      getBandwidthEstimate: () => 1e6,
+      onMetadata: () => {},
+      disableStream: (stream) => {},
+      addFont: (name, url) => {},
     };
+  });
+
+  afterEach(() => {
+    // Dash parser stop is synchronous.
+    parser.stop();
   });
 
   shaka.test.Dash.makeTimelineTests(
@@ -111,9 +118,8 @@ describe('DashParser SegmentTemplate', () => {
           's2.mp4', 50, 60, baseUri);
       expectedRef2.timestampOffset = -10;
 
-      const iterator = stream.segmentIndex[Symbol.iterator]();
-      const ref1 = iterator.seek(45);
-      const ref2 = iterator.seek(55);
+      const ref1 = stream.segmentIndex.getIteratorForTime(45).next().value;
+      const ref2 = stream.segmentIndex.getIteratorForTime(55).next().value;
       expect(ref1).toEqual(expectedRef1);
       expect(ref2).toEqual(expectedRef2);
     });
@@ -125,9 +131,9 @@ describe('DashParser SegmentTemplate', () => {
       // The first segment is number 1 and position 0.
       // Although the segment is 60 seconds long, it is clipped to the period
       // duration of 30 seconds.
-      const references = [
-        ManifestParser.makeReference('s1.mp4', 0, 30, baseUri),
-      ];
+      const ref = ManifestParser.makeReference('s1.mp4', 0, 30, baseUri);
+      ref.trueEndTime = 60;
+      const references = [ref];
       await Dash.testSegmentIndex(source, references);
     });
 
@@ -202,7 +208,7 @@ describe('DashParser SegmentTemplate', () => {
 
       expect(fakeNetEngine.request).toHaveBeenCalledTimes(2);
       fakeNetEngine.expectRangeRequest(
-          'http://example.com/index-500.mp4', 0, null);
+          'http://example.com/index-500.mp4', 0, null, /* isInit= */ false);
     });
 
     it('defaults to index with multiple segment sources', async () => {
@@ -230,7 +236,7 @@ describe('DashParser SegmentTemplate', () => {
 
       expect(fakeNetEngine.request).toHaveBeenCalledTimes(2);
       fakeNetEngine.expectRangeRequest(
-          'http://example.com/index-500.mp4', 0, null);
+          'http://example.com/index-500.mp4', 0, null, /* isInit= */ false);
     });
 
     it('requests init data for WebM', async () => {
@@ -265,9 +271,9 @@ describe('DashParser SegmentTemplate', () => {
 
       expect(fakeNetEngine.request).toHaveBeenCalledTimes(3);
       fakeNetEngine.expectRangeRequest(
-          'http://example.com/init-500.webm', 0, null);
+          'http://example.com/init-500.webm', 0, null, /* isInit= */ true);
       fakeNetEngine.expectRangeRequest(
-          'http://example.com/index-500.webm', 0, null);
+          'http://example.com/index-500.webm', 0, null, /* isInit= */ false);
     });
 
     it('inherits from Period', async () => {
@@ -299,7 +305,7 @@ describe('DashParser SegmentTemplate', () => {
 
       expect(fakeNetEngine.request).toHaveBeenCalledTimes(2);
       fakeNetEngine.expectRangeRequest(
-          'http://example.com/index-500.mp4', 0, null);
+          'http://example.com/index-500.mp4', 0, null, /* isInit= */ false);
     });
 
     it('inherits from AdaptationSet', async () => {
@@ -331,7 +337,7 @@ describe('DashParser SegmentTemplate', () => {
 
       expect(fakeNetEngine.request).toHaveBeenCalledTimes(2);
       fakeNetEngine.expectRangeRequest(
-          'http://example.com/index-500.mp4', 0, null);
+          'http://example.com/index-500.mp4', 0, null, /* isInit= */ false);
     });
   });
 
@@ -450,7 +456,7 @@ describe('DashParser SegmentTemplate', () => {
       await variants[2].video.createSegmentIndex();
 
       const getRefAt = (stream, time) => {
-        return stream.segmentIndex[Symbol.iterator]().seek(time);
+        return stream.segmentIndex.getIteratorForTime(time).next().value;
       };
 
       expect(getRefAt(variants[0].video, 0)).toEqual(
@@ -582,5 +588,345 @@ describe('DashParser SegmentTemplate', () => {
       await Dash.testFails(source, error);
     });
   });
+
+  describe('TimelineSegmentIndex', () => {
+    describe('find', () => {
+      it('finds the correct references', async () => {
+        const info = makeTemplateInfo(makeRanges(0, 2.0, 10));
+        const infoClone = shaka.util.ObjectUtils.cloneObject(info);
+        const index = await makeTimelineSegmentIndex(infoClone,
+            /* delayPeriodEnd= */ true,
+            /* shouldFit= */ true);
+
+        const pos1 = index.find(1.0);
+        expect(pos1).toBe(0);
+        const pos2 = index.find(2.0);
+        expect(pos2).toBe(1);
+
+        // After the end of the last reference but before the end of the period
+        // should return index of the last reference
+        const lastRef = info.timeline[info.timeline.length - 1];
+        const pos3 = index.find(lastRef.end + 0.5);
+        expect(pos3).toBe(info.timeline.length - 1);
+
+        const pos4 = index.find(123.45);
+        expect(pos4).toBeNull();
+      });
+
+      it('finds correct position if time is in gap', async () => {
+        const ranges = [
+          {
+            start: 0,
+            end: 2,
+            unscaledStart: 0,
+          },
+          {
+            start: 3,
+            end: 5,
+            unscaledStart: 3 * 90000,
+          },
+        ];
+        const info = makeTemplateInfo(ranges);
+        const index = await makeTimelineSegmentIndex(info);
+        const pos = index.find(2.5);
+        expect(pos).toBe(0);
+      });
+
+      it('finds correct position if time === first start time', async () => {
+        const info = makeTemplateInfo(makeRanges(0, 2.0, 10));
+        const index = await makeTimelineSegmentIndex(info);
+
+        const pos = index.find(0);
+        expect(pos).toBe(0);
+      });
+
+      it('finds correct position if time === first end time', async () => {
+        const ranges = [
+          {
+            start: 0,
+            end: 2,
+            unscaledStart: 0,
+          },
+          {
+            start: 2.1,
+            end: 5,
+            unscaledStart: 3 * 90000,
+          },
+        ];
+        const info = makeTemplateInfo(ranges);
+        const index = await makeTimelineSegmentIndex(info);
+
+        const pos = index.find(2.0);
+        expect(pos).toBe(0);
+      });
+
+      it('finds correct position if time === second start time', async () => {
+        const ranges = [
+          {
+            start: 0,
+            end: 2,
+            unscaledStart: 0,
+          },
+          {
+            start: 2.1,
+            end: 5,
+            unscaledStart: 3 * 90000,
+          },
+        ];
+        const info = makeTemplateInfo(ranges);
+        const index = await makeTimelineSegmentIndex(info);
+
+        const pos = index.find(2.1);
+        expect(pos).toBe(1);
+      });
+
+      it('finds correct position in multiperiod content', async () => {
+        const source = [
+          '<MPD type="static" availabilityStartTime="1970-01-01T00:00:00Z">',
+          '  <Period duration="PT30S">',
+          '    <AdaptationSet mimeType="video/mp4">',
+          '      <Representation bandwidth="500">',
+          '        <BaseURL>http://example.com</BaseURL>',
+          '          <SegmentTemplate startNumber="0"',
+          '            media="$Number$-$Time$-$Bandwidth$.mp4">',
+          '            <SegmentTimeline>',
+          '              <S t="0" d="5" r="6" />',
+          '            </SegmentTimeline>',
+          '          </SegmentTemplate>',
+          '      </Representation>',
+          '    </AdaptationSet>',
+          '  </Period>',
+          '  <Period duration="PT30S">',
+          '    <AdaptationSet mimeType="video/mp4">',
+          '      <Representation bandwidth="500">',
+          '        <BaseURL>http://example.com</BaseURL>',
+          '          <SegmentTemplate startNumber="6"',
+          '            media="$Number$-$Time$-$Bandwidth$.mp4">',
+          '            <SegmentTimeline>',
+          '              <S t="0" d="5" r="6" />',
+          '            </SegmentTimeline>',
+          '          </SegmentTemplate>',
+          '      </Representation>',
+          '    </AdaptationSet>',
+          '  </Period>',
+          '</MPD>',
+        ].join('\n');
+
+        fakeNetEngine.setResponseText('dummy://foo', source);
+        const manifest = await parser.start('dummy://foo', playerInterface);
+        const stream = manifest.variants[0].video;
+        await stream.createSegmentIndex();
+
+        // simulate a seek into the second period
+        const segmentIterator = stream.segmentIndex.getIteratorForTime(42);
+        const ref = segmentIterator.next().value;
+        expect(ref.startTime).toBe(40);
+      });
+
+      it('returns null if time === last end time', async () => {
+        const info = makeTemplateInfo(makeRanges(0, 2.0, 2));
+        const index = await makeTimelineSegmentIndex(info, false);
+
+        const pos = index.find(4.0);
+        expect(pos).toBeNull();
+      });
+
+      it('returns null if time > last end time', async () => {
+        const info = makeTemplateInfo(makeRanges(0, 2.0, 2));
+        const index = await makeTimelineSegmentIndex(info, false);
+
+        const pos = index.find(6.0);
+        expect(pos).toBeNull();
+      });
+    });
+    describe('get', () => {
+      it('creates a segment reference for a given position', async () => {
+        const info = makeTemplateInfo(makeRanges(0, 2.0, 10));
+        const index = await makeTimelineSegmentIndex(info);
+        const pos = index.find(2.0);
+        goog.asserts.assert(pos != null, 'Null position!');
+        const ref = index.get(pos);
+        expect(ref).toEqual(jasmine.objectContaining({
+          'startTime': 2,
+          'endTime': 4,
+          'trueEndTime': 4,
+          'startByte': 0,
+          'endByte': null,
+          'timestampOffset': 0,
+          'appendWindowStart': 0,
+          'appendWindowEnd': 21,
+          'partialReferences': [],
+          'tilesLayout': '',
+          'tileDuration': null,
+        }));
+      });
+
+      it('returns null if a position is unknown', async () => {
+        const info = makeTemplateInfo(makeRanges(0, 2.0, 10));
+        const index = await makeTimelineSegmentIndex(info);
+        const ref = index.get(12345);
+        expect(ref).toBeNull();
+      });
+
+      it('returns null if a position < 0', async () => {
+        const info = makeTemplateInfo(makeRanges(0, 2.0, 10));
+        const index = await makeTimelineSegmentIndex(info);
+        const ref = index.get(-12);
+        expect(ref).toBeNull();
+      });
+    });
+
+    describe('appendTemplateInfo', () => {
+      it('appends new timeline to existing', async () => {
+        const initialRanges = makeRanges(0, 2.0, 10);
+        const info = makeTemplateInfo(initialRanges);
+        const index = await makeTimelineSegmentIndex(info, false);
+
+        const newStart = initialRanges[initialRanges.length - 1].end;
+        expect(index.find(newStart)).toBeNull();
+
+        const newRanges = makeRanges(newStart, 2.0, 10);
+        const newTemplateInfo = makeTemplateInfo(newRanges);
+
+        const newEnd = newRanges[newRanges.length - 1].end;
+        index.appendTemplateInfo(newTemplateInfo, /* periodStart= */ 0, newEnd);
+        expect(index.find(newStart)).toBe(10);
+        expect(index.find(newEnd - 1.0)).toBe(19);
+      });
+
+      it('appends new timeline to empty one', async () => {
+        const info = makeTemplateInfo([]);
+        const index = await makeTimelineSegmentIndex(info, false);
+
+        const newRanges = makeRanges(0, 2.0, 10);
+        const newTemplateInfo = makeTemplateInfo(newRanges);
+
+        const newEnd = newRanges[newRanges.length - 1].end;
+        index.appendTemplateInfo(newTemplateInfo, /* periodStart= */ 0, newEnd);
+        expect(index.find(0)).toBe(0);
+        expect(index.find(newEnd - 1.0)).toBe(9);
+      });
+    });
+
+    describe('evict', () => {
+      it('evicts old entries and maintains position', async () => {
+        const initialRanges = makeRanges(0, 2.0, 10);
+        const info = makeTemplateInfo(initialRanges);
+        const index = await makeTimelineSegmentIndex(info, false);
+
+        index.evict(4.0);
+        expect(index.find(2.0)).toBe(2);
+        expect(index.find(6.0)).toBe(3);
+      });
+    });
+  });
+
+  /**
+   *
+   * @param {shaka.dash.SegmentTemplate.SegmentTemplateInfo} info
+   * @param {boolean} delayPeriodEnd
+   * @param {boolean} shouldFit
+   * @return {?}
+   */
+  async function makeTimelineSegmentIndex(info, delayPeriodEnd = true,
+      shouldFit = false) {
+    const isTimeline = info.timeline.length > 0;
+    // Period end may be a bit after the last timeline entry
+    let periodEnd = isTimeline ?
+      info.timeline[info.timeline.length - 1].end : 0;
+    if (delayPeriodEnd) {
+      periodEnd += 1.0;
+    }
+
+    const dummySource = Dash.makeSimpleManifestText([
+      '<SegmentTemplate startNumber="0" duration="10"',
+      '    media="$Number$-$Time$-$Bandwidth$.mp4">',
+      '  <SegmentTimeline>',
+      isTimeline ? '    <S t="0" d="15" r="2" />' : '',
+      '  </SegmentTimeline>',
+      '</SegmentTemplate>',
+    ], /* duration= */ 45);
+
+    fakeNetEngine.setResponseText('dummy://foo', dummySource);
+    const manifest = await parser.start('dummy://foo', playerInterface);
+
+    expect(manifest.variants.length).toBe(1);
+
+    const stream = manifest.variants[0].video;
+    expect(stream).toBeTruthy();
+    await stream.createSegmentIndex();
+
+    /** @type {?} */
+    const index = stream.segmentIndex;
+    index.release();
+    index.appendTemplateInfo(info, isTimeline ? info.timeline[0].start : 0,
+        periodEnd, shouldFit);
+
+    return index;
+  }
 });
 
+/**
+ * Creates a URI string.
+ *
+ * @param {number} x
+ * @return {string}
+ */
+function uri(x) {
+  return 'http://example.com/video_' + x + '.m4s';
+}
+
+/**
+ *
+ * @return {shaka.media.InitSegmentReference}
+ */
+function makeInitSegmentReference() {
+  return new shaka.media.InitSegmentReference(() => [], 0, null);
+}
+
+/**
+ * Create a list of continuous time ranges
+ * @param {number} start
+ * @param {number} duration
+ * @param {number} num
+ * @return {Array<shaka.media.PresentationTimeline.TimeRange>}
+ */
+function makeRanges(start, duration, num) {
+  const ranges = [];
+  let currentPos = start;
+  for (let i = 0; i < num; i += 1) {
+    ranges.push({
+      start: currentPos,
+      end: currentPos + duration,
+      unscaledStart: currentPos * 90000,
+    });
+    currentPos += duration;
+  }
+  return ranges;
+}
+
+/**
+ * Creates a real SegmentReference.  This is distinct from the fake ones used
+ * in ManifestParser tests because it can be on the left-hand side of an
+ * expect().  You can't expect jasmine.any(Number) to equal
+ * jasmine.any(Number).  :-(
+ *
+ * @param {Array<shaka.media.PresentationTimeline.TimeRange>} timeline
+ * @return {shaka.dash.SegmentTemplate.SegmentTemplateInfo}
+ */
+function makeTemplateInfo(timeline) {
+  return {
+    'segmentDuration': null,
+    'timescale': 90000,
+    'startNumber': 1,
+    'scaledPresentationTimeOffset': 0,
+    'unscaledPresentationTimeOffset': 0,
+    'timeline': timeline,
+    'mediaTemplate': 'master_540_2997_$Number%09d$.cmfv',
+    'indexTemplate': null,
+    'mimeType': 'video/mp4',
+    'codecs': 'avc1.42E01E',
+    'bandwidth': 0,
+    'numChunks': 0,
+  };
+}

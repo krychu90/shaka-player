@@ -4,13 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-
-goog.require('shaka.test.FakeVideo');
-goog.require('shaka.text.Cue');
-goog.require('shaka.text.SimpleTextDisplayer');
-goog.require('shaka.util.Functional');
-goog.requireType('shaka.test.FakeTextTrack');
-
 describe('SimpleTextDisplayer', () => {
   const originalVTTCue = window.VTTCue;
   const Cue = shaka.text.Cue;
@@ -25,7 +18,7 @@ describe('SimpleTextDisplayer', () => {
 
   beforeEach(() => {
     video = new shaka.test.FakeVideo();
-    displayer = new SimpleTextDisplayer(video);
+    displayer = new SimpleTextDisplayer(video, shaka.Player.TextTrackLabel);
 
     expect(video.textTracks.length).toBe(1);
     mockTrack = /** @type {!shaka.test.FakeTextTrack} */ (video.textTracks[0]);
@@ -74,7 +67,7 @@ describe('SimpleTextDisplayer', () => {
     });
 
     it('appends equal time cues in reverse order', () => {
-      // Regression test for https://github.com/google/shaka-player/issues/848
+      // Regression test for https://github.com/shaka-project/shaka-player/issues/848
 
       // When VTTCue is seen as the real thing (because of the presence of
       // VTTCue.prototype.line), then the reverse-order behavior comes into
@@ -101,8 +94,8 @@ describe('SimpleTextDisplayer', () => {
           ]);
 
       // Next we test the behavior with a VTTCue which is seen as a cheap
-      // polyfill (in which prototype.line does not exist).  This simulates IE
-      // and legacy Edge.
+      // polyfill (in which prototype.line does not exist).  This simulates
+      // legacy Edge.
       // eslint-disable-next-line no-restricted-syntax
       delete window.VTTCue.prototype['line'];
       displayer.remove(0, Infinity);  // Clear the cues from above.
@@ -132,6 +125,33 @@ describe('SimpleTextDisplayer', () => {
             {startTime: 10, endTime: 20, text: 'Test1 Test2'},
           ],
           [shakaCue]);
+    });
+
+    it('flattens nested cue payloads correctly', () => {
+      const level0ContainerCue = new shaka.text.Cue(10, 30, '');
+      level0ContainerCue.isContainer = true;
+
+      const level1NonContainerCueA = new shaka.text.Cue(10, 20, '');
+      const level1NonContainerCueB = new shaka.text.Cue(20, 30, '');
+
+      // Add a trailing whitespace character to get a space-delimited expected
+      // result.
+      const cueANestedCue0 = new shaka.text.Cue(10, 20, 'Cue A Test0 ');
+      const cueANestedCue1 = new shaka.text.Cue(10, 20, 'Cue A Test1');
+      const cueBNestedCue0 = new shaka.text.Cue(20, 30, 'Cue B Test0 ');
+      const cueBNestedCue1 = new shaka.text.Cue(20, 30, 'Cue B Test1');
+
+      level1NonContainerCueA.nestedCues = [cueANestedCue0, cueANestedCue1];
+      level1NonContainerCueB.nestedCues = [cueBNestedCue0, cueBNestedCue1];
+      level0ContainerCue.nestedCues =
+          [level1NonContainerCueA, level1NonContainerCueB];
+
+      verifyHelper(
+          [
+            {startTime: 10, endTime: 20, text: 'Cue A Test0 Cue A Test1'},
+            {startTime: 20, endTime: 30, text: 'Cue B Test0 Cue B Test1'},
+          ],
+          [level0ContainerCue]);
     });
 
     // Regression test for b/159050711
@@ -194,7 +214,7 @@ describe('SimpleTextDisplayer', () => {
 
       // Second cue is a linebreak cue.
       const nestedCue2 = new shaka.text.Cue(10, 20, '');
-      nestedCue2.spacer = true;
+      nestedCue2.lineBreak = true;
 
       const nestedCue3 = new shaka.text.Cue(10, 20, 'Test2');
 

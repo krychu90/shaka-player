@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.TestScheme');
-
-
 /**
  * @typedef {{
  *   initSegmentUri: string,
@@ -54,7 +51,10 @@ let ExtraMetadataType;
  *   textLanguages: (!Array.<string>|undefined),
  *   duration: number,
  *   licenseServers: (!Object.<string, string>|undefined),
- *   licenseRequestHeaders: (!Object.<string, string>|undefined)
+ *   licenseRequestHeaders: (!Object.<string, string>|undefined),
+ *   customizeStream: (function(shaka.test.ManifestGenerator.Stream)|undefined),
+ *   sequenceMode: (boolean|undefined),
+ *   nextUrl: (string|undefined)
  * }}
  */
 let MetadataType;
@@ -174,7 +174,11 @@ shaka.test.TestScheme = class {
      */
     function createStreamGenerator(metadata) {
       if (metadata.segmentUri.includes('.ts')) {
-        return new shaka.test.TSVodStreamGenerator(metadata.segmentUri);
+        return new shaka.test.TSVodStreamGenerator(
+            metadata.segmentUri, metadata.segmentDuration);
+      }
+      if (metadata.segmentUri.includes('.aac')) {
+        return new shaka.test.AACVodStreamGenerator(metadata.segmentUri);
       }
       return new shaka.test.Mp4VodStreamGenerator(
           metadata.initSegmentUri, metadata.mdhdOffset, metadata.segmentUri,
@@ -191,13 +195,30 @@ shaka.test.TestScheme = class {
      * @param {string} name
      */
     function addStreamInfo(stream, variant, data, contentType, name) {
+      const mediaQualityInfo = {
+        bandwidth: 1,
+        codecs: data[contentType].codecs || 'unknown',
+        contentType: contentType,
+        mimeType: data[contentType].mimeType,
+        audioSamplingRate: null,
+        frameRate: null,
+        height: null,
+        channelsCount: null,
+        pixelAspectRatio: null,
+        width: null,
+        label: null,
+        roles: null,
+        language: null,
+      };
       stream.mimeType = data[contentType].mimeType;
       stream.codecs = data[contentType].codecs;
       stream.setInitSegmentReference(
-          ['test:' + name + '/' + contentType + '/init'], 0, null);
+          ['test:' + name + '/' + contentType + '/init'], 0, null,
+          mediaQualityInfo);
       stream.useSegmentTemplate(
           'test:' + name + '/' + contentType + '/%d',
           data[contentType].segmentDuration);
+      stream.segmentIndex.markImmutable();
       stream.closedCaptions = data[contentType].closedCaptions;
 
       if (data[contentType].delaySetup) {
@@ -230,6 +251,10 @@ shaka.test.TestScheme = class {
             }
           });
         }
+      }
+
+      if (data.customizeStream) {
+        data.customizeStream(stream);
       }
     }
 
@@ -267,6 +292,10 @@ shaka.test.TestScheme = class {
 
       const manifest = shaka.test.ManifestGenerator.generate((manifest) => {
         manifest.presentationTimeline.setDuration(data.duration);
+        manifest.sequenceMode = data.sequenceMode || false;
+        if (data.nextUrl) {
+          manifest.nextUrl = data.nextUrl + suffix;
+        }
 
         const videoResolutions = data.videoResolutions || [undefined];
         const audioLanguages = data.audioLanguages ||
@@ -391,7 +420,7 @@ const sintelAudioSegment = {
   mdhdOffset: 0x1b6,
   segmentUri: '/base/test/test/assets/sintel-audio-segment.mp4',
   tfdtOffset: 0x3c,
-  segmentDuration: 10.005,
+  segmentDuration: 10,
   mimeType: 'audio/mp4',
   codecs: 'mp4a.40.2',
 };
@@ -417,7 +446,7 @@ const sintelEncryptedAudio = {
   mdhdOffset: 0x1b6,
   segmentUri: '/base/test/test/assets/encrypted-sintel-audio-segment.mp4',
   tfdtOffset: 0x3c,
-  segmentDuration: 10.005,
+  segmentDuration: 10,
   mimeType: 'audio/mp4',
   codecs: 'mp4a.40.2',
   initData:
@@ -431,50 +460,58 @@ const widevineDrmServers = {
   'com.widevine.alpha': 'https://cwip-shaka-proxy.appspot.com/no_auth',
 };
 
+/** @type {string} */
+const axinomMultiDrmInitData = [
+  'AAAAXHBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADwSEEBgqGWIeEJnnL+RrluuHnISEE',
+  'BgqGWIeEJnnL+RrluuHnISEEBgqGWIeEJnnL+RrluuHnJI49yVmwYAAAImcHNzaAAAAACa',
+  'BPB5mEBChquS5lvgiF+VAAACBgYCAAABAAEA/AE8AFcAUgBNAEgARQBBAEQARQBSACAAeA',
+  'BtAGwAbgBzAD0AIgBoAHQAdABwADoALwAvAHMAYwBoAGUAbQBhAHMALgBtAGkAYwByAG8A',
+  'cwBvAGYAdAAuAGMAbwBtAC8ARABSAE0ALwAyADAAMAA3AC8AMAAzAC8AUABsAGEAeQBSAG',
+  'UAYQBkAHkASABlAGEAZABlAHIAIgAgAHYAZQByAHMAaQBvAG4APQAiADQALgAwAC4AMAAu',
+  'ADAAIgA+ADwARABBAFQAQQA+ADwAUABSAE8AVABFAEMAVABJAE4ARgBPAD4APABLAEUAWQ',
+  'BMAEUATgA+ADEANgA8AC8ASwBFAFkATABFAE4APgA8AEEATABHAEkARAA+AEEARQBTAEMA',
+  'VABSADwALwBBAEwARwBJAEQAPgA8AC8AUABSAE8AVABFAEMAVABJAE4ARgBPAD4APABLAE',
+  'kARAA+AFoAYQBoAGcAUQBIAGkASQBaADAASwBjAHYANQBHAHUAVwA2ADQAZQBjAGcAPQA9',
+  'ADwALwBLAEkARAA+ADwAQwBIAEUAQwBLAFMAVQBNAD4AeQB4AGwARwBsAGgAZgBEACsAYQ',
+  'BjAD0APAAvAEMASABFAEMASwBTAFUATQA+ADwALwBEAEEAVABBAD4APAAvAFcAUgBNAEgA',
+  'RQBBAEQARQBSAD4A',
+].join('');
+
 /** @type {AVMetadataType} */
 const axinomMultiDrmVideoSegment = {
+  // Taken from Axinom's v10 test vectors.
   initSegmentUri: '/base/test/test/assets/multidrm-video-init.mp4',
-  mdhdOffset: 0x1d1,
+  mdhdOffset: 0x191,
   segmentUri: '/base/test/test/assets/multidrm-video-segment.mp4',
-  tfdtOffset: 0x78,
+  tfdtOffset: 0x88,
   segmentDuration: 4,
   mimeType: 'video/mp4',
   codecs: 'avc1.64001e',
-  initData:
-      'AAAANHBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAABQIARIQblodJidXR9eARuq' +
-      'l0dNLWg==',
+  initData: axinomMultiDrmInitData,
 };
 
 /** @type {AVMetadataType} */
 const axinomMultiDrmAudioSegment = {
+  // Taken from Axinom's v10 test vectors.
   initSegmentUri: '/base/test/test/assets/multidrm-audio-init.mp4',
-  mdhdOffset: 0x192,
+  mdhdOffset: 0x18d,
   segmentUri: '/base/test/test/assets/multidrm-audio-segment.mp4',
-  tfdtOffset: 0x7c,
+  tfdtOffset: 0x88,
   segmentDuration: 4,
   mimeType: 'audio/mp4',
   codecs: 'mp4a.40.2',
-  initData:
-      'AAAANHBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAABQIARIQblodJidXR9eARuq' +
-      'l0dNLWg==',
+  initData: axinomMultiDrmInitData,
 };
 
 /** @type {!Object.<string, string>} */
 const axinomDrmServers = {
+  // NOTE: These are not Axinom's actual servers.  These are test servers for
+  // Widevine and PlayReady that let us specify the known key IDs and keys for
+  // Axinom's v10 test vectors.
   'com.widevine.alpha':
-      'https://drm-widevine-licensing.axtest.net/AcquireLicense',
+      'https://cwip-shaka-proxy.appspot.com/specific_key?QGCoZYh4Qmecv5GuW64ecg=/DU0CDcxDMD7U96X4ipp4A',
   'com.microsoft.playready':
-      'https://drm-playready-licensing.axtest.net/AcquireLicense',
-};
-
-/** @type {!Object.<string, string>} */
-const axinomDrmHeaders = {
-  'X-AxDRM-Message':
-      'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ2ZXJzaW9uIjoxLCJjb21fa2V5' +
-      'X2lkIjoiNjllNTQwODgtZTllMC00NTMwLThjMWEtMWViNmRjZDBkMTRlIiwibWVzc' +
-      '2FnZSI6eyJ0eXBlIjoiZW50aXRsZW1lbnRfbWVzc2FnZSIsImtleXMiOlt7ImlkIj' +
-      'oiNmU1YTFkMjYtMjc1Ny00N2Q3LTgwNDYtZWFhNWQxZDM0YjVhIn1dfX0.yF7PflO' +
-      'Pv9qHnu3ZWJNZ12jgkqTabmwXbDWk_47tLNE',
+      'https://test.playready.microsoft.com/service/rightsmanager.asmx?cfg=(kid:4060a865-8878-4267-9cbf-91ae5bae1e72,contentkey:/DU0CDcxDMD7U96X4ipp4A==,sl:150)',
 };
 
 /** @type {TextMetadataType} */
@@ -500,6 +537,15 @@ shaka.test.TestScheme.DATA = {
     audio: sintelAudioSegment,
     text: vttSegment,
     duration: 30,
+  },
+
+  // Like 'sintel', but flagged as sequence mode.
+  'sintel_sequence': {
+    video: sintelVideoSegment,
+    audio: sintelAudioSegment,
+    text: vttSegment,
+    duration: 30,
+    sequenceMode: true,
   },
 
   // Like 'sintel', but much longer to test buffering and seeking.
@@ -535,7 +581,7 @@ shaka.test.TestScheme.DATA = {
     ],
     audioLanguages: ['en', 'es'],
     textLanguages: ['zh', 'fr'],
-    duration: 10,
+    duration: 30,
   },
 
   'sintel_audio_only': {
@@ -549,7 +595,14 @@ shaka.test.TestScheme.DATA = {
     duration: 30,
   },
 
-  // https://github.com/google/shaka-player/issues/2553
+  'sintel_next_url': {
+    video: sintelVideoSegment,
+    audio: sintelAudioSegment,
+    duration: 5,
+    nextUrl: 'test:sintel',
+  },
+
+  // https://github.com/shaka-project/shaka-player/issues/2553
   'forced_subs_simulation': {
     audio: sintelAudioSegment,
     text: vttSegment,
@@ -565,12 +618,24 @@ shaka.test.TestScheme.DATA = {
     duration: 30,
   },
 
+  // Equivalent to what you get with HLS METHOD=SAMPLE-AES, KEYFORMAT=identity.
+  // Requires explicit clear keys or license server configuration.
+  'sintel-hls-clearkey': {
+    video: sintelEncryptedVideo,
+    audio: sintelEncryptedAudio,
+    duration: 30,
+    sequenceMode: true,
+    customizeStream: (stream) => {
+      stream.encrypted = true;
+      stream.addDrmInfo('org.w3.clearkey');
+    },
+  },
+
   'multidrm': {
     video: axinomMultiDrmVideoSegment,
     audio: axinomMultiDrmAudioSegment,
     text: vttSegment,
     licenseServers: axinomDrmServers,
-    licenseRequestHeaders: axinomDrmHeaders,
     duration: 30,
   },
 
@@ -582,7 +647,6 @@ shaka.test.TestScheme.DATA = {
       initData: undefined,
     }),
     licenseServers: axinomDrmServers,
-    licenseRequestHeaders: axinomDrmHeaders,
     duration: 30,
   },
 
@@ -591,6 +655,7 @@ shaka.test.TestScheme.DATA = {
       segmentUri: '/base/test/test/assets/captions-test.ts',
       mimeType: 'video/mp2t',
       codecs: 'avc1.64001e',
+      segmentDuration: 20,  // yes, this is accurate
     },
     text: {
       mimeType: 'application/cea-608',
@@ -611,6 +676,26 @@ shaka.test.TestScheme.DATA = {
     },
     duration: 30,
   },
+
+  'id3-metadata_ts': {
+    audio: {
+      segmentUri: '/base/test/test/assets/id3-metadata.ts',
+      mimeType: 'video/mp2t',
+      codecs: 'mp4a.40.5',
+      segmentDuration: 5,
+    },
+    duration: 4.99,
+  },
+
+  'id3-metadata_aac': {
+    audio: {
+      segmentUri: '/base/test/test/assets/id3-metadata.aac',
+      mimeType: 'audio/aac',
+      codecs: '',
+      segmentDuration: 9.98458,
+    },
+    duration: 9.98458,
+  },
 };
 
 
@@ -618,11 +703,49 @@ beforeAll(async () => {
   await shaka.test.TestScheme.createManifests(shaka, '');
 });
 
+/**
+ * Because our MediaCapabilities integration adds decoding info to each variant,
+ * we need to be careful to reset this info on variants that are cached and
+ * persist between tests and between manifest parser instances.  This ensures
+ * that these unusual test variants will not have persistent decoding infos from
+ * MediaCapabilities.
+ *
+ * For encrypted content, the decoding info contains negotiated EME information
+ * which varies based on the chosen key system and whether the content will be
+ * streamed or stored offline.  If one test loads the content for streaming,
+ * then another test loads the same content for offline storage, the second test
+ * would encounter the cached decoding info from the first test, and the
+ * negotatied key system would not be set up for the correct session types.
+ * This would lead to a test failure.  This sort of failure would not be seen in
+ * real playback (since no supported manifest parser would ever cache variants).
+ *
+ * By resetting variant.decodingInfos when the fake manifest parser is stopped,
+ * we ensure that each test gets a clean slate (as would happen with a real
+ * parser), and the correct decodingInfos show up for each part of each test
+ * case.
+ *
+ * @param {?shaka.extern.Manifest} manifest
+ */
+function resetDecodingInfos(manifest) {
+  if (!manifest) {
+    return;
+  }
+
+  for (const variant of manifest.variants) {
+    variant.decodingInfos = [];
+  }
+}
+
 
 /**
  * @implements {shaka.extern.ManifestParser}
  */
 shaka.test.TestScheme.ManifestParser = class {
+  constructor() {
+    /** @private {?shaka.extern.Manifest} */
+    this.manifest_ = null;
+  }
+
   /** @override */
   configure(config) {}
 
@@ -646,20 +769,17 @@ shaka.test.TestScheme.ManifestParser = class {
     if (!manifest) {
       throw new Error('Unknown manifest!');
     }
+    this.manifest_ = manifest;
 
     playerInterface.makeTextStreamsForClosedCaptions(manifest);
-
-    // Invoke filtering interfaces similar to how a real parser would.
-    // This makes sure the filtering functions are covered implicitly by
-    // tests. This covers regression
-    // https://github.com/google/shaka-player/issues/988
-    playerInterface.filter(manifest);
 
     return Promise.resolve(manifest);
   }
 
   /** @override */
   stop() {
+    resetDecodingInfos(this.manifest_);
+    this.manifest_ = null;
     return Promise.resolve();
   }
 
@@ -668,6 +788,15 @@ shaka.test.TestScheme.ManifestParser = class {
 
   /** @override */
   onExpirationUpdated() {}
+
+  /** @override */
+  onInitialVariantChosen() {}
+
+  /** @override */
+  banLocation() {}
+
+  /** @override */
+  setMediaElement() {}
 };
 
 

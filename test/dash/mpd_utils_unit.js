@@ -4,14 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.dash.MpdUtils');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.Iterables');
-goog.requireType('shaka.util.PublicPromise');
-
 describe('MpdUtils', () => {
   const MpdUtils = shaka.dash.MpdUtils;
 
@@ -20,18 +12,20 @@ describe('MpdUtils', () => {
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$RepresentationID$.mp4',
-              '100', null, null, null).toString()).toBe('/example/100.mp4');
+              '100', null, null, null, null).toString())
+          .toBe('/example/100.mp4');
 
       // RepresentationID cannot use a width specifier.
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$RepresentationID%01d$.mp4',
-              '100', null, null, null).toString()).toBe('/example/100.mp4');
+              '100', null, null, null, null).toString())
+          .toBe('/example/100.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$RepresentationID$.mp4',
-              null, null, null, null).toString())
+              null, null, null, null, null).toString())
           .toBe('/example/$RepresentationID$.mp4');
     });
 
@@ -39,35 +33,59 @@ describe('MpdUtils', () => {
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Number$.mp4',
-              null, 100, null, null).toString()).toBe('/example/100.mp4');
+              null, 100, null, null, null).toString())
+          .toBe('/example/100.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Number%05d$.mp4',
-              null, 100, null, null).toString()).toBe('/example/00100.mp4');
+              null, 100, null, null, null).toString())
+          .toBe('/example/00100.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Number$.mp4',
-              null, null, null, null).toString())
+              null, null, null, null, null).toString())
           .toBe('/example/$Number$.mp4');
+    });
+
+    it('handles a single SubNumber identifier', () => {
+      expect(
+          MpdUtils.fillUriTemplate(
+              '/example/$SubNumber$.mp4',
+              null, null, 100, null, null).toString())
+          .toBe('/example/100.mp4');
+
+      expect(
+          MpdUtils.fillUriTemplate(
+              '/example/$SubNumber%05d$.mp4',
+              null, null, 100, null, null).toString())
+          .toBe('/example/00100.mp4');
+
+      expect(
+          MpdUtils.fillUriTemplate(
+              '/example/$SubNumber$.mp4',
+              null, null, null, null, null).toString())
+          .toBe('/example/$SubNumber$.mp4');
     });
 
     it('handles a single Bandwidth identifier', () => {
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Bandwidth$.mp4',
-              null, null, 100, null).toString()).toBe('/example/100.mp4');
+              null, null, null, 100, null).toString())
+          .toBe('/example/100.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Bandwidth%05d$.mp4',
-              null, null, 100, null).toString()).toBe('/example/00100.mp4');
+              null, null, null, 100, null).toString())
+          .toBe('/example/00100.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Bandwidth$.mp4',
-              null, null, null, null).toString())
+              null, null, null, null, null).toString())
           .toBe('/example/$Bandwidth$.mp4');
     });
 
@@ -75,17 +93,19 @@ describe('MpdUtils', () => {
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Time$.mp4',
-              null, null, null, 100).toString()).toBe('/example/100.mp4');
+              null, null, null, null, 100).toString())
+          .toBe('/example/100.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Time%05d$.mp4',
-              null, null, null, 100).toString()).toBe('/example/00100.mp4');
+              null, null, null, null, 100).toString())
+          .toBe('/example/00100.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Time$.mp4',
-              null, null, null, null).toString())
+              null, null, null, null, null).toString())
           .toBe('/example/$Time$.mp4');
     });
 
@@ -93,68 +113,70 @@ describe('MpdUtils', () => {
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Time$.mp4',
-              null, null, null, 100.0001).toString()).toBe('/example/100.mp4');
+              null, null, null, null, 100.0001).toString())
+          .toBe('/example/100.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Time%05d$.mp4',
-              null, null, null, 99.9999).toString()).toBe('/example/00100.mp4');
+              null, null, null, null, 99.9999).toString())
+          .toBe('/example/00100.mp4');
     });
 
     it('handles multiple identifiers', () => {
       expect(
           MpdUtils.fillUriTemplate(
-              '/example/$RepresentationID$_$Number$_$Bandwidth$_$Time$.mp4',
-              '1', 2, 3, 4).toString()).toBe('/example/1_2_3_4.mp4');
+              '/example/$RepresentationID$_$Number$_$SubNumber$_$Bandwidth$_$Time$.mp4', // eslint-disable-line max-len
+              '1', 2, 3, 4, 5).toString()).toBe('/example/1_2_3_4_5.mp4');
 
       // No spaces.
       expect(
           MpdUtils.fillUriTemplate(
-              '/example/$RepresentationID$$Number$$Bandwidth$$Time$.mp4',
-              '1', 2, 3, 4).toString()).toBe('/example/1234.mp4');
+              '/example/$RepresentationID$$Number$$SubNumber$$Bandwidth$$Time$.mp4', // eslint-disable-line max-len
+              '1', 2, 3, 4, 5).toString()).toBe('/example/12345.mp4');
 
       // Different order.
       expect(
           MpdUtils.fillUriTemplate(
-              '/example/$Bandwidth$_$Time$_$RepresentationID$_$Number$.mp4',
-              '1', 2, 3, 4).toString()).toBe('/example/3_4_1_2.mp4');
+              '/example/$SubNumber$_$Bandwidth$_$Time$_$RepresentationID$_$Number$.mp4', // eslint-disable-line max-len
+              '1', 2, 3, 4, 5).toString()).toBe('/example/3_4_5_1_2.mp4');
 
       // Single width.
       expect(
           MpdUtils.fillUriTemplate(
-              '$RepresentationID$_$Number%01d$_$Bandwidth%01d$_$Time%01d$',
-              '1', 2, 3, 400).toString()).toBe('1_2_3_400');
+              '$RepresentationID$_$Number%01d$_$SubNumber%01d$_$Bandwidth%01d$_$Time%01d$', // eslint-disable-line max-len
+              '1', 2, 3, 4, 500).toString()).toBe('1_2_3_4_500');
 
       // Different widths.
       expect(
           MpdUtils.fillUriTemplate(
-              '$RepresentationID$_$Number%02d$_$Bandwidth%02d$_$Time%02d$',
-              '1', 2, 3, 4).toString()).toBe('1_02_03_04');
+              '$RepresentationID$_$Number%02d$_$SubNumber%02d$_$Bandwidth%02d$_$Time%02d$', // eslint-disable-line max-len
+              '1', 2, 3, 4, 5).toString()).toBe('1_02_03_04_05');
 
       // Double $$.
       expect(
           MpdUtils.fillUriTemplate(
-              '$$/$RepresentationID$$$$Number$$$$Bandwidth$$$$Time$$$.$$',
-              '1', 2, 3, 4).toString()).toBe('$/1$2$3$4$.$');
+              '$$/$RepresentationID$$$$Number$$$$SubNumber$$$$Bandwidth$$$$Time$$$.$$', // eslint-disable-line max-len
+              '1', 2, 3, 4, 5).toString()).toBe('$/1$2$3$4$5$.$');
     });
 
     it('handles invalid identifiers', () => {
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Garbage$.mp4',
-              '1', 2, 3, 4).toString()).toBe('/example/$Garbage$.mp4');
+              '1', 2, 3, 4, 5).toString()).toBe('/example/$Garbage$.mp4');
 
       expect(
           MpdUtils.fillUriTemplate(
               '/example/$Time.mp4',
-              '1', 2, 3, 4).toString()).toBe('/example/$Time.mp4');
+              '1', 2, 3, 4, 5).toString()).toBe('/example/$Time.mp4');
     });
 
     it('handles non-decimal format specifiers', () => {
       expect(
           MpdUtils.fillUriTemplate(
               '/$Number%05x$_$Number%01X$_$Number%01u$_$Number%01o$.mp4',
-              '', 180, 0, 0).toString()).toBe('/000b4_B4_180_264.mp4');
+              '', 180, 0, 0, 0).toString()).toBe('/000b4_B4_180_264.mp4');
     });
   });
 
@@ -351,7 +373,7 @@ describe('MpdUtils', () => {
       checkTimePoints(timePoints, result, 1, 0, 20);
     });
 
-    it('ignores elements after null duration', () => {
+    it('ignores elements with null duration', () => {
       const timePoints = [
         createTimePoint(0, 10, 0),
         createTimePoint(10, 10, 0),
@@ -361,7 +383,9 @@ describe('MpdUtils', () => {
       ];
       const result = [
         {start: 0, end: 10},
-        {start: 10, end: 20},
+        {start: 10, end: 30},
+        {start: 30, end: 40},
+        {start: 40, end: 50},
       ];
       checkTimePoints(timePoints, result, 1, 0, Infinity);
     });
@@ -384,7 +408,7 @@ describe('MpdUtils', () => {
 
     it('adjust start time w/ t missing', () => {
       // No S@t is equivalent to t=0, which should use PTO to make negative.
-      // See https://github.com/google/shaka-player/issues/2590
+      // See https://github.com/shaka-project/shaka-player/issues/2590
       const timePoints = [
         createTimePoint(null, 10, 0),
         createTimePoint(10, 10, 0),
@@ -430,14 +454,14 @@ describe('MpdUtils', () => {
                       ' />');
       }
       xmlLines.push('</SegmentTimeline>');
-      const parser = new DOMParser();
-      const xml =
-          parser.parseFromString(xmlLines.join('\n'), 'application/xml');
-      const segmentTimeline = xml.documentElement;
-      console.assert(segmentTimeline);
+      const segmentTimeline = /** @type {shaka.extern.xml.Node} */ (
+        shaka.util.TXml.parseXmlString(xmlLines.join('\n'),
+            'SegmentTimeline'));
+
+      const timePoints = shaka.util.TXml.findChildren(segmentTimeline, 'S');
 
       const timeline = MpdUtils.createTimeline(
-          segmentTimeline, timescale, presentationTimeOffset, periodDuration);
+          timePoints, timescale, presentationTimeOffset, periodDuration, 0);
       expect(timeline).toEqual(
           expected.map((c) => jasmine.objectContaining(c)));
     }
@@ -450,8 +474,6 @@ describe('MpdUtils', () => {
     let fakeNetEngine;
     /** @type {shaka.extern.RetryParameters} */
     let retry;
-    /** @type {!DOMParser} */
-    let parser;
     /** @type {boolean} */
     let failGracefully;
 
@@ -459,7 +481,6 @@ describe('MpdUtils', () => {
       failGracefully = false;
       retry = shaka.net.NetworkingEngine.defaultRetryParameters();
       fakeNetEngine = new shaka.test.FakeNetworkingEngine();
-      parser = new DOMParser();
     });
 
     it('will replace elements and children', async () => {
@@ -518,25 +539,13 @@ describe('MpdUtils', () => {
       await testSucceeds(baseXMLString, desiredXMLString, 3);
     });
 
-    it('fails if loaded file is invalid xml', async () => {
-      const baseXMLString = inBaseContainer(
-          '<ToReplace xlink:href="https://xlink1" xlink:actuate="onLoad" />');
-      // Note this does not have a close angle bracket.
-      const xlinkXMLString = '<ToReplace></ToReplace';
-      const expectedError = new shaka.util.Error(
-          Error.Severity.CRITICAL, Error.Category.MANIFEST,
-          Error.Code.DASH_INVALID_XML, 'https://xlink1');
-
-      fakeNetEngine.setResponseText('https://xlink1', xlinkXMLString);
-      await testFails(baseXMLString, expectedError, 1);
-    });
 
     it('fails if it recurses too many times', async () => {
       const baseXMLString = inBaseContainer(
           '<ToReplace xlink:href="https://xlink0" xlink:actuate="onLoad" />');
       // Create a large but finite number of links, so this won't
       // infinitely recurse if there isn't a depth limit.
-      for (const i of shaka.util.Iterables.range(20)) {
+      for (let i = 0; i < 20; i++) {
         const key = 'https://xlink' + i;
         const value = makeRecursiveXMLString(0, 'https://xlink' + (i + 1));
 
@@ -659,7 +668,7 @@ describe('MpdUtils', () => {
           '<ToReplace xlink:href="https://xlink0" xlink:actuate="onLoad" />');
       // Create a few links.  This is few enough that it would succeed if we
       // didn't abort it.
-      for (const i of shaka.util.Iterables.range(4)) {
+      for (let i = 0; i < 4; i++) {
         const key = 'https://xlink' + i;
         const value = makeRecursiveXMLString(0, 'https://xlink' + (i + 1));
 
@@ -668,8 +677,8 @@ describe('MpdUtils', () => {
       /** @type {!shaka.util.PublicPromise} */
       const continuePromise = fakeNetEngine.delayNextRequest();
 
-      const xml = parser.parseFromString(baseXMLString, 'text/xml')
-          .documentElement;
+      const xml = /** @type {shaka.extern.xml.Node} */ (
+        shaka.util.TXml.parseXmlString(baseXMLString));
       /** @type {!shaka.extern.IAbortableOperation} */
       const operation = MpdUtils.processXlinks(
           xml, retry, failGracefully, 'https://base', fakeNetEngine);
@@ -707,11 +716,11 @@ describe('MpdUtils', () => {
 
     async function testSucceeds(
         baseXMLString, desiredXMLString, desiredNetCalls) {
-      const desiredXML = parser.parseFromString(desiredXMLString, 'text/xml')
-          .documentElement;
+      const desiredXML = /** @type {shaka.extern.xml.Node} */ (
+        shaka.util.TXml.parseXmlString(desiredXMLString));
       const finalXML = await testRequest(baseXMLString);
       expect(fakeNetEngine.request).toHaveBeenCalledTimes(desiredNetCalls);
-      expect(finalXML).toEqualElement(desiredXML);
+      expect(finalXML).toEqual(desiredXML);
     }
 
     async function testFails(baseXMLString, desiredError, desiredNetCalls) {
@@ -762,8 +771,8 @@ describe('MpdUtils', () => {
     }
 
     function testRequest(baseXMLString) {
-      const xml = parser.parseFromString(baseXMLString, 'text/xml')
-          .documentElement;
+      const xml = /** @type {shaka.extern.xml.Node} */ (
+        shaka.util.TXml.parseXmlString(baseXMLString));
       return MpdUtils.processXlinks(xml, retry, failGracefully, 'https://base',
           fakeNetEngine).promise;
     }

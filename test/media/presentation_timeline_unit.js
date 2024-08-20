@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.media.PresentationTimeline');
-goog.require('shaka.test.ManifestParser');
-
 describe('PresentationTimeline', () => {
   const originalDateNow = Date.now;
   const makeSegmentReference = (startTime, endTime) => {
@@ -117,6 +114,76 @@ describe('PresentationTimeline', () => {
     return timeline;
   }
 
+  const makeTimeRange = (startTime, endTime) => {
+    return {
+      start: startTime,
+      end: endTime,
+    };
+  };
+
+  describe('notifyTimeRange', () => {
+    it('calculates time based on segment times when available', () => {
+      const timeline = makeLiveTimeline(/* availability= */ 20);
+
+      const timeRanges = [
+        makeTimeRange(0, 10),
+        makeTimeRange(10, 20),
+        makeTimeRange(20, 30),
+        makeTimeRange(30, 40),
+        makeTimeRange(40, 50),
+      ];
+
+
+      // In spite of the current time, the explicit segment times will decide
+      // the availability window.
+      // See https://github.com/shaka-project/shaka-player/issues/999
+      setElapsed(1000);
+      timeline.notifyTimeRange(timeRanges, 0);
+
+      // last segment time (50) - availability (20)
+      expect(timeline.getSegmentAvailabilityStart()).toBe(30);
+    });
+
+    it('ignores segment times when configured to', () => {
+      const timeline = makeLiveTimeline(
+          /* availability= */ 20, /* drift= */ 0,
+          /* autoCorrectDrift= */ false);
+
+      const timeRanges = [
+        makeTimeRange(0, 10),
+        makeTimeRange(10, 20),
+        makeTimeRange(20, 30),
+        makeTimeRange(30, 40),
+        makeTimeRange(40, 50),
+      ];
+
+      setElapsed(100);
+      timeline.notifyTimeRange(timeRanges, 0);
+
+      // now (100) - max segment duration (10) - availability start time (0)
+      expect(timeline.getSegmentAvailabilityEnd()).toBe(90);
+    });
+
+    it('excludes future segments when auto correcting drift', () => {
+      const timeline = makeLiveTimeline(/* availability= */ 0);
+      const pastTime = Date.now() / 1000;
+      const futureTime = pastTime * 9;
+      const timeRanges = [
+        makeTimeRange(pastTime - 10, pastTime),
+        makeTimeRange(pastTime, pastTime + 10),
+        makeTimeRange(pastTime + 10, pastTime + 20),
+        makeTimeRange(futureTime, futureTime + 10),
+        makeTimeRange(futureTime + 10, futureTime + 20),
+      ];
+
+      setElapsed(1000);
+      timeline.notifyTimeRange(timeRanges, 0);
+
+      // last segment end time less than Date.now()
+      expect(timeline.getMaxSegmentEndTime()).toBe(pastTime + 20);
+    });
+  });
+
   describe('getSegmentAvailabilityStart', () => {
     it('returns 0 for VOD and IPR', () => {
       const timeline1 = makeVodTimeline(/* duration= */ 60);
@@ -183,7 +250,7 @@ describe('PresentationTimeline', () => {
 
       // In spite of the current time, the explicit segment times will decide
       // the availability window.
-      // See https://github.com/google/shaka-player/issues/999
+      // See https://github.com/shaka-project/shaka-player/issues/999
       setElapsed(1000);
       timeline.notifySegments([ref1, ref2, ref3, ref4, ref5]);
 
@@ -283,11 +350,30 @@ describe('PresentationTimeline', () => {
 
       // In spite of the current time, the explicit segment times will decide
       // the availability window.
-      // See https://github.com/google/shaka-player/issues/999
+      // See https://github.com/shaka-project/shaka-player/issues/999
       setElapsed(1000);
       timeline.notifySegments([ref1, ref2, ref3, ref4, ref5]);
 
       // last segment time (50)
+      expect(timeline.getSegmentAvailabilityEnd()).toBe(50);
+    });
+
+    it('calculates time when there a transition of live to static', () => {
+      const timeline = makeLiveTimeline(/* availability= */ 20);
+
+      const ref1 = makeSegmentReference(0, 10);
+      const ref2 = makeSegmentReference(10, 20);
+      const ref3 = makeSegmentReference(20, 30);
+      const ref4 = makeSegmentReference(30, 40);
+      const ref5 = makeSegmentReference(40, 50);
+
+      setElapsed(50);
+      timeline.notifySegments([ref1, ref2, ref3, ref4, ref5]);
+
+      expect(timeline.getSegmentAvailabilityEnd()).toBe(50);
+
+      timeline.setStatic(true);
+
       expect(timeline.getSegmentAvailabilityEnd()).toBe(50);
     });
   });
@@ -375,6 +461,16 @@ describe('PresentationTimeline', () => {
       expect(timeline.getSeekRangeStart()).toBe(0);
       expect(timeline.getSafeSeekRangeStart(0)).toBe(0);
       expect(timeline.getSafeSeekRangeStart(25)).toBe(5);
+    });
+
+    // Regression test for https://github.com/shaka-project/shaka-player/issues/2831
+    it('will round up to the nearest ms', () => {
+      const timeline = makeVodTimeline(/* duration= */ 60);
+      // Seeking to this exact number may result in seeking to slightly less
+      // than that, due to rounding.
+      timeline.setUserSeekStart(1.458666666666666);
+      // So the safe range start should be slightly higher, with fewer digits.
+      expect(timeline.getSafeSeekRangeStart(0)).toBe(1.459);
     });
   });
 

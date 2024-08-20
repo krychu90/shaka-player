@@ -45,6 +45,12 @@ shaka.extern.AbrManager = class {
   stop() {}
 
   /**
+   * Request that this object release all internal references.
+   * @exportDoc
+   */
+  release() {}
+
+  /**
    * Updates manager's variants collection.
    *
    * @param {!Array.<!shaka.extern.Variant>} variants
@@ -54,6 +60,7 @@ shaka.extern.AbrManager = class {
 
   /**
    * Chooses one variant to switch to.  Called by the Player.
+   *
    * @return {shaka.extern.Variant}
    * @exportDoc
    */
@@ -82,9 +89,22 @@ shaka.extern.AbrManager = class {
    * @param {number} deltaTimeMs The duration, in milliseconds, that the request
    *     took to complete.
    * @param {number} numBytes The total number of bytes transferred.
+   * @param {boolean} allowSwitch Indicate if the segment is allowed to switch
+   *     to another stream.
+   * @param {shaka.extern.Request=} request
+   *     A reference to the request
    * @exportDoc
    */
-  segmentDownloaded(deltaTimeMs, numBytes) {}
+  segmentDownloaded(deltaTimeMs, numBytes, allowSwitch, request) {}
+
+  /**
+   * Notifies the ABR that it is a time to suggest new streams. This is used by
+   * the Player when it finishes adding the last partial segment of a fast
+   * switching stream.
+   *
+   * @exportDoc
+   */
+  trySuggestStreams() {}
 
   /**
    * Gets an estimate of the current bandwidth in bit/sec.  This is used by the
@@ -102,6 +122,22 @@ shaka.extern.AbrManager = class {
    * @exportDoc
    */
   playbackRateChanged(rate) {}
+
+  /**
+   * Set media element.
+   *
+   * @param {HTMLMediaElement} mediaElement
+   * @exportDoc
+   */
+  setMediaElement(mediaElement) {}
+
+  /**
+   * Set CMSD manager.
+   *
+   * @param {shaka.util.CmsdManager} cmsdManager
+   * @exportDoc
+   */
+  setCmsdManager(cmsdManager) {}
 
   /**
    * Sets the ABR configuration.

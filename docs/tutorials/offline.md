@@ -79,14 +79,14 @@ the end of the tutorial.
 ```js
 // myapp.js
 
-function initApp() {
+async function initApp() {
   // Install built-in polyfills to patch browser incompatibilities.
   shaka.polyfill.installAll();
 
   // Check to see if the browser supports the basic APIs Shaka needs.
   if (shaka.Player.isBrowserSupported()) {
     // Everything looks good!
-    initPlayer();
+    await initPlayer();
   } else {
     // This browser does not have the minimum set of APIs we need.
     console.error('Browser not supported!');
@@ -99,10 +99,11 @@ function initApp() {
   window.addEventListener('offline', updateOnlineStatus);
 }
 
-function initPlayer() {
+async function initPlayer() {
   // Create a Player instance.
   const video = document.getElementById('video');
-  const player = new shaka.Player(video);
+  const player = new shaka.Player();
+  await player.attach(video);
 
   // Attach player and storage to the window to make it easy to access
   // in the JS console and so we can access it in other methods.
@@ -293,8 +294,10 @@ following code:
   // download progress and override the track selection callback.
   window.storage = new shaka.offline.Storage(player);
   window.storage.configure({
-    progressCallback: setDownloadProgress,
-    trackSelectionCallback: selectTracks
+    offline: {
+      progressCallback: setDownloadProgress,
+      trackSelectionCallback: selectTracks
+    }
   });
 ```
 
@@ -336,6 +339,9 @@ you want.
 
 At this point, the content is now stored offline and it's ready to be played.
 Next we will add functionality to play offline content.
+
+Note: If you call `storage.store` twice with the same manifestUri as input,
+you'll download the same manifestUri twice.
 
 ## Playing Offline Content
 
@@ -435,14 +441,14 @@ That’s it! For your convenience, here is the completed code:
 ```js
 // myapp.js
 
-function initApp() {
+async function initApp() {
   // Install built-in polyfills to patch browser incompatibilities.
   shaka.polyfill.installAll();
 
   // Check to see if the browser supports the basic APIs Shaka needs.
   if (shaka.Player.isBrowserSupported()) {
     // Everything looks good!
-    initPlayer();
+    await initPlayer();
   } else {
     // This browser does not have the minimum set of APIs we need.
     console.error('Browser not supported!');
@@ -455,10 +461,11 @@ function initApp() {
   window.addEventListener('offline', updateOnlineStatus);
 }
 
-function initPlayer() {
+async function initPlayer() {
   // Create a Player instance.
   const video = document.getElementById('video');
-  const player = new shaka.Player(video);
+  const player = new shaka.Player();
+  await player.attach(video);
 
   // Attach player and storage to the window to make it easy to access
   // in the JS console and so we can access it in other methods.
@@ -507,8 +514,10 @@ function initStorage(player) {
   // download progress and override the track selection callback.
   window.storage = new shaka.offline.Storage(player);
   window.storage.configure({
-    progressCallback: setDownloadProgress,
-    trackSelectionCallback: selectTracks
+    offline: {
+      progressCallback: setDownloadProgress,
+      trackSelectionCallback: selectTracks
+    }
   });
 }
 
@@ -533,7 +542,7 @@ function downloadContent(manifestUri, title) {
     'downloaded': Date()
   };
 
-  return window.storage.store(manifestUri, metadata);
+  return window.storage.store(manifestUri, metadata).promise;
 }
 
 /*
@@ -668,7 +677,7 @@ storage, set:
 usePersistentLicense: false
 ```
 
-By default, shaka.offline.Storage stores persistent licenses. If you want this
+By default, `shaka.offline.Storage` stores persistent licenses. If you want this
 behaviour and you know you are on a supported platform, you can omit the
 setting or set it explicitly with:
 

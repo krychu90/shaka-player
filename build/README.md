@@ -74,14 +74,13 @@ These arguments can be passed in using `test.py` or using `karma start`
 directly:
 * `--quick` will only run unit tests, skipping integration tests.
 * `--enable-logging` will enable console logging.  Logs will be printed to
-  the console.  It also accepts a value for the log level `--enable-logging=1`,
-  defaulting to 3.  See [lib/debug/log.js][] for the log levels (you must
-  pass the number).
+  the console.  It accepts the enum for the log level `--enable-logging=v2`,
+  defaulting to `info`.  See [lib/debug/log.js][] for the log levels.
 * `--external` will run integration tests against external assets.  This will
   take an extremely long time to run, and requires a fast and reliable internet
   connection.
-* `--drm` will run integration tests against DRM license servers.  This will
-  require a connection to the open internet.
+* `--no-drm` will skip integration tests against DRM license servers.  Not
+  specifying this flag requires a connection to the open internet.
 * `--uncompiled` will run integration tests using the uncompiled library instead
   of the compiled version.
 * `--random` will run the tests in a random order to isolate test dependencies.
@@ -99,7 +98,7 @@ will choose a defaults based on your platform.  However, if you pass any
 arguments to `test.py`, it will not choose browsers and you *must* pass
 `--browsers`.
 
-[lib/debug/log.js]: https://github.com/google/shaka-player/blob/master/lib/debug/log.js
+[lib/debug/log.js]: https://github.com/shaka-project/shaka-player/blob/main/lib/debug/log.js
 
 ## Stats
 

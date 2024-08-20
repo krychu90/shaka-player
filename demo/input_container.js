@@ -8,6 +8,8 @@
 goog.provide('shakaDemo.InputContainer');
 
 
+goog.require('shakaDemo.Tooltips');
+
 /**
  * Creates elements for containing inputs. It represents a single "section" of
  * input.
@@ -19,8 +21,8 @@ goog.provide('shakaDemo.InputContainer');
 shakaDemo.InputContainer = class {
   /**
    * @param {!Element} parentDiv
-   * @param {?shakaDemo.MessageIds} headerText The text to be displayed by
-   *   the header. If null, there will be no header.
+   * @param {?string} headerText The text to be displayed by the header.
+   *   If null, there will be no header.
    * @param {!shakaDemo.InputContainer.Style} style
    * @param {?string} docLink
    */
@@ -37,10 +39,13 @@ shakaDemo.InputContainer = class {
     /** @private {?Element} */
     this.latestRow_;
 
+    /** @private {?string} */
+    this.defaultRowClass_ = null;
+
     /** @type {?Element} */
     this.latestElementContainer;
 
-    /** @type {?shakaDemo.MessageIds} */
+    /** @type {?string} */
     this.latestTooltip;
 
     /** @private {number} */
@@ -95,7 +100,7 @@ shakaDemo.InputContainer = class {
 
   /**
    * @param {!Element} parentDiv
-   * @param {shakaDemo.MessageIds} headerText
+   * @param {string} headerText
    * @private
    */
   createHeader_(parentDiv, headerText) {
@@ -114,9 +119,10 @@ shakaDemo.InputContainer = class {
         }
       });
     } else {
-      this.header_ = document.createElement('h3');
+      this.header_ = document.createElement('div');
+      this.header_.classList.add('input-header');
     }
-    this.header_.textContent = shakaDemoMain.getLocalizedString(headerText);
+    this.header_.textContent = headerText;
     parentDiv.appendChild(this.header_);
   }
 
@@ -144,12 +150,31 @@ shakaDemo.InputContainer = class {
   }
 
   /**
+   * Set the default row class for future calls to addRow().
+   *
+   * @param {?string} rowClass
+   */
+  setDefaultRowClass(rowClass) {
+    this.defaultRowClass_ = rowClass;
+  }
+
+  /**
+   * Return the CSS class list for the container.
+   *
+   * @return {!DOMTokenList}
+   */
+  getClassList() {
+    return this.table_.classList;
+  }
+
+  /**
    * Makes a row, for storing an input.
-   * @param {?shakaDemo.MessageIds} labelString
-   * @param {?shakaDemo.MessageIds} tooltipString
+   * @param {?string} labelString
+   * @param {?string} tooltipString
    * @param {string=} rowClass
    */
   addRow(labelString, tooltipString, rowClass) {
+    rowClass = rowClass || this.defaultRowClass_ || '';
     this.latestRow_ = document.createElement('div');
     if (rowClass) {
       this.latestRow_.classList.add(rowClass);
@@ -164,7 +189,7 @@ shakaDemo.InputContainer = class {
       label.setAttribute('for', elementId);
       label.classList.add('input-container-label');
       const labelText = document.createElement('b');
-      labelText.textContent = shakaDemoMain.getLocalizedString(labelString);
+      labelText.textContent = labelString;
       label.appendChild(labelText);
       this.latestRow_.appendChild(label);
     }

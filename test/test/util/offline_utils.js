@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.OfflineUtils');
-
-
 shaka.test.OfflineUtils = class {
   /**
    * @param {string} originalUri
@@ -23,6 +20,7 @@ shaka.test.OfflineUtils = class {
       streams: [],
       sessionIds: [],
       size: 1024,
+      sequenceMode: false,
     };
   }
 
@@ -35,6 +33,7 @@ shaka.test.OfflineUtils = class {
     return {
       id,
       originalId: id.toString(),
+      groupId: null,
       primary: false,
       presentationTimeOffset: 0,
       type,
@@ -44,6 +43,7 @@ shaka.test.OfflineUtils = class {
       pixelAspectRatio: undefined,
       kind: undefined,
       language: '',
+      originalLanguage: null,
       label: null,
       width: null,
       height: null,
@@ -53,9 +53,13 @@ shaka.test.OfflineUtils = class {
       segments: [],
       variantIds: [],
       roles: [],
+      forced: false,
       channelsCount: null,
       audioSamplingRate: null,
+      spatialAudio: false,
       closedCaptions: null,
+      external: false,
+      fastSwitching: false,
     };
   }
 

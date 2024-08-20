@@ -4,14 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.cast.CastProxy');
-goog.require('shaka.cast.CastSender');
-goog.require('shaka.test.FakeVideo');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.FakeEvent');
-goog.require('shaka.util.PublicPromise');
-
 describe('CastProxy', () => {
   const CastProxy = shaka.cast.CastProxy;
   const FakeEvent = shaka.util.FakeEvent;
@@ -19,6 +11,7 @@ describe('CastProxy', () => {
 
   const originalCastSender = shaka.cast.CastSender;
   const fakeAppId = 'fake app ID';
+  const fakeAndroidReceiverCompatible = false;
 
   let mockPlayer;
   let mockSender;
@@ -39,7 +32,8 @@ describe('CastProxy', () => {
     mockPlayer = createMockPlayer();
     mockSender = null;
 
-    proxy = new CastProxy(mockVideo, mockPlayer, fakeAppId);
+    proxy = new CastProxy(mockVideo, mockPlayer, fakeAppId,
+        fakeAndroidReceiverCompatible);
   });
 
   afterEach(async () => {
@@ -120,52 +114,6 @@ describe('CastProxy', () => {
   });
 
   describe('cast', () => {
-    it('pauses the local video', () => {
-      proxy.cast();
-      expect(mockVideo.pause).toHaveBeenCalled();
-    });
-
-    it('passes initial state to sender', () => {
-      mockVideo.loop = true;
-      mockVideo.playbackRate = 3;
-      mockVideo.currentTime = 12;
-      const fakeConfig = {key: 'value'};
-      mockPlayer.getConfiguration.and.returnValue(fakeConfig);
-      mockPlayer.isTextTrackVisible.and.returnValue(false);
-      const fakeManifestUri = 'foo://bar';
-      mockPlayer.getAssetUri.and.returnValue(fakeManifestUri);
-
-      proxy.cast();
-      const calls = mockSender.cast.calls;
-      expect(calls.count()).toBe(1);
-      if (calls.count()) {
-        const state = calls.argsFor(0)[0];
-        // Video state goes directly:
-        expect(state.video.loop).toBe(mockVideo.loop);
-        expect(state.video.playbackRate).toBe(mockVideo.playbackRate);
-        // Player state uses corresponding setter names:
-        expect(state.player.configure).toEqual(fakeConfig);
-        expect(state['playerAfterLoad'].setTextTrackVisibility).toBe(false);
-        // Manifest URI:
-        expect(state.manifest).toBe(fakeManifestUri);
-        // Start time:
-        expect(state.startTime).toBe(mockVideo.currentTime);
-      }
-    });
-
-    it('does not provide a start time if the video has ended', () => {
-      mockVideo.ended = true;
-      mockVideo.currentTime = 12;
-
-      proxy.cast();
-      const calls = mockSender.cast.calls;
-      expect(calls.count()).toBe(1);
-      if (calls.count()) {
-        const state = calls.argsFor(0)[0];
-        expect(state.startTime).toBe(null);
-      }
-    });
-
     it('unloads the local player after casting is complete', async () => {
       /** @type {!shaka.util.PublicPromise} */
       const p = new shaka.util.PublicPromise();
@@ -297,7 +245,8 @@ describe('CastProxy', () => {
             'timeupdate', Util.spyFunc(proxyListener));
 
         expect(proxyListener).not.toHaveBeenCalled();
-        const fakeEvent = new FakeEvent('timeupdate', {detail: 8675309});
+        const fakeEvent = new FakeEvent(
+            'timeupdate', (new Map()).set('detail', 8675309));
         mockVideo.on['timeupdate'](fakeEvent);
         expect(proxyListener).toHaveBeenCalledWith(jasmine.objectContaining({
           type: 'timeupdate',
@@ -315,7 +264,8 @@ describe('CastProxy', () => {
         mockSender.hasRemoteProperties.and.returnValue(true);
 
         expect(proxyListener).not.toHaveBeenCalled();
-        const fakeEvent = new FakeEvent('timeupdate', {detail: 8675309});
+        const fakeEvent = new FakeEvent(
+            'timeupdate', (new Map()).set('detail', 8675309));
         mockVideo.on['timeupdate'](fakeEvent);
         expect(proxyListener).not.toHaveBeenCalled();
       });
@@ -332,7 +282,8 @@ describe('CastProxy', () => {
         mockSender.hasRemoteProperties.and.returnValue(true);
 
         expect(proxyListener).not.toHaveBeenCalled();
-        const fakeEvent = new FakeEvent('timeupdate', {detail: 8675309});
+        const fakeEvent = new FakeEvent(
+            'timeupdate', (new Map()).set('detail', 8675309));
         mockSender.onRemoteEvent('video', fakeEvent);
         expect(proxyListener).toHaveBeenCalledWith(jasmine.objectContaining({
           type: 'timeupdate',
@@ -446,7 +397,8 @@ describe('CastProxy', () => {
             'buffering', Util.spyFunc(proxyListener));
 
         expect(proxyListener).not.toHaveBeenCalled();
-        const fakeEvent = new FakeEvent('buffering', {detail: 8675309});
+        const fakeEvent = new FakeEvent(
+            'buffering', (new Map()).set('detail', 8675309));
         mockPlayer.listeners['buffering'](fakeEvent);
         expect(proxyListener).toHaveBeenCalledWith(jasmine.objectContaining({
           type: 'buffering',
@@ -464,7 +416,8 @@ describe('CastProxy', () => {
         mockSender.hasRemoteProperties.and.returnValue(true);
 
         expect(proxyListener).not.toHaveBeenCalled();
-        const fakeEvent = new FakeEvent('buffering', {detail: 8675309});
+        const fakeEvent = new FakeEvent(
+            'buffering', (new Map()).set('detail', 8675309));
         mockPlayer.listeners['buffering'](fakeEvent);
         expect(proxyListener).not.toHaveBeenCalled();
       });
@@ -481,7 +434,8 @@ describe('CastProxy', () => {
         mockSender.hasRemoteProperties.and.returnValue(true);
 
         expect(proxyListener).not.toHaveBeenCalled();
-        const fakeEvent = new FakeEvent('buffering', {detail: 8675309});
+        const fakeEvent = new FakeEvent(
+            'buffering', (new Map()).set('detail', 8675309));
         mockSender.onRemoteEvent('player', fakeEvent);
         expect(proxyListener).toHaveBeenCalledWith(jasmine.objectContaining({
           type: 'buffering',

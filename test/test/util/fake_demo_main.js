@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.FakeDemoMain');
-
-
 /**
  * @summary
  * This simulates the interface between ShakaDemoMain and the various tabs.
@@ -15,9 +12,13 @@ goog.provide('shaka.test.FakeDemoMain');
  */
 shaka.test.FakeDemoMain = class {
   constructor() {
-    this.video = /** @type {!HTMLVideoElement} */ (
-      document.createElement('video'));
-    this.player = new shaka.Player(this.video);
+    // Using the player's constructor argument to attach a video element seems
+    // to cause flaky timeouts on teardown.  If a video element is needed in
+    // the future, please explicitly call attach(video) and await the result
+    // during the test setup.
+    /** @type {!shaka.Player} */
+    this.player = new shaka.Player();
+
     this.config_ = this.player.getConfiguration();
     this.selectedAsset = null;
 
@@ -51,6 +52,15 @@ shaka.test.FakeDemoMain = class {
     /** @type {!jasmine.Spy} */
     this.setTrickPlayControlsEnabled =
         jasmine.createSpy('setTrickPlayControlsEnabled');
+
+    /** @type {!jasmine.Spy} */
+    this.getCustomContextMenuEnabled =
+        jasmine.createSpy('getCustomContextMenuEnabled');
+    this.getCustomContextMenuEnabled.and.returnValue(false);
+
+    /** @type {!jasmine.Spy} */
+    this.setCustomContextMenuEnabled =
+        jasmine.createSpy('setCustomContextMenuEnabled');
 
     /** @type {!jasmine.Spy} */
     this.getConfiguration = jasmine.createSpy('getConfiguration');

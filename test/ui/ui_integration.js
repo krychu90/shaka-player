@@ -4,22 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('mozilla.LanguageMapping');
-goog.require('shaka.test.Loader');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.test.Waiter');
-goog.require('shaka.ui.Element');
-goog.require('shaka.util.Dom');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.Iterables');
-goog.requireType('shaka.Player');
-goog.requireType('shaka.ui.Controls');
-goog.requireType('shaka.ui.Overlay');
-
-
 describe('UI', () => {
   const Util = shaka.test.Util;
   const UiUtils = shaka.test.UiUtils;
@@ -61,7 +45,8 @@ describe('UI', () => {
     videoContainer = shaka.util.Dom.createHTMLElement('div');
     videoContainer.appendChild(video);
     document.body.appendChild(videoContainer);
-    player = new compiledShaka.Player(video);
+    player = new compiledShaka.Player();
+    await player.attach(video);
 
     // Create UI
     // Add all of the buttons we have
@@ -317,8 +302,7 @@ describe('UI', () => {
       languagesToButtons = mapChoicesToButtons(
           /* allButtons= */ languageButtons,
           /* choices= */ langsFromContent,
-          /* modifier= */ getNativeName
-      );
+          /* modifier= */ getNativeName);
 
       const button = languagesToButtons.get(newLanguage);
       const isChosen = button.querySelector('.shaka-chosen-item');
@@ -330,8 +314,6 @@ describe('UI', () => {
   describe('resolution selection', () => {
     /** @type {!Map.<number, !HTMLElement>} */
     let resolutionsToButtons;
-    /** @type {!Array.<number>} */
-    let resolutionsFromContent;
     /** @type {!Array.<!HTMLElement>} */
     let resolutionButtons;
     /** @type {!Element} */
@@ -346,6 +328,8 @@ describe('UI', () => {
     let preferredLanguage;
     /** @type {!shaka.extern.Track} */
     let oldResolutionTrack;
+    /** @type {number} */
+    let newResolutionTrackId;
 
     beforeEach(async () => {
       oldResolution = 182;
@@ -370,6 +354,7 @@ describe('UI', () => {
       updateResolutionButtonsAndMap();
 
       oldResolutionTrack = findTrackWithHeight(tracks, oldResolution);
+      newResolutionTrackId = findTrackWithHeight(tracks, newResolution).id;
 
       const selectedResolution =
           getSelectedTrack(player.getVariantTracks()).height;
@@ -380,9 +365,8 @@ describe('UI', () => {
     });
 
     it('contains all the relevant resolutions', () => {
-      const formattedResolutions = resolutionsFromContent.map((res) => {
-        return formatResolution(res);
-      });
+      const formattedResolutions =
+          tracks.map((t) => formatResolution(t.id, tracks));
       verifyItems(formattedResolutions, resolutionButtons);
     });
 
@@ -391,7 +375,7 @@ describe('UI', () => {
       tracks = player.getVariantTracks();
       expect(getSelectedTrack(tracks).height).toBe(oldResolution);
 
-      const button = resolutionsToButtons.get(newResolution);
+      const button = resolutionsToButtons.get(newResolutionTrackId);
       button.click();
 
       // Wait for the change to take effect
@@ -417,7 +401,7 @@ describe('UI', () => {
 
       expect(getSelectedTrack(tracks).height).toBe(newResolution);
 
-      const button = resolutionsToButtons.get(newResolution);
+      const button = resolutionsToButtons.get(newResolutionTrackId);
       const isChosen = button.querySelector('.shaka-chosen-item');
 
       expect(isChosen).not.toBe(null);
@@ -444,7 +428,7 @@ describe('UI', () => {
       const p = waiter.waitForEvent(controls, 'resolutionselectionupdated');
 
       // Any resolution would works
-      const button = resolutionsToButtons.get(newResolution);
+      const button = resolutionsToButtons.get(newResolutionTrackId);
       button.click();
 
       await p;
@@ -471,22 +455,6 @@ describe('UI', () => {
       expect(isChosen).not.toBe(null);
     });
 
-    it('restores the resolutions menu after audio-only playback', async () => {
-      /** @type {HTMLElement} */
-      const resolutionButton = shaka.util.Dom.getElementByClassName(
-          'shaka-resolution-button', videoContainer);
-
-      // Load an audio-only clip.  The menu should be hidden.
-      await player.load('test:sintel_audio_only_compiled');
-      expect(player.isAudioOnly()).toBe(true);
-      expect(resolutionButton.classList.contains('shaka-hidden')).toBe(true);
-
-      // Load an audio-video clip.  The menu should be visible again.
-      await player.load('test:sintel_multi_lingual_multi_res_compiled');
-      expect(player.isAudioOnly()).toBe(false);
-      expect(resolutionButton.classList.contains('shaka-hidden')).toBe(false);
-    });
-
     /**
      * @return {Element}
      */
@@ -500,13 +468,26 @@ describe('UI', () => {
 
     /**
      * Gets the resolution to the same format it
-     * appears in the UI: height + 'p'.
+     * appears in the UI
      *
-     * @param {number} height
+     * @param {number} id
+     * @param {!Array.<!shaka.extern.Track>} tracks
      * @return {string}
      */
-    function formatResolution(height) {
-      return height.toString() + 'p';
+    function formatResolution(id, tracks) {
+      const track = tracks.find((t) => t.id == id);
+      const trackHeight = track.height || 0;
+      const trackWidth = track.width || 0;
+      let height = trackHeight;
+      const aspectRatio = trackWidth / trackHeight;
+      if (aspectRatio > (16 / 9)) {
+        height = Math.round(trackWidth * 9 / 16);
+      }
+      let text = height + 'p';
+      if (height == 2160) {
+        text = '4K';
+      }
+      return text;
     }
 
     /**
@@ -533,10 +514,6 @@ describe('UI', () => {
         return track.language == preferredLanguage;
       });
 
-      resolutionsFromContent = tracks.map((track) => {
-        return track.height;
-      });
-
       resolutionButtons = filterButtons(
           /* buttons= */ resolutionsMenu.childNodes,
           /* excludeClasses= */ [
@@ -546,8 +523,8 @@ describe('UI', () => {
 
       resolutionsToButtons = mapChoicesToButtons(
           /* buttons= */ resolutionButtons,
-          /* choices= */ resolutionsFromContent,
-          /* modifier= */ formatResolution);
+          /* choices= */ tracks.map((track) => track.id),
+          /* modifier= */ (id) => formatResolution(id, tracks));
     }
   });  // describe('resolution selection')
 
@@ -562,6 +539,7 @@ describe('UI', () => {
         getLocalization: () => null,
         getPlayer: () => player,
         getVideo: () => null,
+        getAd: () => null,
       });
 
       /** @extends {shaka.ui.Element} */
@@ -630,7 +608,7 @@ describe('UI', () => {
 
   /**
     * @param {!Array.<!HTMLElement>} buttons
-    * @param {!Array.<string>} choices
+    * @param {!Array.<string>|!Array.<number>} choices
     * @param {function(string):string|function(number):string} modifier
     * @return {!Map.<string, !HTMLElement>|!Map.<number, !HTMLElement>}
     */

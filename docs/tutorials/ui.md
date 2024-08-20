@@ -16,9 +16,9 @@ Set up controls with HTML data attributes:
 <!DOCTYPE html>
 <html>
   <head>
-    <!-- Shaka Player ui compiled library: -->
+    <!-- Shaka Player UI compiled library: -->
     <script src="dist/shaka-player.ui.js"></script>
-    <!-- Shaka Player ui compiled library default CSS: -->
+    <!-- Shaka Player UI compiled library default CSS: -->
     <link rel="stylesheet" type="text/css" href="dist/controls.css">
     <!-- Chromecast SDK (if you want Chromecast support for your app): -->
     <script defer src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"></script>
@@ -30,7 +30,7 @@ Set up controls with HTML data attributes:
          The data-shaka-player-cast-receiver-id tag allows you to provide a Cast Application ID that
            the cast button will cast to; the value provided here is the sample cast receiver. -->
     <div data-shaka-player-container style="max-width:40em"
-         data-shaka-player-cast-receiver-id="7B25EC44">
+         data-shaka-player-cast-receiver-id="07AEE832">
        <!-- The data-shaka-player tag will make the UI library use this video element.
             If no video is provided, the UI will automatically make one inside the container div. -->
       <video autoplay data-shaka-player id="video" style="width:100%;height:100%"></video>
@@ -52,7 +52,7 @@ async function init() {
   const controls = ui.getControls();
   const player = controls.getPlayer();
 
-  // Attach player and ui to the window to make it easy to access in the JS console.
+  // Attach player and UI to the window to make it easy to access in the JS console.
   window.player = player;
   window.ui = ui;
 
@@ -100,6 +100,31 @@ document.addEventListener('shaka-ui-load-failed', initFailed);
 ```
 
 
+#### Enabling VR
+
+To enable the playback of VR content, there are two possibilities:
+
+1. Enable via UI config:
+```js
+const config = {
+  'displayInVrMode': true
+}
+ui.configure(config);
+```
+
+2. Content is automatically treated as VR if it fits the following criteria:
+ - HLS or DASH manifest
+ - fMP4 segments
+ - Init segment contains `prji` and `hfov` boxes
+
+
+If you want the VR to be rendered outside of the main container, add the
+`data-shaka-player-vr-canvas` tag to a canvas element on the page.
+
+Note: VR is only supported for clear streams or HLS-AES stream. DRM prevents
+access to the video pixels for transformation.
+
+
 #### Enabling Chromecast support
 
 If you'd like to take advantage of Shaka's built-in Chromecast support,
@@ -111,7 +136,7 @@ set up a listener for the 'caststatuschanged' events.
 <!-- Add a data-shaka-player-cast-receiver-id tag to provide a Cast Application ID that
            the cast button will cast to; the value provided here is the sample cast receiver. -->
     <div data-shaka-player-container style="max-width:40em"
-         data-shaka-player-cast-receiver-id="A15A181D">
+         data-shaka-player-cast-receiver-id="07AEE832">
     </div>
 ```
 
@@ -130,6 +155,23 @@ Next, let's add a listener to the 'caststatuschanged' event in myapp.js:
   }
 ```
 
+
+#### Enabling Android Receiver Apps
+
+If you'd like to take advantage of Android Receiver App support,
+you will need to provide a boolean flag to enable support for
+casting to an Android receiver app.
+
+```html
+    <div data-shaka-player-container style="max-width:40em"
+         data-shaka-player-cast-receiver-id="07AEE832"
+         data-shaka-player-cast-android-receiver-compatible="true">
+      <!-- The manifest url in the src attribute will be automatically loaded -->
+      <video autoplay data-shaka-player id="video" style="width:100%;height:100%"
+       src="https://storage.googleapis.com/shaka-demo-assets/angel-one/dash.mpd"></video>
+    </div
+```
+
 #### Providing source(s) for auto load.
 
 It's also possible to provide the `src` attribute on the `<video>` element
@@ -137,7 +179,7 @@ or a `<source>` tag inside it to enable auto loading of the specified content.
 
 ```html
     <div data-shaka-player-container style="max-width:40em"
-         data-shaka-player-cast-receiver-id="7B25EC44">
+         data-shaka-player-cast-receiver-id="07AEE832">
       <!-- The manifest url in the src attribute will be automatically loaded -->
       <video autoplay data-shaka-player id="video" style="width:100%;height:100%"
        src="https://storage.googleapis.com/shaka-demo-assets/angel-one/dash.mpd"></video>
@@ -148,7 +190,7 @@ or
 
 ```html
     <div data-shaka-player-container style="max-width:40em"
-         data-shaka-player-cast-receiver-id="7B25EC44">
+         data-shaka-player-cast-receiver-id="07AEE832">
       <video autoplay data-shaka-player id="video" style="width:100%;height:100%">
         <!-- The manifest url in the src attribute will be auto loaded -->
        <source src="https://storage.googleapis.com/shaka-demo-assets/angel-one/dash.mpd"/>
@@ -161,7 +203,7 @@ call to the first one fails.
 
 ```html
     <div data-shaka-player-container style="max-width:40em"
-         data-shaka-player-cast-receiver-id="7B25EC44">
+         data-shaka-player-cast-receiver-id="07AEE832">
       <video autoplay data-shaka-player id="video" style="width:100%;height:100%">
         <!-- Try this first -->
         <source src="https://storage.googleapis.com/shaka-demo-assets/angel-one/dash.mpd"/>
@@ -175,6 +217,41 @@ NOTE: Please DO NOT specify both the `src` attribute on the `<video>` tag AND
 a `<source>` tag inside it.
 
 
-#### Continue the Tutorials
+#### Programmatic UI setup.
+It is possible to set up the UI programmatically after the page loads.
+(One of the big use cases for this is building Shaka Player into UI frameworks
+that modify the DOM after the page load.)
 
-Next, check out {@tutorial ui-customization}.
+To create UI without the DOM-based setup, use the `shaka.ui.Overlay`
+constructor.
+
+```js
+// "local" because it is for local playback only, as opposed to the player proxy
+// object, which will route your calls to the ChromeCast receiver as necessary.
+const localPlayer = new shaka.Player();
+// "Overlay" because the UI will add DOM elements inside the container,
+// to visually overlay the video element
+const ui = new shaka.ui.Overlay(localPlayer, videoContainerElement,
+  videoElement);
+// Now that the player has been configured to be part of a UI, attach it to the
+// video.
+await localPlayer.attach(videoElement);
+
+// As with DOM-based setup, get access to the UI controls and player from the
+// UI.
+const controls = ui.getControls();
+
+// These are cast-enabled proxy objects, so that when you are casting,
+// your API calls will be routed to the remote playback session.
+const player = controls.getPlayer();
+const video = controls.getVideo();
+
+// Programatically configure the Chromecast Receiver App Id and Android
+// Receiver Compatability.
+ui.configure({
+  // Set the castReceiverAppId
+  'castReceiverAppId': '07AEE832',
+  // Enable casting to native Android Apps (e.g. Android TV Apps)
+  'castAndroidReceiverCompatible': true,
+});
+```

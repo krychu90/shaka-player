@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.FakeTextDisplayer');
-
-
 /**
  * @implements {shaka.extern.TextDisplayer}
  * @final
@@ -36,6 +33,9 @@ shaka.test.FakeTextDisplayer = class {
     const func = shaka.test.Util.spyFunc(this.destroySpy);
     return func();
   }
+
+  /** @override */
+  configure(config) {}
 
   /** @override */
   append(cues) {

@@ -4,87 +4,59 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.Player');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.Error');
-
 describe('Player Load Graph', () => {
   const SMALL_MP4_CONTENT_URI = '/base/test/test/assets/small.mp4';
 
   /** @type {!HTMLVideoElement} */
   let video;
+  /** @type {!HTMLVideoElement} */
+  let video2;
   /** @type {shaka.Player} */
   let player;
 
   /** @type {!jasmine.Spy} */
   let stateChangeSpy;
 
-  /** @type {!jasmine.Spy} */
-  let stateIdleSpy;
+  /** @type {?string} */
+  let lastStateChange = null;
 
   beforeAll(() => {
     video = shaka.test.UiUtils.createVideoElement();
     document.body.appendChild(video);
+    video2 = shaka.test.UiUtils.createVideoElement();
+    document.body.appendChild(video2);
   });
 
   afterAll(() => {
     document.body.removeChild(video);
+    document.body.removeChild(video2);
   });
 
   beforeEach(() => {
     stateChangeSpy = jasmine.createSpy('stateChange');
-    stateIdleSpy = jasmine.createSpy('stateIdle');
+    lastStateChange = null;
   });
 
-  /**
-   * @param {HTMLMediaElement} attachedTo
-   */
-  function createPlayer(attachedTo) {
-    player = new shaka.Player(attachedTo);
+  function createPlayer() {
+    player = new shaka.Player();
     player.addEventListener(
         'onstatechange',
         shaka.test.Util.spyFunc(stateChangeSpy));
-    player.addEventListener(
-        'onstateidle',
-        shaka.test.Util.spyFunc(stateIdleSpy));
+    player.addEventListener('onstatechange', (event) => {
+      lastStateChange = event['state'];
+    });
   }
 
   // Even though some test will destroy the player, we want to make sure that
   // we don't allow the player to stay attached to the video element.
   afterEach(async () => {
     await player.destroy();
-  });
-
-  it('attach and initialize media source when constructed with media element',
-      async () => {
-        expect(video.src).toBeFalsy();
-
-        createPlayer(/* attachedTo= */ video);
-
-        // Wait until we enter the media source state.
-        await new Promise((resolve) => {
-          whenEnteringState('media-source', resolve);
-        });
-
-        expect(video.src).toBeTruthy();
-      });
-
-  it('does not set video.src when no video is provided', async () => {
-    expect(video.src).toBeFalsy();
-
-    createPlayer(/* attachedTo= */ null);
-
-    // Wait until the player has hit an idle state (no more internal loading
-    // actions).
-    await spyIsCalled(stateIdleSpy);
-
-    expect(video.src).toBeFalsy();
+    player.releaseAllMutexes();
   });
 
   it('attach + initializeMediaSource=true will initialize media source',
       async () => {
-        createPlayer(/* attachedTo= */ null);
+        createPlayer();
 
         expect(video.src).toBeFalsy();
         await player.attach(video, /* initializeMediaSource= */ true);
@@ -93,7 +65,7 @@ describe('Player Load Graph', () => {
 
   it('attach + initializeMediaSource=false will not intialize media source',
       async () => {
-        createPlayer(/* attachedTo= */ null);
+        createPlayer();
 
         expect(video.src).toBeFalsy();
         await player.attach(video, /* initializeMediaSource= */ false);
@@ -102,7 +74,7 @@ describe('Player Load Graph', () => {
 
   it('unload + initializeMediaSource=false does not initialize media source',
       async () => {
-        createPlayer(/* attachedTo= */ null);
+        createPlayer();
 
         await player.attach(video);
         await player.load('test:sintel');
@@ -113,7 +85,7 @@ describe('Player Load Graph', () => {
 
   it('unload + initializeMediaSource=true initializes media source',
       async () => {
-        createPlayer(/* attachedTo= */ null);
+        createPlayer();
 
         await player.attach(video);
         await player.load('test:sintel');
@@ -122,50 +94,8 @@ describe('Player Load Graph', () => {
         expect(video.src).toBeTruthy();
       });
 
-  // There was a bug when calling unload before calling load would cause
-  // the load to continue before the (first) unload was complete.
-  // https://github.com/google/shaka-player/issues/612
-  it('load will wait for unload to finish', async () => {
-    createPlayer(/* attachedTo= */ null);
-
-    await player.attach(video);
-    await player.load('test:sintel');
-
-    // We are going to call |unload| and |load| right after each other. What
-    // we expect to see is that the player is fully unloaded before the load
-    // occurs.
-
-    const unload = player.unload();
-    const load = player.load('test:sintel');
-
-    await unload;
-    await load;
-
-    expect(getVisitedStates()).toEqual([
-      'attach',
-
-      // First call to |load|.
-      'media-source',
-      'manifest-parser',
-      'manifest',
-      'drm-engine',
-      'load',
-
-      // Our call to |unload| would have started the transition to
-      // "unloaded", but since we called |load| right away, the transition
-      // to "unloaded" was most likely done by the call to |load|.
-      'unload',
-      'attach',
-      'media-source',
-      'manifest-parser',
-      'manifest',
-      'drm-engine',
-      'load',
-    ]);
-  });
-
   it('load and unload can be called multiple times', async () => {
-    createPlayer(/* attachedTo= */ null);
+    createPlayer();
 
     await player.attach(video);
 
@@ -185,7 +115,6 @@ describe('Player Load Graph', () => {
       'drm-engine',
       'load',
       'unload',
-      'attach',
       'media-source',
 
       // Load and unload 2
@@ -194,13 +123,12 @@ describe('Player Load Graph', () => {
       'drm-engine',
       'load',
       'unload',
-      'attach',
       'media-source',
     ]);
   });
 
   it('load can be called multiple times', async () => {
-    createPlayer(/* attachedTo= */ null);
+    createPlayer();
 
     await player.attach(video);
 
@@ -220,26 +148,24 @@ describe('Player Load Graph', () => {
 
       // Load 2
       'unload',
-      'attach',
-      'media-source',
       'manifest-parser',
       'manifest',
+      'media-source',
       'drm-engine',
       'load',
 
       // Load 3
       'unload',
-      'attach',
-      'media-source',
       'manifest-parser',
       'manifest',
+      'media-source',
       'drm-engine',
       'load',
     ]);
   });
 
   it('load will interrupt load', async () => {
-    createPlayer(/* attachedTo= */ null);
+    createPlayer();
 
     await player.attach(video);
 
@@ -252,23 +178,8 @@ describe('Player Load Graph', () => {
     await load2;
   });
 
-  it('unload will interrupt load', async () => {
-    createPlayer(/* attachedTo= */ null);
-
-    await player.attach(video);
-
-    const load = player.load('test:sintel');
-    const unload = player.unload();
-
-    await expectAsync(load).toBeRejected();
-    await unload;
-
-    // We should never have gotten into the loaded state.
-    expect(getVisitedStates()).not.toContain('load');
-  });
-
   it('destroy will interrupt load', async () => {
-    createPlayer(/* attachedTo= */ null);
+    createPlayer();
 
     await player.attach(video);
 
@@ -285,7 +196,7 @@ describe('Player Load Graph', () => {
   // When |destroy| is called, the player should move through the unload state
   // on its way to the detached state.
   it('destroy will unload and then detach', async () => {
-    createPlayer(/* attachedTo= */ null);
+    createPlayer();
 
     await player.attach(video);
 
@@ -310,7 +221,7 @@ describe('Player Load Graph', () => {
   // |unload| after another |unload| call should just have the player re-enter
   // the state it was waiting in.
   it('unloading multiple times is okay', async () => {
-    createPlayer(/* attachedTo= */ null);
+    createPlayer();
 
     await player.attach(video);
 
@@ -331,12 +242,10 @@ describe('Player Load Graph', () => {
 
       // |player.unload| (first call)
       'unload',
-      'attach',
       'media-source',
 
       // |player.unload| (second call)
       'unload',
-      'attach',
       'media-source',
     ]);
   });
@@ -344,7 +253,7 @@ describe('Player Load Graph', () => {
   // When we destroy, it will allow a current unload operation to occur even
   // though we are going to unload and detach as part of |destroy|.
   it('destroy will not interrupt unload', async () => {
-    createPlayer(/* attachedTo= */ null);
+    createPlayer();
 
     await player.attach(video);
     await player.load('test:sintel');
@@ -360,7 +269,7 @@ describe('Player Load Graph', () => {
   // afterEach), this test will explicitly express our intentions to support
   // the use-case of calling |destroy| multiple times on a player instance.
   it('destroying multiple times is okay', async () => {
-    createPlayer(/* attachedTo= */ null);
+    createPlayer();
 
     await player.attach(video);
     await player.load('test:sintel');
@@ -374,7 +283,7 @@ describe('Player Load Graph', () => {
   // instance when loading.
   it('pre-initialized media source is used when player continues loading',
       async () => {
-        createPlayer(/* attachedTo= */ null);
+        createPlayer();
 
         // After we attach and initialize media source, we should just see
         // two states in our history.
@@ -414,7 +323,7 @@ describe('Player Load Graph', () => {
      * @return {!Promise}
      */
     async function testInterruptAfter(state) {
-      createPlayer(/* attachedTo= */ null);
+      createPlayer();
 
       let pendingUnload;
       whenEnteringState(state, () => {
@@ -451,7 +360,7 @@ describe('Player Load Graph', () => {
 
   describe('error handling', () => {
     beforeEach(() => {
-      createPlayer(/* attachedTo= */ null);
+      createPlayer();
     });
 
     it('returns to attach after load error', async () => {
@@ -469,20 +378,20 @@ describe('Player Load Graph', () => {
 
       // Make the two requests one-after-another so that we don't have any idle
       // time between them.
-      const attachRequest = player.attach(video);
-      const loadRequest = player.load('test:sintel');
+      const attach = player.attach(video);
+      const load = player.load('test:sintel');
 
-      await attachRequest;
-      await expectAsync(loadRequest).toBeRejected();
+      await attach;
+      await expectAsync(load).toBeRejected();
 
       // Wait a couple interrupter cycles to allow the player to enter idle
       // state.
-      const event = await spyIsCalled(stateIdleSpy);
+      await shaka.test.Util.delay(/* seconds= */ 0.25);
 
       // Since attached and loaded in the same interrupter cycle, there won't be
       // any idle time until we finish failing to load. We expect to idle in
       // attach.
-      expect(event.state).toBe('attach');
+      expect(lastStateChange).toBe('unload');
     });
   });
 
@@ -490,43 +399,49 @@ describe('Player Load Graph', () => {
   // that the player will behave as expected when media source is missing.
   describe('without media source', () => {
     let mediaSource;
+    let managedMediaSource;
 
     beforeEach(async () => {
       // Remove our media source support. In order to remove it, we need to set
       // it via [] notation or else closure will stop us.
       mediaSource = window.MediaSource;
       window['MediaSource'] = undefined;
+      managedMediaSource = window.ManagedMediaSource;
+      window['ManagedMediaSource'] = undefined;
 
-      createPlayer(/* attachTo= */ null);
-      await spyIsCalled(stateIdleSpy);
+
+      createPlayer();
+      await shaka.test.Util.delay(/* seconds= */ 0.25);
     });
 
     afterEach(() => {
       // Restore our media source support to what it was before. If we did not
       // have support before, this will do nothing.
       window['MediaSource'] = mediaSource;
+      window['ManagedMediaSource'] = managedMediaSource;
     });
 
     it('attaching ignores init media source flag', async () => {
       // Normally the player would initialize media source after attaching to
       // the media element, however since we don't support media source, it
       // should stop at the attach state.
-      player.attach(video, /* initMediaSource= */ true);
+      const attach = player.attach(video, /* initMediaSource= */ true);
 
-      const event = await spyIsCalled(stateIdleSpy);
-      expect(event.state).toBe('attach');
+      await shaka.test.Util.delay(/* seconds= */ 0.25);
+      expect(lastStateChange).toBe('attach');
+
+      await attach;
     });
 
     it('loading ignores media source path', async () => {
       await player.attach(video, /* initMediaSource= */ false);
 
-      // Normally the player would load content like this with the media source
-      // path, but since we don't have media source support, it should use the
-      // src= path.
-      player.load(SMALL_MP4_CONTENT_URI);
+      const load = player.load(SMALL_MP4_CONTENT_URI);
 
-      const event = await spyIsCalled(stateIdleSpy);
-      expect(event.state).toBe('src-equals');
+      await shaka.test.Util.delay(/* seconds= */ 0.25);
+      expect(lastStateChange).toBe('src-equals');
+
+      await load;
     });
 
     it('unloading ignores init media source flag', async () => {
@@ -536,10 +451,12 @@ describe('Player Load Graph', () => {
       // Normally the player would try to go to the media source state because
       // we are saying to initialize media source after unloading, but since we
       // don't have media source, it should stop at the attach state.
-      player.unload(/* initMediaSource= */ true);
+      const unload = player.unload(/* initMediaSource= */ true);
 
-      const event = await spyIsCalled(stateIdleSpy);
-      expect(event.state).toBe('attach');
+      await shaka.test.Util.delay(/* seconds= */ 0.25);
+      expect(lastStateChange).toBe('unload');
+
+      await unload;
     });
   });
 
@@ -548,9 +465,8 @@ describe('Player Load Graph', () => {
   // and then telling it to go to one of our destination states (e.g. attach,
   // load with media source, load with src=).
   describe('routing', () => {
-    beforeEach(async () => {
-      createPlayer(/* attachedTo= */ null);
-      await spyIsCalled(stateIdleSpy);
+    beforeEach(() => {
+      createPlayer();
     });
 
     it('goes from detach to detach', async () => {
@@ -600,12 +516,12 @@ describe('Player Load Graph', () => {
 
     it('goes from media source to attach', async () => {
       await startIn('media-source');
-      await goTo('attach');
+      await goTo('attach', video2);
     });
 
     it('goes from media source to media source', async () => {
       await startIn('media-source');
-      await goTo('media-source');
+      await goTo('media-source', video2);
     });
 
     it('goes from media source to load', async () => {
@@ -625,12 +541,12 @@ describe('Player Load Graph', () => {
 
     it('goes from load to attach', async () => {
       await startIn('load');
-      await goTo('attach');
+      await goTo('attach', video2);
     });
 
     it('goes from load to media source', async () => {
       await startIn('load');
-      await goTo('media-source');
+      await goTo('media-source', video2);
     });
 
     it('goes from load to load', async () => {
@@ -650,7 +566,7 @@ describe('Player Load Graph', () => {
 
     it('goes from src equals to attach', async () => {
       await startIn('src-equals');
-      await goTo('attach');
+      await goTo('attach', video2);
     });
 
     it('goes from src equals to media source', async () => {
@@ -676,13 +592,13 @@ describe('Player Load Graph', () => {
 
     it('goes from manifest parser to attach', async () => {
       await passingThrough('manifest-parser', () => {
-        return goTo('attach');
+        return goTo('attach', video2);
       });
     });
 
     it('goes from manifest parser to media source', async () => {
       await passingThrough('manifest-parser', () => {
-        return goTo('media-source');
+        return goTo('media-source', video2);
       });
     });
 
@@ -706,13 +622,13 @@ describe('Player Load Graph', () => {
 
     it('goes from manifest to attach', async () => {
       await passingThrough('manifest', () => {
-        return goTo('attach');
+        return goTo('attach', video2);
       });
     });
 
     it('goes from manifest to media source', async () => {
       await passingThrough('manifest', () => {
-        return goTo('media-source');
+        return goTo('media-source', video2);
       });
     });
 
@@ -736,13 +652,13 @@ describe('Player Load Graph', () => {
 
     it('goes from drm engine to attach', async () => {
       await passingThrough('drm-engine', () => {
-        return goTo('attach');
+        return goTo('attach', video2);
       });
     });
 
     it('goes from drm engine to media source', async () => {
       await passingThrough('drm-engine', () => {
-        return goTo('media-source');
+        return goTo('media-source', video2);
       });
     });
 
@@ -766,7 +682,7 @@ describe('Player Load Graph', () => {
 
     it('goes from unload to attach', async () => {
       await passingThrough('unload', () => {
-        return goTo('attach');
+        return goTo('attach', video2);
       });
     });
 
@@ -823,15 +739,8 @@ describe('Player Load Graph', () => {
 
       const action = actions.get(state);
       expect(action).toBeTruthy();
-
-      // Do not wait for the action to complete, our idle spy makes us wait. We
-      // want to know where we stop, so using the idle spy is more accurate in
-      // this situation.
-      action();
-
-      // Make sure that the player stops in the state that we asked it go to.
-      const event = await spyIsCalled(stateIdleSpy);
-      expect(event.state).toBe(state);
+      await action();
+      expect(lastStateChange).toBe(state);
     }
 
     /**
@@ -850,6 +759,7 @@ describe('Player Load Graph', () => {
         'manifest-parser',
         'manifest',
         'drm-engine',
+        // Excludes 'unload'.
       ]);
 
       /** @type {!Set.<string>} */
@@ -868,6 +778,7 @@ describe('Player Load Graph', () => {
         await player.attach(video);
         player.load('test:sintel').catch(() => {});
       } else {
+        goog.asserts.assert(state == 'unload', 'Unrecognized testing state!');
         await player.attach(video);
         await player.load('test:sintel');
         player.unload().catch(() => {});
@@ -896,19 +807,22 @@ describe('Player Load Graph', () => {
      * starting the state change.
      *
      * @param {string} state
+     * @param {HTMLVideoElement=} videoToUse
      * @return {!Promise}
      */
-    async function goTo(state) {
+    async function goTo(state, videoToUse = video) {
       /** @type {!Map.<string, function():!Promise>} */
       const actions = new Map()
           .set('detach', () => {
             return player.detach();
           })
           .set('attach', () => {
-            return player.attach(video, /* initMediaSource= */ false);
+            return player.attach(
+                videoToUse || video, /* initMediaSource= */ false);
           })
           .set('media-source', () => {
-            return player.attach(video, /* initMediaSource= */ true);
+            return player.attach(
+                videoToUse || video, /* initMediaSource= */ true);
           })
           .set('load', () => {
             return player.load('test:sintel');
@@ -919,14 +833,8 @@ describe('Player Load Graph', () => {
 
       const action = actions.get(state);
       expect(action).toBeTruthy();
-
-      // Do not wait for the action to complete, our idle spy make us wait. We
-      // want to know where we stop, so using the idle spy is more accurate in
-      // this situation.
-      action();
-
-      const event = await spyIsCalled(stateIdleSpy);
-      expect(event.state).toBe(state);
+      await action();
+      expect(lastStateChange).toBe(state);
     }
   });
 

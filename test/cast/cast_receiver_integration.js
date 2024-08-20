@@ -4,22 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.Player');
-goog.require('shaka.cast.CastReceiver');
-goog.require('shaka.cast.CastUtils');
-goog.require('shaka.log');
-goog.require('shaka.media.DrmEngine');
-goog.require('shaka.media.ManifestParser');
-goog.require('shaka.media.StreamingEngine');
-goog.require('shaka.net.NetworkingEngine');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.UiUtils');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.Functional');
-goog.require('shaka.util.Iterables');
-goog.require('shaka.util.Platform');
-goog.require('shaka.util.PublicPromise');
-
 // The receiver is only meant to run on the Chromecast, so we have the
 // ability to use modern APIs there that may not be available on all of the
 // browsers our library supports.  Because of this, CastReceiver tests will
@@ -50,13 +34,12 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
 
   /** @type {shaka.util.PublicPromise} */
   let messageWaitPromise;
+  /** @type {Array.<string>} */
+  let pendingMessages = null;
 
   /** @type {!Array.<function()>} */
   let toRestore;
   let pendingWaitWrapperCalls = 0;
-
-  /** @type {!Object.<string, ?shaka.extern.DrmSupportType>} */
-  let support = {};
 
   let fakeInitState;
 
@@ -76,10 +59,9 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
         shaka.test.TestScheme.ManifestParser.factory);
 
     await shaka.test.TestScheme.createManifests(shaka, '');
-    support = await shaka.media.DrmEngine.probeSupport();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockReceiverApi = createMockReceiverApi();
 
     const mockCanDisplayType = jasmine.createSpy('canDisplayType');
@@ -101,11 +83,15 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
 
     document.body.appendChild(video);
 
-    player = new shaka.Player(video);
+    player = new shaka.Player();
+    await player.attach(video);
     receiver = new CastReceiver(video, player);
 
     toRestore = [];
     pendingWaitWrapperCalls = 0;
+
+    messageWaitPromise = null;
+    pendingMessages = null;
 
     fakeInitState = {
       player: {
@@ -134,6 +120,12 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
     player = null;
     video = null;
     receiver = null;
+
+    if (messageWaitPromise) {
+      messageWaitPromise.resolve([]);
+    }
+    messageWaitPromise = null;
+    pendingMessages = null;
   });
 
   afterAll(() => {
@@ -144,7 +136,116 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
     }
   });
 
-  filterDescribe('with drm', () => support['com.widevine.alpha'], () => {
+  describe('state changed event', () => {
+    it('does not trigger a stack overflow', async () => {
+      const p = waitForLoadedData();
+
+      // We had a regression in which polling attributes eventually triggered a
+      // stack overflow because of a state change event that fired every time
+      // we checked the state.  The error itself got swallowed and hidden
+      // inside CastReceiver, but would cause tests to disconnect in some
+      // environments (consistently in GitHub Actions VMs, inconsistently
+      // elsewhere).
+      //
+      // Testing for this is subtle: if we try to catch the error, it will be
+      // caught at a point when the stack has already or is about to overflow.
+      // Then if we call "fail", Jasmine will grow the stack further,
+      // triggering *another* overflow inside of fail(), causing our test to
+      // *pass*.  So we need to fail fast.  The best way I have found is to
+      // catch the very first recursion of pollAttributes_, long before we
+      // overflow, fail, then return early to avoid the actual recursion.
+      const original = /** @type {?} */(receiver).pollAttributes_;
+      let numRecursions = 0;
+      // eslint-disable-next-line no-restricted-syntax
+      /** @type {?} */(receiver).pollAttributes_ = function() {
+        try {
+          if (numRecursions > 0) {
+            fail('Found recursion in pollAttributes_!');
+            return undefined;
+          }
+
+          numRecursions++;
+          return original.apply(receiver, arguments);
+        } finally {
+          numRecursions--;
+        }
+      };
+
+      // Start the process of loading by sending a fake init message.
+      fakeConnectedSenders(1);
+      fakeIncomingMessage({
+        type: 'init',
+        initState: fakeInitState,
+        appData: {},
+      }, mockShakaMessageBus);
+
+      await p;
+    });
+  });
+
+  describe('without drm', () => {
+    it('sends reasonably-sized updates', async () => {
+      // Use an unencrypted asset.
+      fakeInitState.manifest = 'test:sintel';
+
+      const p = waitForLoadedData();
+
+      // Start the process of loading by sending a fake init message.
+      fakeConnectedSenders(1);
+      fakeIncomingMessage({
+        type: 'init',
+        initState: fakeInitState,
+        appData: {},
+      }, mockShakaMessageBus);
+
+      await p;
+      // Wait for an update message.
+      const messages = await waitForUpdateMessages();
+      for (const message of messages) {
+        // Check that the update message is of a reasonable size. From previous
+        // testing we found that the socket would silently reject data that got
+        // too big. 7KB is safely below the limit.
+        expect(message.length).toBeLessThan(7000);
+      }
+    });
+
+    it('has reasonable average message size', async () => {
+      // Use an unencrypted asset.
+      fakeInitState.manifest = 'test:sintel';
+
+      const p = waitForLoadedData();
+
+      // Start the process of loading by sending a fake init message.
+      fakeConnectedSenders(1);
+      fakeIncomingMessage({
+        type: 'init',
+        initState: fakeInitState,
+        appData: {},
+      }, mockShakaMessageBus);
+
+      await p;
+
+      // Collect messages over 50 update cycles, and average their length.
+      // Not all properties are passed along on every update message, so
+      // the average length is expected to be lower than the length of the first
+      // update message.
+      let totalLength = 0;
+      let totalMessages = 0;
+      for (let i = 0; i < 50; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        const messages = await waitForUpdateMessages();
+        for (const message of messages) {
+          totalLength += message.length;
+          totalMessages += 1;
+        }
+      }
+      expect(totalLength / totalMessages).toBeLessThan(2000);
+    });
+  });
+
+  const widevineSupport =
+      () => window['shakaSupport'].drm['com.widevine.alpha'];
+  filterDescribe('with drm', widevineSupport, () => {
     drmIt('sends reasonably-sized updates', async () => {
       // Use an encrypted asset, to make sure DRM info doesn't balloon the size.
       fakeInitState.manifest = 'test:sintel-enc';
@@ -166,11 +267,13 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
 
       await p;
       // Wait for an update message.
-      const message = await waitForUpdateMessage();
-      // Check that the update message is of a reasonable size. From previous
-      // testing we found that the socket would silently reject data that got
-      // too big. 5KB is safely below the limit.
-      expect(message.length).toBeLessThan(5 * 1024);
+      const messages = await waitForUpdateMessages();
+      for (const message of messages) {
+        // Check that the update message is of a reasonable size. From previous
+        // testing we found that the socket would silently reject data that got
+        // too big. 7KB is safely below the limit.
+        expect(message.length).toBeLessThan(7000);
+      }
     });
 
     drmIt('has reasonable average message size', async () => {
@@ -193,18 +296,22 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
       }, mockShakaMessageBus);
 
       await p;
-      // Collect 50 update messages, and average their length.
+
+      // Collect messages over 50 update cycles, and average their length.
       // Not all properties are passed along on every update message, so
       // the average length is expected to be lower than the length of the first
       // update message.
       let totalLength = 0;
-      for (const _ of shaka.util.Iterables.range(50)) {
-        shaka.util.Functional.ignored(_);
+      let totalMessages = 0;
+      for (let i = 0; i < 50; i++) {
         // eslint-disable-next-line no-await-in-loop
-        const message = await waitForUpdateMessage();
-        totalLength += message.length;
+        const messages = await waitForUpdateMessages();
+        for (const message of messages) {
+          totalLength += message.length;
+          totalMessages += 1;
+        }
       }
-      expect(totalLength / 50).toBeLessThan(3000);
+      expect(totalLength / totalMessages).toBeLessThan(2000);
     });
   });
 
@@ -212,8 +319,6 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
     // Add wrappers to various methods along player.load to make sure that,
     // at each stage, the cast receiver can form an update message without
     // causing an error.
-    waitForUpdateMessageWrapper(
-        shaka.media.ManifestParser, 'ManifestParser', 'getFactory');
     waitForUpdateMessageWrapper(
         // eslint-disable-next-line no-restricted-syntax
         shaka.test.TestScheme.ManifestParser.prototype, 'ManifestParser',
@@ -244,12 +349,12 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
     expect(pendingWaitWrapperCalls).toBe(0);
 
     // Wait for a final update message before proceeding.
-    await waitForUpdateMessage();
+    await waitForUpdateMessages();
   });
 
   /**
    * Creates a wrapper around a method on a given prototype, which makes it
-   * wait on waitForUpdateMessage before returning, and registers that wrapper
+   * wait on waitForUpdateMessages before returning, and registers that wrapper
    * to be uninstalled afterwards.
    * The replaced method is expected to be a method that returns a promise.
    * @param {!Object} prototype
@@ -266,7 +371,7 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
           'Waiting for update message before calling ' +
           name + '.' + methodName + '...');
       const originalArguments = Array.from(arguments);
-      await waitForUpdateMessage();
+      await waitForUpdateMessages();
       // eslint-disable-next-line no-restricted-syntax
       return original.apply(this, originalArguments);
     };
@@ -282,7 +387,8 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
     });
   }
 
-  function waitForUpdateMessage() {
+  function waitForUpdateMessages() {
+    pendingMessages = [];
     messageWaitPromise = new shaka.util.PublicPromise();
     return messageWaitPromise;
   }
@@ -333,10 +439,12 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
       bus.messages.push(CastUtils.deserialize(message));
       // Check to see if it's an update message.
       const parsed = CastUtils.deserialize(message);
-      if (parsed.type == 'update' && messageWaitPromise) {
+      if (parsed.type == 'update' && pendingMessages) {
         shaka.log.debug('Received update message. Proceeding...');
-        messageWaitPromise.resolve(message);
-        messageWaitPromise = null;
+        // The code waiting on this Promise will get an array of all of the
+        // messages processed within this tick.
+        pendingMessages.push(message);
+        messageWaitPromise.resolve(pendingMessages);
       }
     });
     const channel = {

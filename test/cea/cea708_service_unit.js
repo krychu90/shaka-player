@@ -4,13 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.cea.Cea708Service');
-goog.require('shaka.cea.CeaUtils');
-goog.require('shaka.cea.DtvccPacket');
-goog.require('shaka.cea.DtvccPacketBuilder');
-goog.require('shaka.test.CeaUtils');
-goog.require('shaka.text.Cue');
-
 describe('Cea708Service', () => {
   const CeaUtils = shaka.test.CeaUtils;
 
@@ -19,39 +12,51 @@ describe('Cea708Service', () => {
 
   /**
    * Hide window (2 bytes), with a bitmap provided to indicate all windows.
-   * @type {!Array<!number>}
+   * @type {!Array<number>}
    */
   const hideWindow = [0x8a, 0xff];
 
   /**
    * Define window (7 bytes), defines window #0 to be a visible window
    * with 32 rows and 32 columns. (We specify 31 for each since decoder adds 1).
-   * @type {!Array<!number>}
+   * @type {!Array<number>}
    */
   const defineWindow = [
     0x98, 0x38, 0x00, 0x00, 0x1f, 0x1f, 0x00,
   ];
 
-  /** @type {!number} */
+  /** @type {number} */
   const startTime = 1;
 
-  /** @type {!number} */
+  /** @type {number} */
   const endTime = 2;
 
   /**
    * We arbitrarily pick service 1 for all of these tests.
-   * @type {!number}
+   * @type {number}
    */
   const serviceNumber = 1;
 
-  /** @type {!string} */
+  /** @type {string} */
   const stream = `svc${serviceNumber}`;
+
+  /** @type {number} */
+  const windowId = 0;
+
+  /** @type {number} */
+  const rowCount = 16;
+
+  /** @type {number} */
+  const colCount = 32;
+
+  /** @type {shaka.cea.Cea708Window.AnchorId} */
+  const anchorId = shaka.cea.Cea708Window.AnchorId.UPPER_CENTER;
 
   /**
    * Takes in a array of bytes and a presentation timestamp (in seconds),
    * and converts it into a CEA-708 DTVCC Packet.
-   * @param {!Array<!number>} bytes
-   * @param {!number} pts
+   * @param {!Array<number>} bytes
+   * @param {number} pts
    */
   const createCea708PacketFromBytes = (bytes, pts) => {
     const cea708Bytes = bytes.map((code, i) => {
@@ -99,7 +104,8 @@ describe('Cea708Service', () => {
     const packet2 = createCea708PacketFromBytes(hideWindow, endTime);
 
     const text = 'test';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text),
     ];
@@ -136,7 +142,8 @@ describe('Cea708Service', () => {
     // [1]:
     // [2]: test
     const text = 'test';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text),
       CeaUtils.createLineBreakCue(startTime, endTime),
@@ -181,7 +188,8 @@ describe('Cea708Service', () => {
 
     // Three nested cues, where the middle one should be underlined+italicized.
     const text = 'test';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text),
       CeaUtils.createStyledCue(
@@ -224,7 +232,8 @@ describe('Cea708Service', () => {
     // Two nested cues, the second one should have colors.
     const text1 = 'test';
     const text2 = 'color';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text1),
       CeaUtils.createStyledCue(
@@ -276,7 +285,8 @@ describe('Cea708Service', () => {
     const text2 = '©¶÷';
     const text3 = '⅞┐™';
     const text4 = '[CC]';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text1),
       CeaUtils.createLineBreakCue(startTime, endTime),
@@ -318,7 +328,8 @@ describe('Cea708Service', () => {
     // be replaced by an underline.
     const text1 = '_œ_';
     const text2 = '[CC]__';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text1),
       CeaUtils.createLineBreakCue(startTime, endTime),
@@ -350,7 +361,8 @@ describe('Cea708Service', () => {
     // The text in the current window should have been emitted, and then clear
     // should have been called.
     const text = 'test';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text),
     ];
@@ -385,7 +397,8 @@ describe('Cea708Service', () => {
 
     // Right-justified text is expected.
     const text = 'test';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.textAlign = shaka.text.Cue.textAlign.RIGHT;
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text),
@@ -420,7 +433,8 @@ describe('Cea708Service', () => {
 
     const text1 = 'te';
     const text2 = 'st';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text1),
       CeaUtils.createLineBreakCue(startTime, endTime),
@@ -463,7 +477,8 @@ describe('Cea708Service', () => {
     // HCR wipes the row and moves the pen to the row start.
     const text1 = 'te';
     const text2 = 'st';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text1),
       CeaUtils.createLineBreakCue(startTime, endTime),
@@ -496,7 +511,8 @@ describe('Cea708Service', () => {
 
     // Backspace should have erased the last 't' in 'test'.
     const text = 'tes';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text),
     ];
@@ -537,7 +553,8 @@ describe('Cea708Service', () => {
     // The form feed control code would have wiped the entire window
     // including new lines, and the text after is just 'test'.
     const text = 'test';
-    const topLevelCue = new shaka.text.Cue(startTime, endTime, '');
+    const topLevelCue = CeaUtils.createWindowedCue(startTime, endTime, '',
+        serviceNumber, windowId, rowCount, colCount, anchorId);
     topLevelCue.nestedCues = [
       CeaUtils.createDefaultCue(startTime, endTime, /* payload= */ text),
     ];
@@ -612,15 +629,19 @@ describe('Cea708Service', () => {
 
       const text1 = 'test';
       const text2 = 'testtest';
-      const topLevelCue1 = new shaka.text.Cue(
-          /* startTime= */ time1, /* endTime= */ time2, '');
+      const topLevelCue1 = CeaUtils.createWindowedCue(
+          /* startTime= */ time1, /* endTime= */ time2, '',
+          serviceNumber, windowId, rowCount, colCount, anchorId,
+      );
       topLevelCue1.nestedCues = [
         CeaUtils.createDefaultCue(
             /* startTime= */ time1, /* endTime= */ time2, /* payload= */ text1),
       ];
 
-      const topLevelCue2 = new shaka.text.Cue(
-          /* startTime= */ time3, /* endTime= */ time4, '');
+      const topLevelCue2 = CeaUtils.createWindowedCue(
+          /* startTime= */ time3, /* endTime= */ time4, '',
+          serviceNumber, windowId, rowCount, colCount, anchorId,
+      );
       topLevelCue2.nestedCues = [
         CeaUtils.createDefaultCue(
             /* startTime= */ time3, /* endTime= */ time4, /* payload= */ text2),
@@ -659,8 +680,11 @@ describe('Cea708Service', () => {
 
       // Only one cue should have been emitted as per the explanation above.
       const text = 'test';
-      const topLevelCue = new shaka.text.Cue(
-          /* startTime= */ time1, /* endTime= */ time2, '');
+      const topLevelCue = CeaUtils.createWindowedCue(
+          /* startTime= */ time1, /* endTime= */ time2, '',
+          serviceNumber, windowId, rowCount, colCount, anchorId,
+      );
+
       topLevelCue.nestedCues = [
         CeaUtils.createDefaultCue(
             /* startTime= */ time1, /* endTime= */ time2, /* payload= */ text),

@@ -4,14 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('shaka.cast.CastReceiver');
-goog.require('shaka.cast.CastUtils');
-goog.require('shaka.test.FakeVideo');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.Platform');
-goog.require('shaka.util.PublicPromise');
-
 // The receiver is only meant to run on the Chromecast, so we have the
 // ability to use modern APIs there that may not be available on all of the
 // browsers our library supports.  Because of this, CastReceiver tests will
@@ -107,40 +99,6 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
           mockVideo, mockPlayer, Util.spyFunc(mockAppDataCallback));
       expect(Object.keys(mockVideo.on).length).toBeGreaterThan(0);
       expect(Object.keys(mockPlayer.listeners).length).toBeGreaterThan(0);
-    });
-
-    it('limits streams to 1080p on Chromecast v1 and v2', () => {
-      // Simulate the canDisplayType reponse of Chromecast v1 or v2
-      mockCanDisplayType.and.callFake((type) => {
-        const matches = /height=(\d+)/.exec(type);
-        const height = parseInt(matches[1], 10);
-        if (height && height > 1080) {
-          return false;
-        }
-        return true;
-      });
-      receiver = new CastReceiver(
-          mockVideo, mockPlayer, Util.spyFunc(mockAppDataCallback));
-      expect(mockCanDisplayType).toHaveBeenCalled();
-      expect(mockPlayer.setMaxHardwareResolution)
-          .toHaveBeenCalledWith(1920, 1080);
-    });
-
-    it('limits streams to 4k on Chromecast Ultra', () => {
-      // Simulate the canDisplayType reponse of Chromecast Ultra
-      mockCanDisplayType.and.callFake((type) => {
-        const matches = /height=(\d+)/.exec(type);
-        const height = parseInt(matches[1], 10);
-        if (height && height > 2160) {
-          return false;
-        }
-        return true;
-      });
-      receiver = new CastReceiver(
-          mockVideo, mockPlayer, Util.spyFunc(mockAppDataCallback));
-      expect(mockCanDisplayType).toHaveBeenCalled();
-      expect(mockPlayer.setMaxHardwareResolution)
-          .toHaveBeenCalledWith(3840, 2160);
     });
 
     it('does not start polling', () => {
@@ -253,18 +211,20 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
       const fakeEvent = {type: 'timeupdate'};
       mockVideo.on['timeupdate'](fakeEvent);
 
-      // There are now "update" and "event" messages, in that order.
-      expect(mockShakaMessageBus.messages).toEqual([
-        {
-          type: 'update',
-          update: jasmine.any(Object),
-        },
-        {
-          type: 'event',
-          targetName: 'video',
-          event: jasmine.objectContaining(fakeEvent),
-        },
-      ]);
+      // There are now some number of "update" and "event" messages, in that
+      // order.
+      expect(mockShakaMessageBus.messages).toContain({
+        type: 'update',
+        update: jasmine.any(Object),
+      });
+      expect(mockShakaMessageBus.messages).toContain({
+        type: 'event',
+        targetName: 'video',
+        event: jasmine.objectContaining(fakeEvent),
+      });
+      const eventIndex = mockShakaMessageBus.messages.findIndex(
+          (message) => message.type == 'event');
+      expect(eventIndex).toBe(mockShakaMessageBus.messages.length - 1);
     });
   });
 
@@ -756,7 +716,7 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
       expect(mockGenericMessageBus.broadcast).toHaveBeenCalledTimes(1);
 
       // This covers the lack of scrubber in the Google Home app, as described
-      // in https://github.com/google/shaka-player/issues/2606
+      // in https://github.com/shaka-project/shaka-player/issues/2606
       expectMediaInfo('URI A', 1);
     });
 
@@ -1113,6 +1073,9 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
     for (const name in CastUtils.PlayerGetterMethods) {
       player[name] = jasmine.createSpy(name);
     }
+    for (const name in CastUtils.LargePlayerGetterMethods) {
+      player[name] = jasmine.createSpy(name);
+    }
     for (const name in CastUtils.PlayerGetterMethodsThatRequireLive) {
       player[name] = jasmine.createSpy(name);
     }
@@ -1174,15 +1137,13 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
       expectedMedia.metadata = metadata;
     }
 
-    expect(mockGenericMessageBus.messages[0]).toEqual(
-        {
-          requestId: 0,
-          type: 'MEDIA_STATUS',
-          status: [jasmine.objectContaining({
-            media: expectedMedia,
-          })],
-        }
-    );
+    expect(mockGenericMessageBus.messages[0]).toEqual({
+      requestId: 0,
+      type: 'MEDIA_STATUS',
+      status: [jasmine.objectContaining({
+        media: expectedMedia,
+      })],
+    });
     mockGenericMessageBus.messages.shift();
   }
 });

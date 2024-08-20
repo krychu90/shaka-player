@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.ManifestParser');
-
-
 shaka.test.ManifestParser = class {
   /**
    * Verifies the segment references of a stream.
@@ -45,7 +42,7 @@ shaka.test.ManifestParser = class {
   /**
    * Creates a segment reference using a relative URI.
    *
-   * @param {string} uri A relative URI to http://example.com
+   * @param {string|Array.<string>} uri A relative URI to http://example.com
    * @param {number} start
    * @param {number} end
    * @param {string=} baseUri
@@ -53,12 +50,26 @@ shaka.test.ManifestParser = class {
    * @param {?number=} endByte
    * @param {number=} timestampOffset
    * @param {!Array.<!shaka.media.SegmentReference>=} partialReferences
+   * @param {?string=} tilesLayout
+   * @param {?number=} syncTime
    * @return {!shaka.media.SegmentReference}
    */
   static makeReference(uri, start, end, baseUri = '',
       startByte = 0, endByte = null, timestampOffset = 0,
-      partialReferences = []) {
-    const getUris = () => uri.length ? [baseUri + uri] : [];
+      partialReferences = [], tilesLayout = '', syncTime = null) {
+    const getUris = () => {
+      const uris = [];
+      if (uri instanceof Array) {
+        for (const url of uri) {
+          if (url.length) {
+            uris.push(baseUri + url);
+          }
+        }
+      } else if (uri.length) {
+        uris.push(baseUri + uri);
+      }
+      return uris;
+    };
 
     // If a test wants to verify these, they can be set explicitly after
     // makeReference is called.
@@ -74,13 +85,20 @@ shaka.test.ManifestParser = class {
     const appendWindowStart = /** @type {?} */(jasmine.any(Number));
     const appendWindowEnd = /** @type {?} */(jasmine.any(Number));
 
-    return new shaka.media.SegmentReference(
+    const ref = new shaka.media.SegmentReference(
         start, end, getUris, startByte, endByte,
         initSegmentReference,
         timestampOffset,
         appendWindowStart,
         appendWindowEnd,
         partialReferences,
-    );
+        tilesLayout,
+        /* tileDuration= */ undefined,
+        syncTime);
+    ref.discontinuitySequence = /** @type {?} */(jasmine.any(Number));
+    ref.bandwidth = /** @type {?} */(new shaka.test.AnyOrNull(Number));
+    ref.codecs = /** @type {?} */(jasmine.any(String));
+    ref.mimeType = /** @type {?} */(jasmine.any(String));
+    return ref;
   }
 };

@@ -29,7 +29,7 @@ def player_version():
   """Gets the version of the library from player.js."""
   path = os.path.join(shakaBuildHelpers.get_source_base(), 'lib', 'player.js')
   with shakaBuildHelpers.open_file(path, 'r') as f:
-    match = re.search(r'shaka\.Player\.version = \'(.*)\'', f.read())
+    match = re.search(r'shaka\.Player\.version = \'(.*?)\'', f.read())
     return match.group(1) if match else ''
 
 
@@ -37,7 +37,7 @@ def changelog_version():
   """Gets the version of the library from the CHANGELOG."""
   path = os.path.join(shakaBuildHelpers.get_source_base(), 'CHANGELOG.md')
   with shakaBuildHelpers.open_file(path, 'r') as f:
-    match = re.search(r'## (.*) \(', f.read())
+    match = re.search(r'^###? \[(.*?)\]\(', f.read(), re.MULTILINE)
     return match.group(1) if match else ''
 
 
@@ -70,7 +70,7 @@ def main(_):
   if 'v' + npm != git:
     logging.error('NPM version does not match git version.')
     ret = 1
-  if player != git + '-uncompiled':
+  if player != git:
     logging.error('Player version does not match git version.')
     ret = 1
   if 'v' + changelog != git:

@@ -5,9 +5,11 @@
  */
 
 
-goog.provide('ShakaDemoAssetInfo');
+/**
+ * @fileoverview
+ */
 
-goog.require('shakaDemo.MessageIds');
+goog.provide('ShakaDemoAssetInfo');
 
 
 /**
@@ -40,6 +42,10 @@ const ShakaDemoAssetInfo = class {
     this.disabled = false;
     /** @type {!Array.<!shakaAssets.ExtraText>} */
     this.extraText = [];
+    /** @type {!Array.<string>} */
+    this.extraThumbnail = [];
+    /** @type {!Array.<!shakaAssets.ExtraChapter>} */
+    this.extraChapter = [];
     /** @type {?string} */
     this.certificateUri = null;
     /** @type {?string} */
@@ -62,10 +68,34 @@ const ShakaDemoAssetInfo = class {
     this.clearKeys = new Map(); // TODO: Setter method?
     /** @type {?Object} */
     this.extraConfig = null;
+    /** @type {?Object} */
+    this.extraUiConfig = null;
     /** @type {?string} */
     this.adTagUri = null;
-    /** @type {?shakaAssets.IMAIds} */
-    this.imaIds = null;
+    /** @type {?string} */
+    this.imaVideoId = null;
+    /** @type {?string} */
+    this.imaAssetKey = null;
+    /** @type {?string} */
+    this.imaContentSrcId = null;
+    /** @type {?string} */
+    this.imaManifestType = null;
+    /** @type {?string} */
+    this.mediaTailorUrl = null;
+    /** @type {?Object} */
+    this.mediaTailorAdsParams = null;
+    /** @type {boolean} */
+    this.useIMA = true;
+    /** @type {?string} */
+    this.mimeType = null;
+
+
+    // Preload values.
+    /** @type {?shaka.media.PreloadManager} */
+    this.preloadManager;
+    this.preloaded = false;
+    this.preloadFailed = false;
+
 
     // Offline storage values.
     /** @type {?function()} */
@@ -97,9 +127,9 @@ const ShakaDemoAssetInfo = class {
   }
 
   /**
-   * A sort comparator for comparing two message Ids, ignoring case.
-   * @param {shakaDemo.MessageIds} a
-   * @param {shakaDemo.MessageIds} b
+   * A sort comparator for comparing two messages, ignoring case.
+   * @param {string} a
+   * @param {string} b
    * @return {number}
    * @private
    */
@@ -149,12 +179,35 @@ const ShakaDemoAssetInfo = class {
     return this.drm.length == 1 && this.drm[0] == shakaAssets.KeySystem.CLEAR;
   }
 
+  /** @return {boolean} */
+  isAes128() {
+    return this.drm.length == 1 && this.drm[0] == shakaAssets.KeySystem.AES128;
+  }
+
   /**
    * @param {!Object} extraConfig
    * @return {!ShakaDemoAssetInfo}
    */
   setExtraConfig(extraConfig) {
     this.extraConfig = extraConfig;
+    return this;
+  }
+
+  /**
+   * @param {!Object} extraUiConfig
+   * @return {!ShakaDemoAssetInfo}
+   */
+  setExtraUiConfig(extraUiConfig) {
+    this.extraUiConfig = extraUiConfig;
+    return this;
+  }
+
+  /**
+   * @param {string} mimeType
+   * @return {!ShakaDemoAssetInfo}
+   */
+  setMimeType(mimeType) {
+    this.mimeType = mimeType;
     return this;
   }
 
@@ -197,12 +250,69 @@ const ShakaDemoAssetInfo = class {
   }
 
   /**
-   * @param {shakaAssets.IMAIds} imaIds
+   * @param {string} id
    * @return {!ShakaDemoAssetInfo}
    */
-  setIMAIds(imaIds) {
-    this.imaIds = imaIds;
-    this.addFeature(shakaAssets.Feature.ADS);
+  setIMAContentSourceId(id) {
+    this.imaContentSrcId = id;
+    if (!this.features.includes(shakaAssets.Feature.ADS)) {
+      this.addFeature(shakaAssets.Feature.ADS);
+    }
+
+    return this;
+  }
+
+  /**
+   * @param {string} id
+   * @return {!ShakaDemoAssetInfo}
+   */
+  setIMAVideoId(id) {
+    this.imaVideoId = id;
+    if (!this.features.includes(shakaAssets.Feature.ADS)) {
+      this.addFeature(shakaAssets.Feature.ADS);
+    }
+
+    return this;
+  }
+
+  /**
+   * @param {string} key
+   * @return {!ShakaDemoAssetInfo}
+   */
+  setIMAAssetKey(key) {
+    this.imaAssetKey = key;
+    if (!this.features.includes(shakaAssets.Feature.ADS)) {
+      this.addFeature(shakaAssets.Feature.ADS);
+    }
+
+    return this;
+  }
+
+  /**
+   * @param {string} type
+   * @return {!ShakaDemoAssetInfo}
+   */
+  setIMAManifestType(type) {
+    this.imaManifestType = type;
+    if (!this.features.includes(shakaAssets.Feature.ADS)) {
+      this.addFeature(shakaAssets.Feature.ADS);
+    }
+
+    return this;
+  }
+
+  /**
+   * @param {string} url
+   * @param {?Object=} adsParams
+   * @return {!ShakaDemoAssetInfo}
+   */
+  setMediaTailor(url, adsParams=null) {
+    this.mediaTailorUrl = url;
+    this.mediaTailorAdsParams = adsParams;
+    if (!this.features.includes(shakaAssets.Feature.ADS)) {
+      this.addFeature(shakaAssets.Feature.ADS);
+    }
+
     return this;
   }
 
@@ -221,8 +331,47 @@ const ShakaDemoAssetInfo = class {
    * @return {!ShakaDemoAssetInfo}
    */
   addExtraText(extraText) {
-    // TODO: At no point do we actually use the extraText... why does it exist?
     this.extraText.push(extraText);
+    return this;
+  }
+
+  /**
+   * @param {string} textUri
+   * @return {!ShakaDemoAssetInfo}
+   */
+  removeExtraText(textUri) {
+    this.extraText = this.extraText.filter((extraText) => {
+      return extraText.uri != textUri;
+    });
+    return this;
+  }
+
+  /**
+   * @param {string} uri
+   * @return {!ShakaDemoAssetInfo}
+   */
+  addExtraThumbnail(uri) {
+    this.extraThumbnail.push(uri);
+    return this;
+  }
+
+  /**
+   * @param {shakaAssets.ExtraChapter} extraChapter
+   * @return {!ShakaDemoAssetInfo}
+   */
+  addExtraChapter(extraChapter) {
+    this.extraChapter.push(extraChapter);
+    return this;
+  }
+
+  /**
+   * @param {string} chapterUri
+   * @return {!ShakaDemoAssetInfo}
+   */
+  removeExtraChapter(chapterUri) {
+    this.extraChapter = this.extraChapter.filter((extraChapter) => {
+      return extraChapter.uri != chapterUri;
+    });
     return this;
   }
 
@@ -270,6 +419,11 @@ const ShakaDemoAssetInfo = class {
     // proper formatting.
     const raw = {};
     for (const key in this) {
+      if (key.startsWith('preload') || key.startsWith('store') ||
+          key.endsWith('Callback')) {
+        // These values shouldn't be saved, as they are dynamic.
+        continue;
+      }
       const value = this[key];
       if (value instanceof Map) {
         // The built-in JSON functions cannot convert Maps; this converts Maps
@@ -288,6 +442,13 @@ const ShakaDemoAssetInfo = class {
   }
 
   /**
+   * @return {!string}
+   */
+  toBase64() {
+    return window.btoa(JSON.stringify(this.toJSON()));
+  }
+
+  /**
    * Applies appropriate request or response filters to the player.
    * @param {shaka.net.NetworkingEngine} networkingEngine
    */
@@ -296,7 +457,8 @@ const ShakaDemoAssetInfo = class {
     networkingEngine.clearAllResponseFilters();
 
     if (this.licenseRequestHeaders.size) {
-      const filter = (requestType, request) => {
+      /** @type {!shaka.extern.RequestFilter} */
+      const filter = (requestType, request, context) => {
         return this.addLicenseRequestHeaders_(this.licenseRequestHeaders,
             requestType,
             request);
@@ -318,23 +480,26 @@ const ShakaDemoAssetInfo = class {
    */
   getConfiguration() {
     const config = /** @type {shaka.extern.PlayerConfiguration} */(
-      {drm: {}, manifest: {dash: {}}});
-    if (this.licenseServers.size) {
-      config.drm.servers = {};
-      this.licenseServers.forEach((value, key) => {
-        config.drm.servers[key] = value;
-      });
-    }
-    if (this.clearKeys.size) {
-      config.drm.clearKeys = {};
-      this.clearKeys.forEach((value, key) => {
-        config.drm.clearKeys[key] = value;
-      });
-    }
+      {drm: {advanced: {}}, manifest: {dash: {}, hls: {}}});
+
     if (this.extraConfig) {
       for (const key in this.extraConfig) {
         config[key] = this.extraConfig[key];
       }
+    }
+
+    if (this.licenseServers.size) {
+      config.drm.servers = config.drm.servers || {};
+      this.licenseServers.forEach((value, key) => {
+        config.drm.servers[key] = value;
+      });
+    }
+
+    if (this.clearKeys.size) {
+      config.drm.clearKeys = config.drm.clearKeys || {};
+      this.clearKeys.forEach((value, key) => {
+        config.drm.clearKeys[key] = value;
+      });
     }
     return config;
   }
@@ -395,5 +560,18 @@ const ShakaDemoAssetInfo = class {
     const asset = ShakaDemoAssetInfo.makeBlankAsset();
     Object.assign(asset, parsed);
     return asset;
+  }
+
+  /**
+   * @param {!string} raw
+   * @return {?ShakaDemoAssetInfo}
+   */
+  static fromBase64(raw) {
+    const data = window.atob(raw);
+    try {
+      const dataAsJson = /** @type {!Object} */(JSON.parse(data));
+      return ShakaDemoAssetInfo.fromJSON(dataAsJson);
+    } catch (e) {}
+    return null;
   }
 };

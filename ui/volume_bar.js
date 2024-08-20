@@ -8,8 +8,7 @@
 goog.provide('shaka.ui.VolumeBar');
 
 goog.require('goog.asserts');
-goog.require('shaka.ads.AdManager');
-goog.require('shaka.ui.Constants');
+goog.require('shaka.ads.Utils');
 goog.require('shaka.ui.Controls');
 goog.require('shaka.ui.Locales');
 goog.require('shaka.ui.Localization');
@@ -33,20 +32,24 @@ shaka.ui.VolumeBar = class extends shaka.ui.RangeElement {
     /** @private {!shaka.extern.UIConfiguration} */
     this.config_ = this.controls.getConfig();
 
+    // We use a range of 100 to avoid problems with Firefox.
+    // See https://github.com/shaka-project/shaka-player/issues/3987
+    this.setRange(0, 100);
+
     this.eventManager.listen(this.video,
         'volumechange',
         () => this.onPresentationVolumeChange_());
 
     this.eventManager.listen(this.adManager,
-        shaka.ads.AdManager.AD_VOLUME_CHANGED,
+        shaka.ads.Utils.AD_VOLUME_CHANGED,
         () => this.onAdVolumeChange_());
 
     this.eventManager.listen(this.adManager,
-        shaka.ads.AdManager.AD_MUTED,
+        shaka.ads.Utils.AD_MUTED,
         () => this.onAdVolumeChange_());
 
     this.eventManager.listen(this.adManager,
-        shaka.ads.AdManager.AD_STOPPED,
+        shaka.ads.Utils.AD_STOPPED,
         () => this.onPresentationVolumeChange_());
 
     this.eventManager.listen(this.localization,
@@ -60,6 +63,11 @@ shaka.ui.VolumeBar = class extends shaka.ui.RangeElement {
     // Initialize volume display and label.
     this.onPresentationVolumeChange_();
     this.updateAriaLabel_();
+
+    if (this.ad) {
+      // There was already an ad.
+      this.onChange();
+    }
   }
 
   /**
@@ -69,10 +77,10 @@ shaka.ui.VolumeBar = class extends shaka.ui.RangeElement {
    * @override
    */
   onChange() {
-    if (this.ad) {
-      this.ad.setVolume(this.getValue());
+    if (this.ad && this.ad.isLinear()) {
+      this.ad.setVolume(this.getValue() / 100);
     } else {
-      this.video.volume = this.getValue();
+      this.video.volume = this.getValue() / 100;
       if (this.video.volume == 0) {
         this.video.muted = true;
       } else {
@@ -86,7 +94,7 @@ shaka.ui.VolumeBar = class extends shaka.ui.RangeElement {
     if (this.video.muted) {
       this.setValue(0);
     } else {
-      this.setValue(this.video.volume);
+      this.setValue(this.video.volume * 100);
     }
 
     this.updateColors_();
@@ -98,7 +106,7 @@ shaka.ui.VolumeBar = class extends shaka.ui.RangeElement {
         'This.ad should exist at this point!');
 
     const volume = this.ad.getVolume();
-    this.setValue(volume);
+    this.setValue(volume * 100);
     this.updateColors_();
   }
 
@@ -106,8 +114,8 @@ shaka.ui.VolumeBar = class extends shaka.ui.RangeElement {
   updateColors_() {
     const colors = this.config_.volumeBarColors;
     const gradient = ['to right'];
-    gradient.push(colors.level + (this.getValue() * 100) + '%');
-    gradient.push(colors.base + (this.getValue() * 100) + '%');
+    gradient.push(colors.level + this.getValue() + '%');
+    gradient.push(colors.base + this.getValue() + '%');
     gradient.push(colors.base + '100%');
 
     this.container.style.background =
@@ -116,8 +124,7 @@ shaka.ui.VolumeBar = class extends shaka.ui.RangeElement {
 
   /** @private */
   updateAriaLabel_() {
-    this.bar.setAttribute(shaka.ui.Constants.ARIA_LABEL,
-        this.localization.resolve(shaka.ui.Locales.Ids.VOLUME));
+    this.bar.ariaLabel = this.localization.resolve(shaka.ui.Locales.Ids.VOLUME);
   }
 };
 

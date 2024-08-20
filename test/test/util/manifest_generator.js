@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.ManifestGenerator');
-
-
 /**
  * @summary
  * A helper class used to generate manifests.  This is done through a series
@@ -85,6 +82,9 @@ shaka.test.ManifestGenerator.Manifest = class {
     /** @type {!Array.<shaka.extern.Stream>} */
     this.textStreams = [];
 
+    /** @type {!Array.<shaka.extern.Stream>} */
+    this.imageStreams = [];
+
     const timeline = new this.shaka_.media.PresentationTimeline(0, 0);
     timeline.setSegmentAvailabilityDuration(Infinity);
     timeline.notifyMaxSegmentDuration(10);
@@ -95,6 +95,25 @@ shaka.test.ManifestGenerator.Manifest = class {
     this.offlineSessionIds = [];
     /** @type {number} */
     this.minBufferTime = 0;
+    /** @type {boolean} */
+    this.sequenceMode = false;
+    /** @type {boolean} */
+    this.ignoreManifestTimestampsInSegmentsMode = false;
+    /** @type {string} */
+    this.type = 'UNKNOWN';
+    /** @type {?shaka.extern.ServiceDescription} */
+    this.serviceDescription = null;
+    /** @type {?string} */
+    this.nextUrl = null;
+    /** @type {number} */
+    this.periodCount = 1;
+    /** @type {number} */
+    this.gapCount = 0;
+    /** @type {boolean} */
+    this.isLowLatency = false;
+    /** @type {?number} */
+    this.startTime = null;
+
 
     /** @type {shaka.extern.Manifest} */
     const foo = this;
@@ -202,6 +221,22 @@ shaka.test.ManifestGenerator.Manifest = class {
   }
 
   /**
+   * Adds an image stream to the manifest.
+   *
+   * @param {number} id
+   * @param {function(!shaka.test.ManifestGenerator.Stream)=} func
+   */
+  addImageStream(id, func) {
+    const ContentType = shaka.util.ManifestParserUtils.ContentType;
+    const stream = new shaka.test.ManifestGenerator.Stream(
+        this, /* isPartial= */ false, id, ContentType.IMAGE, 'und');
+    if (func) {
+      func(stream);
+    }
+    this.imageStreams.push(stream.build_());
+  }
+
+  /**
    * Adds a "partial" stream which, when used with jasmine, will only compare
    * the properties that were explicitly given to it.  All other properties will
    * be ignored.
@@ -245,14 +280,20 @@ shaka.test.ManifestGenerator.Variant = class {
     if (!isPartial) {
       /** @type {string} */
       this.language = 'und';
+      /** @type {string} */
+      this.label = '';
       /** @type {number} */
       this.bandwidth = 0;
+      /** @type {number} */
+      this.disabledUntilTime = 0;
       /** @type {boolean} */
       this.primary = false;
       /** @type {boolean} */
       this.allowedByApplication = true;
       /** @type {boolean} */
       this.allowedByKeySystem = true;
+      /** @type {!Array.<MediaCapabilitiesDecodingInfo>} */
+      this.decodingInfos = [];
     }
 
     /** @type {shaka.extern.Variant} */
@@ -294,7 +335,7 @@ shaka.test.ManifestGenerator.Variant = class {
     const ContentType = shaka.util.ManifestParserUtils.ContentType;
     const stream = new shaka.test.ManifestGenerator.Stream(
         this.manifest_, /* isPartial= */ false, id, ContentType.AUDIO,
-        this.language);
+        this.language, this.label);
     if (func) {
       func(stream);
     }
@@ -360,6 +401,8 @@ shaka.test.ManifestGenerator.DrmInfo = class {
     /** @type {string} */
     this.keySystem = keySystem;
     /** @type {string} */
+    this.encryptionScheme = '';
+    /** @type {string} */
     this.licenseServerUri = '';
     /** @type {boolean} */
     this.distinctiveIdentifierRequired = false;
@@ -371,10 +414,16 @@ shaka.test.ManifestGenerator.DrmInfo = class {
     this.videoRobustness = '';
     /** @type {Uint8Array} */
     this.serverCertificate = null;
-    /** @type {Array.<shaka.extern.InitDataOverride>} */
-    this.initData = null;
+    /** @type {!Array.<shaka.extern.InitDataOverride>} */
+    this.initData = [];
     /** @type {Set.<string>} */
     this.keyIds = new Set();
+    /** @type {string} */
+    this.sessionType = '';
+    /** @type {string} */
+    this.serverCertificateUri = '';
+    /** @type {(Set.<string>|undefined)} */
+    this.keySystemUris;
 
     /** @type {shaka.extern.DrmInfo} */
     const foo = this;
@@ -396,9 +445,6 @@ shaka.test.ManifestGenerator.DrmInfo = class {
    * @param {!Uint8Array} buffer
    */
   addInitData(type, buffer) {
-    if (!this.initData) {
-      this.initData = [];
-    }
     this.initData.push({initData: buffer, initDataType: type, keyId: null});
   }
 
@@ -415,6 +461,30 @@ shaka.test.ManifestGenerator.DrmInfo = class {
     const buffer = shaka.util.Uint8ArrayUtils.fromBase64(base64);
     this.initData.push({initData: buffer, initDataType: 'cenc'});
   }
+
+  /**
+   * Adds a new 'keyids' init data to the current DRM info.
+   *
+   * @param {string} base64
+   */
+  addKeyIdsData(base64) {
+    if (!this.initData) {
+      this.initData = [];
+    }
+
+    const buffer = shaka.util.Uint8ArrayUtils.fromBase64(base64);
+    this.initData.push({initData: buffer, initDataType: 'keyids'});
+  }
+
+  /**
+   * Adds a new keySystemUris to the current DRM info.
+   *
+   *
+   * @param {Set.<string>} keySystemUris
+   */
+  addKeySystemUris(keySystemUris) {
+    this.keySystemUris = keySystemUris;
+  }
 };
 
 shaka.test.ManifestGenerator.Stream = class {
@@ -423,12 +493,15 @@ shaka.test.ManifestGenerator.Stream = class {
    * @param {boolean} isPartial
    * @param {?number} id
    * @param {shaka.util.ManifestParserUtils.ContentType} type
-   * @param {string=} lang
+   * @param {?string=} lang
+   * @param {string=} label
    */
-  constructor(manifest, isPartial, id, type, lang) {
-    goog.asserts.assert(
-        !manifest || !manifest.isIdUsed_(id),
-        'Streams should have unique ids!');
+  constructor(manifest, isPartial, id, type, lang, label) {
+    // variants can be made up of different combinations of video
+    // and audio streams
+    // goog.asserts.assert(
+    //     !manifest || !manifest.isIdUsed_(id),
+    //     'Streams should have unique ids!');
     const ContentType = shaka.util.ManifestParserUtils.ContentType;
 
     /** @const {shaka.test.ManifestGenerator.Manifest} */
@@ -444,29 +517,39 @@ shaka.test.ManifestGenerator.Stream = class {
       this.id = id;
     }
 
-    if (!isPartial) {
-      let defaultMimeType = 'text/plain';
-      let defaultCodecs = '';
-      if (type == ContentType.AUDIO) {
-        defaultMimeType = 'audio/mp4';
-        defaultCodecs = 'mp4a.40.2';
-      } else if (type == ContentType.VIDEO) {
-        defaultMimeType = 'video/mp4';
-        defaultCodecs = 'avc1.4d401f';
-      } else if (type == ContentType.TEXT) {
-        defaultMimeType = 'text/vtt';
-      }
+    let defaultMimeType = 'text/plain';
+    let defaultCodecs = '';
+    if (type == ContentType.AUDIO) {
+      defaultMimeType = 'audio/mp4';
+      defaultCodecs = 'mp4a.40.2';
+    } else if (type == ContentType.VIDEO) {
+      defaultMimeType = 'video/mp4';
+      defaultCodecs = 'avc1.4d401f';
+    } else if (type == ContentType.TEXT) {
+      defaultMimeType = 'text/vtt';
+    }
 
+    if (!isPartial) {
       const create =
           jasmine.createSpy('createSegmentIndex').and.callFake(() => {
             return Promise.resolve();
           });
-      const segmentIndex = new shaka.test.FakeSegmentIndex();
+      const close =
+          jasmine.createSpy('closeSegmentIndex').and.callFake(() => {
+            return Promise.resolve();
+          });
+      const shaka_ = manifest ? manifest.shaka_ : shaka;
+      const segmentIndex = shaka_.media.SegmentIndex.forSingleSegment(
+          /* startTime= */ 0, /* duration= */ 10, ['testUri']);
 
       /** @type {?string} */
       this.originalId = null;
+      /** @type {?string} */
+      this.groupId = null;
       /** @type {shaka.extern.CreateSegmentIndexFunction} */
       this.createSegmentIndex = shaka.test.Util.spyFunc(create);
+      /** @type {!function()|undefined} */
+      this.closeSegmentIndex = shaka.test.Util.spyFunc(close);
       /** @type {shaka.media.SegmentIndex} */
       this.segmentIndex = segmentIndex;
       /** @type {string} */
@@ -492,9 +575,11 @@ shaka.test.ManifestGenerator.Stream = class {
       /** @type {!Set.<string>} */
       this.keyIds = new Set();
       /** @type {string} */
-      this.language = lang || 'und';
+      this.language = shaka.util.LanguageUtils.normalize(lang || 'und');
       /** @type {?string} */
-      this.label = null;
+      this.originalLanguage = lang || null;
+      /** @type {?string} */
+      this.label = label || null;
       /** @type {boolean} */
       this.primary = false;
       /** @type {?shaka.extern.Stream} */
@@ -503,13 +588,34 @@ shaka.test.ManifestGenerator.Stream = class {
       this.emsgSchemeIdUris = null;
       /** @type {!Array.<string>} */
       this.roles = [];
+      /** @type {boolean} */
+      this.forced = false;
       /** @type {?number} */
       this.channelsCount = null;
       /** @type {?number} */
       this.audioSamplingRate = null;
+      /** @type {boolean} */
+      this.spatialAudio = false;
       /** @type {Map.<string, string>} */
       this.closedCaptions = null;
+      /** @type {(string|undefined)} */
+      this.hdr = undefined;
+      /** @type {(string|undefined)} */
+      this.colorGamut = undefined;
+      /** @type {(string|undefined)} */
+      this.videoLayout = undefined;
+      /** @type {(string|undefined)} */
+      this.tilesLayout = undefined;
+      /** @type {?shaka.media.ManifestParser.AccessibilityPurpose} */
+      this.accessibilityPurpose;
+      /** @type {boolean} */
+      this.external = false;
+      /** @type {boolean} */
+      this.fastSwitching = false;
     }
+    /** @type {!Set.<string>} */
+    this.fullMimeTypes = new Set([shaka.util.MimeUtils.getFullType(
+        defaultMimeType, defaultCodecs)]);
 
     /** @type {shaka.extern.Stream} */
     const foo = this;
@@ -559,36 +665,40 @@ shaka.test.ManifestGenerator.Stream = class {
   useSegmentTemplate(template, segmentDuration, segmentSize = null) {
     goog.asserts.assert(this.manifest_,
         'A top-level generated Manifest is required to use this method!');
+    goog.asserts.assert(
+        segmentDuration, 'Must pass a non-zero segment duration');
 
-    const totalDuration = this.manifest_.presentationTimeline.getDuration();
+    const shaka_ = this.manifest_.shaka_;
+    let totalDuration = this.manifest_.presentationTimeline.getDuration();
+    goog.asserts.assert(
+        isFinite(totalDuration), 'Must specify a manifest duration');
+    if (!isFinite(totalDuration)) {
+      // Without this, a mistake of an infinite duration would result in an
+      // infinite loop and a crash, which would in turn prevent you from seeing
+      // the above assertion fail.
+      totalDuration = 0;
+    }
+
     const segmentCount = totalDuration / segmentDuration;
-    const duration = this.manifest_.presentationTimeline.getDuration();
+    const references = [];
 
-    this.createSegmentIndex = () => Promise.resolve();
-
-    this.segmentIndex.find = (time) => Math.floor(time / segmentDuration);
-
-    this.segmentIndex.get = (index) => {
-      goog.asserts.assert(!isNaN(index), 'Invalid index requested!');
-      if (index < 0 || index >= segmentCount || isNaN(index)) {
-        return null;
-      }
+    for (let index = 0; index < segmentCount; index++) {
       const getUris = () => [sprintf(template, index)];
       const start = index * segmentDuration;
       const end = Math.min(totalDuration, (index + 1) * segmentDuration);
-      goog.asserts.assert(this.manifest_,
-          'A top-level generated Manifest is required to use this method!');
-      return new this.manifest_.shaka_.media.SegmentReference(
+      references.push(new shaka_.media.SegmentReference(
           /* startTime= */ start,
           /* endTime= */ end,
           getUris,
           /* startByte= */ 0,
-          /* endByte= */ /** @type {?number} */(segmentSize),
+          /* endByte= */ segmentSize,
           this.initSegmentReference_,
           /* timestampOffset= */ 0,
           /* appendWindowStart= */ 0,
-          /* appendWindowEnd= */ duration);
-    };
+          /* appendWindowEnd= */ totalDuration));
+    }
+    this.segmentIndex = new shaka_.media.SegmentIndex(references);
+    return this;
   }
 
   /**
@@ -602,10 +712,6 @@ shaka.test.ManifestGenerator.Stream = class {
         'A top-level generated Manifest is required to use this method!');
 
     const duration = this.manifest_.presentationTimeline.getDuration();
-
-    this.createSegmentIndex = () => {
-      return Promise.resolve();
-    };
     this.segmentIndex =
         this.manifest_.shaka_.media.SegmentIndex.forSingleSegment(
             /* startTime= */ 0, duration, [uri]);
@@ -617,15 +723,16 @@ shaka.test.ManifestGenerator.Stream = class {
    * @param {!Array.<string>} uris
    * @param {number} startByte
    * @param {?number} endByte
+   * @param {null|shaka.extern.MediaQualityInfo=} mediaQuality
    */
-  setInitSegmentReference(uris, startByte, endByte) {
+  setInitSegmentReference(uris, startByte, endByte, mediaQuality) {
     goog.asserts.assert(this.manifest_,
         'A top-level generated Manifest is required to use this method!');
 
     const getUris = () => uris;
     this.initSegmentReference_ =
         new this.manifest_.shaka_.media.InitSegmentReference(
-            getUris, startByte, endByte);
+            getUris, startByte, endByte, mediaQuality);
   }
 
   /**
@@ -635,6 +742,8 @@ shaka.test.ManifestGenerator.Stream = class {
   mime(mime, codecs) {
     this.mimeType = mime;
     this.codecs = codecs || '';
+    this.fullMimeTypes = new Set([shaka.util.MimeUtils.getFullType(
+        this.mimeType, this.codecs)]);
   }
 
   /**

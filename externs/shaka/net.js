@@ -16,7 +16,9 @@
  *   baseDelay: number,
  *   backoffFactor: number,
  *   fuzzFactor: number,
- *   timeout: number
+ *   timeout: number,
+ *   stallTimeout: number,
+ *   connectionTimeout: number
  * }}
  *
  * @description
@@ -24,6 +26,7 @@
  *
  * @property {number} maxAttempts
  *   The maximum number of times the request should be attempted.
+ *   The minimum supported value is 1 (only one request without retries).
  * @property {number} baseDelay
  *   The delay before the first retry, in milliseconds.
  * @property {number} backoffFactor
@@ -33,6 +36,13 @@
  *   For example, 0.5 means "between 50% below and 50% above the retry delay."
  * @property {number} timeout
  *   The request timeout, in milliseconds.  Zero means "unlimited".
+ *   <i>Defaults to 30000 milliseconds.</i>
+ * @property {number} stallTimeout
+ *   The request stall timeout, in milliseconds.  Zero means "unlimited".
+ *   <i>Defaults to 5000 milliseconds.</i>
+ * @property {number} connectionTimeout
+ *   The request connection timeout, in milliseconds.  Zero means "unlimited".
+ *   <i>Defaults to 10000 milliseconds.</i>
  *
  * @tutorial network-and-buffering-config
  *
@@ -51,7 +61,14 @@ shaka.extern.RetryParameters;
  *   retryParameters: !shaka.extern.RetryParameters,
  *   licenseRequestType: ?string,
  *   sessionId: ?string,
- *   streamDataCallback: ?function(BufferSource)
+ *   drmInfo: ?shaka.extern.DrmInfo,
+ *   initData: ?Uint8Array,
+ *   initDataType: ?string,
+ *   streamDataCallback: ?function(BufferSource):!Promise,
+ *   requestStartTime: (?number|undefined),
+ *   timeToFirstByte: (?number|undefined),
+ *   packetNumber: (?number|undefined),
+ *   contentType: (?string|undefined)
  * }}
  *
  * @description
@@ -81,8 +98,25 @@ shaka.extern.RetryParameters;
  * @property {?string} sessionId
  *   If this is a LICENSE request, this field contains the session ID of the
  *   EME session that made the request.
- * @property {?function(BufferSource)} streamDataCallback
+ * @property {?shaka.extern.DrmInfo} drmInfo
+ *   If this is a LICENSE request, this field contains the DRM info used to
+ *   initialize EME.
+ * @property {?Uint8Array} initData
+ *   If this is a LICENSE request, this field contains the initData info used
+ *   to initialize EME.
+ * @property {?string} initDataType
+ *   If this is a LICENSE request, this field contains the initDataType info
+ *   used to initialize EME.
+ * @property {?function(BufferSource):!Promise} streamDataCallback
  *   A callback function to handle the chunked data of the ReadableStream.
+ * @property {(?number|undefined)} requestStartTime
+ *   The time that the request started.
+ * @property {(?number|undefined)} timeToFirstByte
+ *   The time taken to the first byte.
+ * @property {(?number|undefined)} packetNumber
+ *   A number representing the order the packet within the request.
+ * @property {(?string|undefined)} contentType
+ *   Content type (e.g. 'video', 'audio' or 'text', 'image')
  * @exportDoc
  */
 shaka.extern.Request;
@@ -91,7 +125,9 @@ shaka.extern.Request;
 /**
  * @typedef {{
  *   uri: string,
+ *   originalUri: string,
  *   data: BufferSource,
+ *   status: (number|undefined),
  *   headers: !Object.<string, string>,
  *   timeMs: (number|undefined),
  *   fromCache: (boolean|undefined)
@@ -110,6 +146,8 @@ shaka.extern.Request;
  *   redirects, but after request filters are executed.
  * @property {BufferSource} data
  *   The body of the response.
+ * @property {(number|undefined)} status
+ *   The response HTTP status code.
  * @property {!Object.<string, string>} headers
  *   A map of response headers, if supported by the underlying protocol.
  *   All keys should be lowercased.
@@ -130,19 +168,39 @@ shaka.extern.Response;
  * @typedef {!function(string,
  *                     shaka.extern.Request,
  *                     shaka.net.NetworkingEngine.RequestType,
- *                     shaka.extern.ProgressUpdated):
+ *                     shaka.extern.ProgressUpdated,
+ *                     shaka.extern.HeadersReceived,
+ *                     shaka.extern.SchemePluginConfig):
  *     !shaka.extern.IAbortableOperation.<shaka.extern.Response>}
  * @description
  * Defines a plugin that handles a specific scheme.
  *
  * The functions accepts four parameters, uri string, request, request type,
- * and a progressUpdated function.  The progressUpdated function can be ignored
- * by plugins that do not have this information, but it will always be provided
- * by NetworkingEngine.
+ * a progressUpdated function, and a headersReceived function.  The
+ * progressUpdated and headersReceived functions can be ignored by plugins that
+ * do not have this information, but it will always be provided by
+ * NetworkingEngine.
  *
  * @exportDoc
  */
 shaka.extern.SchemePlugin;
+
+
+/**
+ * @typedef {{
+*   minBytesForProgressEvents: (number|undefined)
+* }}
+*
+* @description
+*   Defines configuration object to use by SchemePlugins.
+*
+* @property {(number|undefined)} minBytesForProgressEvents
+*   Defines minimum number of bytes that should be use to emit progress event,
+*   if possible.
+*
+* @exportDoc
+*/
+shaka.extern.SchemePluginConfig;
 
 
 /**
@@ -163,14 +221,53 @@ shaka.extern.ProgressUpdated;
 
 
 /**
+ * @typedef {function(!Object.<string, string>)}
+ *
+ * @description
+ * A callback function to handle headers received events through networking
+ * engine in player.
+ * The first argument is the headers object of the response.
+ */
+shaka.extern.HeadersReceived;
+
+
+/**
+ * @typedef {{
+ *   type: (shaka.net.NetworkingEngine.AdvancedRequestType|undefined),
+ *   stream: (shaka.extern.Stream|undefined),
+ *   segment: (shaka.media.SegmentReference|undefined),
+ *   isPreload: (boolean|undefined)
+ * }}
+ *
+ * @description
+ * Defines contextual data about a request
+ *
+ * @property {shaka.net.NetworkingEngine.AdvancedRequestType=} type
+ *   The advanced type
+ * @property {shaka.extern.Stream=} stream
+ *   The duration of the segment in seconds
+ * @property {shaka.media.SegmentReference=} segment
+ *   The request's segment reference
+ * @property {boolean=} isPreload
+ *   Whether the request came from a preload or a normal load.
+ * @exportDoc
+ */
+shaka.extern.RequestContext;
+
+
+/**
  * Defines a filter for requests.  This filter takes the request and modifies
  * it before it is sent to the scheme plugin.
- * A request filter can run asynchronously by returning a promise; in this case,
- * the request will not be sent until the promise is resolved.
+ * The RequestType describes the basic type of the request (manifest, segment,
+ * etc). The optional RequestContext will be provided where applicable to
+ * provide additional information about the request. A request filter can run
+ * asynchronously by returning a promise; in this case, the request will not be
+ * sent until the promise is resolved.
  *
  * @typedef {!function(shaka.net.NetworkingEngine.RequestType,
- *                     shaka.extern.Request):
-             (Promise|undefined)}
+ *                     shaka.extern.Request,
+ *                     shaka.extern.RequestContext=):
+ *           (Promise|undefined)}
  * @exportDoc
  */
 shaka.extern.RequestFilter;
@@ -179,11 +276,15 @@ shaka.extern.RequestFilter;
 /**
  * Defines a filter for responses.  This filter takes the response and modifies
  * it before it is returned.
- * A response filter can run asynchronously by returning a promise.
+ * The RequestType describes the basic type of the request (manifest, segment,
+ * etc). The optional RequestContext will be provided where applicable to
+ * provide additional information about the request. A response filter can run
+ * asynchronously by returning a promise.
  *
  * @typedef {!function(shaka.net.NetworkingEngine.RequestType,
- *                     shaka.extern.Response):
-              (Promise|undefined)}
+ *                     shaka.extern.Response,
+ *                     shaka.extern.RequestContext=):
+ *            (Promise|undefined)}
  * @exportDoc
  */
 shaka.extern.ResponseFilter;

@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.provide('shaka.test.FakeDrmEngine');
-
-
 /**
  * A fake DrmEngine.
  *
@@ -14,7 +11,7 @@ goog.provide('shaka.test.FakeDrmEngine');
  */
 shaka.test.FakeDrmEngine = class {
   constructor() {
-    /** @private {!Array.<number>} */
+    /** @private {!Array.<string>} */
     this.offlineSessions_ = [];
     /** @private {?shaka.extern.DrmInfo} */
     this.drmInfo_ = null;
@@ -41,6 +38,13 @@ shaka.test.FakeDrmEngine = class {
     // We use |callFake| to ensure that updated values of |this.drmInfo_| will
     // be returned.
     this.getDrmInfo.and.callFake(() => this.drmInfo_);
+
+    /** @type {!jasmine.Spy} */
+    this.newInitData = jasmine.createSpy('newInitData');
+    this.newInitData.and.callFake((initDataType, initData) => {
+      const num = 1 + this.offlineSessions_.length;
+      this.offlineSessions_.push('session-' + num);
+    });
 
     /** @type {!jasmine.Spy} */
     this.getExpiration = jasmine.createSpy('getExpiration');
@@ -77,6 +81,9 @@ shaka.test.FakeDrmEngine = class {
     /** @type {!jasmine.Spy} */
     this.supportsVariant = jasmine.createSpy('supportsVariant');
     this.supportsVariant.and.returnValue(true);
+
+    /** @type {!jasmine.Spy} */
+    this.setSrcEquals = jasmine.createSpy('setSrcEquals');
   }
 
   /**
@@ -87,10 +94,17 @@ shaka.test.FakeDrmEngine = class {
   }
 
   /**
-   * @param {!Array.<number>} sessions
+   * @param {!Array.<string>} sessions
    */
   setSessionIds(sessions) {
     // Copy the values to break the reference to the input value.
     this.offlineSessions_ = sessions.map((s) => s);
+  }
+
+  /**
+   * @override
+   */
+  hasManifestInitData() {
+    return true;
   }
 };

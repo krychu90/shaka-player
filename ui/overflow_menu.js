@@ -8,9 +8,8 @@
 goog.provide('shaka.ui.OverflowMenu');
 
 goog.require('goog.asserts');
-goog.require('shaka.ads.AdManager');
+goog.require('shaka.ads.Utils');
 goog.require('shaka.log');
-goog.require('shaka.ui.Constants');
 goog.require('shaka.ui.Controls');
 goog.require('shaka.ui.Element');
 goog.require('shaka.ui.Enums');
@@ -49,29 +48,6 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
 
     this.createChildren_();
 
-
-    const backToOverflowMenuButtons =
-        this.controls.getVideoContainer().getElementsByClassName(
-            'shaka-back-to-overflow-button');
-
-    for (const button of backToOverflowMenuButtons) {
-      this.eventManager.listen(button, 'click', () => {
-        // Hide the submenus, display the overflow menu
-        this.controls.hideSettingsMenus();
-        shaka.ui.Utils.setDisplay(this.overflowMenu_, true);
-
-        // If there are back to overflow menu buttons, there must be
-        // overflow menu buttons, but oh well
-        if (this.overflowMenu_.childNodes.length) {
-          /** @type {!HTMLElement} */ (this.overflowMenu_.childNodes[0])
-              .focus();
-        }
-
-        // Make sure controls are displayed
-        this.controls.computeOpacity();
-      });
-    }
-
     this.eventManager.listen(
         this.localization, shaka.ui.Localization.LOCALE_UPDATED, () => {
           this.updateAriaLabel_();
@@ -83,12 +59,14 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
         });
 
     this.eventManager.listen(
-        this.adManager, shaka.ads.AdManager.AD_STARTED, () => {
-          shaka.ui.Utils.setDisplay(this.overflowMenuButton_, false);
+        this.adManager, shaka.ads.Utils.AD_STARTED, () => {
+          if (this.ad && this.ad.isLinear()) {
+            shaka.ui.Utils.setDisplay(this.overflowMenuButton_, false);
+          }
         });
 
     this.eventManager.listen(
-        this.adManager, shaka.ads.AdManager.AD_STOPPED, () => {
+        this.adManager, shaka.ads.Utils.AD_STOPPED, () => {
           shaka.ui.Utils.setDisplay(this.overflowMenuButton_, true);
         });
 
@@ -112,6 +90,11 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
     });
 
     this.updateAriaLabel_();
+
+    if (this.ad && this.ad.isLinear()) {
+      // There was already an ad.
+      shaka.ui.Utils.setDisplay(this.overflowMenuButton_, false);
+    }
   }
 
   /** @override */
@@ -145,7 +128,6 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
     this.overflowMenu_.classList.add('shaka-overflow-menu');
     this.overflowMenu_.classList.add('shaka-no-propagation');
     this.overflowMenu_.classList.add('shaka-show-controls-on-mouse-over');
-    this.overflowMenu_.classList.add('shaka-settings-menu');
     this.overflowMenu_.classList.add('shaka-hidden');
     this.controlsContainer_.appendChild(this.overflowMenu_);
   }
@@ -160,6 +142,7 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
     this.overflowMenuButton_.classList.add('shaka-overflow-menu-button');
     this.overflowMenuButton_.classList.add('shaka-no-propagation');
     this.overflowMenuButton_.classList.add('material-icons-round');
+    this.overflowMenuButton_.classList.add('shaka-tooltip');
     this.overflowMenuButton_.textContent =
       shaka.ui.Enums.MaterialDesignIcons.OPEN_OVERFLOW;
     this.parent.appendChild(this.overflowMenuButton_);
@@ -213,8 +196,8 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
    */
   updateAriaLabel_() {
     const LocIds = shaka.ui.Locales.Ids;
-    this.overflowMenuButton_.setAttribute(shaka.ui.Constants.ARIA_LABEL,
-        this.localization.resolve(LocIds.MORE_SETTINGS));
+    this.overflowMenuButton_.ariaLabel =
+        this.localization.resolve(LocIds.MORE_SETTINGS);
   }
 };
 

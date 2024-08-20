@@ -4,43 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-goog.require('goog.asserts');
-goog.require('shaka.Player');
-goog.require('shaka.media.DrmEngine');
-goog.require('shaka.media.ManifestParser');
-goog.require('shaka.media.SegmentIndex');
-goog.require('shaka.net.NetworkingEngine.RequestType');
-goog.require('shaka.offline.ManifestConverter');
-goog.require('shaka.offline.OfflineUri');
-goog.require('shaka.offline.Storage');
-goog.require('shaka.offline.StorageMuxer');
-goog.require('shaka.test.FakeDrmEngine');
-goog.require('shaka.test.FakeManifestParser');
-goog.require('shaka.test.FakeNetworkingEngine');
-goog.require('shaka.test.Loader');
-goog.require('shaka.test.ManifestGenerator');
-goog.require('shaka.test.TestScheme');
-goog.require('shaka.test.Util');
-goog.require('shaka.util.AbortableOperation');
-goog.require('shaka.util.Error');
-goog.require('shaka.util.EventManager');
-goog.require('shaka.util.PlayerConfiguration');
-goog.require('shaka.util.PublicPromise');
-goog.requireType('shaka.media.SegmentReference');
-
 /** @return {boolean} */
 function storageSupport() {
   return shaka.offline.Storage.support();
 }
 
-/** @return {!Promise.<boolean>} */
-async function drmStorageSupport() {
+/** @return {boolean} */
+function drmStorageSupport() {
   if (!shaka.offline.Storage.support()) {
     return false;
   }
 
-  const support = await shaka.Player.probeSupport();
-  const widevineSupport = support.drm['com.widevine.alpha'];
+  const widevineSupport = window['shakaSupport'].drm['com.widevine.alpha'];
   return !!(widevineSupport && widevineSupport.persistentState);
 }
 
@@ -58,12 +33,16 @@ filterDescribe('Storage', storageSupport, () => {
   const manifestWithNonZeroStartUri = 'fake:manifest-with-non-zero-start';
   const manifestWithLiveTimelineUri = 'fake:manifest-with-live-timeline';
   const manifestWithAlternateSegmentsUri = 'fake:manifest-with-alt-segments';
+  const manifestWithVideoInitSegmentsUri =
+      'fake:manifest-with-video-init-segments';
 
+  const initSegmentUri = 'fake:init-segment';
   const segment1Uri = 'fake:segment-1';
   const segment2Uri = 'fake:segment-2';
   const segment3Uri = 'fake:segment-3';
   const segment4Uri = 'fake:segment-4';
 
+  const alternateInitSegmentUri = 'fake:alt-init-segment';
   const alternateSegment1Uri = 'fake:alt-segment-1';
   const alternateSegment2Uri = 'fake:alt-segment-2';
   const alternateSegment3Uri = 'fake:alt-segment-3';
@@ -289,7 +268,7 @@ filterDescribe('Storage', storageSupport, () => {
       ];
 
       const selected =
-          PlayerConfiguration.defaultTrackSelect(tracks, englishUS);
+          PlayerConfiguration.defaultTrackSelect(tracks, englishUS, 'SDR');
       expect(selected).toBeTruthy();
       expect(selected.length).toBe(1);
       expect(selected[0]).toBeTruthy();
@@ -305,7 +284,7 @@ filterDescribe('Storage', storageSupport, () => {
       ];
 
       const selected =
-          PlayerConfiguration.defaultTrackSelect(tracks, englishUS);
+          PlayerConfiguration.defaultTrackSelect(tracks, englishUS, 'SDR');
       expect(selected).toBeTruthy();
       expect(selected.length).toBe(2);
       for (const track of tracks) {
@@ -322,7 +301,7 @@ filterDescribe('Storage', storageSupport, () => {
         ];
 
         const selected =
-            PlayerConfiguration.defaultTrackSelect(tracks, 'eng-us');
+            PlayerConfiguration.defaultTrackSelect(tracks, 'eng-us', 'SDR');
         expect(selected).toBeTruthy();
         expect(selected.length).toBe(1);
         expect(selected[0]).toBeTruthy();
@@ -337,7 +316,8 @@ filterDescribe('Storage', storageSupport, () => {
           variantTrack(3, 480, 'eng', kbps(1)),
         ];
 
-        const selected = PlayerConfiguration.defaultTrackSelect(tracks, 'eng');
+        const selected =
+            PlayerConfiguration.defaultTrackSelect(tracks, 'eng', 'SDR');
         expect(selected).toBeTruthy();
         expect(selected.length).toBe(1);
         expect(selected[0]).toBeTruthy();
@@ -351,7 +331,8 @@ filterDescribe('Storage', storageSupport, () => {
           variantTrack(2, 480, 'eng-ca', kbps(1)),
         ];
 
-        const selected = PlayerConfiguration.defaultTrackSelect(tracks, 'fr');
+        const selected =
+            PlayerConfiguration.defaultTrackSelect(tracks, 'fr', 'SDR');
         expect(selected).toBeTruthy();
         expect(selected.length).toBe(1);
         expect(selected[0]).toBeTruthy();
@@ -366,7 +347,7 @@ filterDescribe('Storage', storageSupport, () => {
         ];
 
         const selected =
-            PlayerConfiguration.defaultTrackSelect(tracks, 'fr-uk');
+            PlayerConfiguration.defaultTrackSelect(tracks, 'fr-uk', 'SDR');
         expect(selected).toBeTruthy();
         expect(selected.length).toBe(1);
         expect(selected[0]).toBeTruthy();
@@ -382,7 +363,8 @@ filterDescribe('Storage', storageSupport, () => {
 
         tracks[0].primary = true;
 
-        const selected = PlayerConfiguration.defaultTrackSelect(tracks, 'de');
+        const selected =
+            PlayerConfiguration.defaultTrackSelect(tracks, 'de', 'SDR');
         expect(selected).toBeTruthy();
         expect(selected.length).toBe(1);
         expect(selected[0]).toBeTruthy();
@@ -753,18 +735,18 @@ filterDescribe('Storage', storageSupport, () => {
     /** @type {!shaka.util.EventManager} */
     let eventManager;
     /** @type {!HTMLVideoElement} */
-    const videoElement = /** @type {!HTMLVideoElement} */(
-      document.createElement('video'));
+    const videoElement = shaka.test.UiUtils.createVideoElement();
 
-    beforeEach(() => {
+    beforeEach(async () => {
       netEngine = makeNetworkEngine();
 
       // Use a real Player since Storage only uses the configuration and
       // networking engine.  This allows us to use Player.configure in these
       // tests.
-      player = new shaka.Player(videoElement, ((player) => {
+      player = new shaka.Player(null, null, ((player) => {
         player.createNetworkingEngine = () => netEngine;
       }));
+      await player.attach(videoElement);
 
       storage = new shaka.offline.Storage(player);
 
@@ -945,6 +927,46 @@ filterDescribe('Storage', storageSupport, () => {
       }
     });
 
+    it('can extract DRM info from segments', async () => {
+      const pssh1 =
+          '00000028' +                          // atom size
+          '70737368' +                          // atom type='pssh'
+          '00000000' +                          // v0, flags=0
+          'edef8ba979d64acea3c827dcd51d21ed' +  // system id (Widevine)
+          '00000008' +                          // data size
+          '0102030405060708';                   // data
+      const psshData1 = shaka.util.Uint8ArrayUtils.fromHex(pssh1);
+      const pssh2 =
+          '00000028' +                          // atom size
+          '70737368' +                          // atom type='pssh'
+          '00000000' +                          // v0, flags=0
+          'edef8ba979d64acea3c827dcd51d21ed' +  // system id (Widevine)
+          '00000008' +                          // data size
+          '1337420123456789';                   // data
+      const psshData2 = shaka.util.Uint8ArrayUtils.fromHex(pssh2);
+      netEngine.setResponseValue(initSegmentUri,
+          shaka.util.BufferUtils.toArrayBuffer(psshData1));
+      netEngine.setResponseValue(alternateInitSegmentUri,
+          shaka.util.BufferUtils.toArrayBuffer(psshData2));
+
+      const drm = new shaka.test.FakeDrmEngine();
+      const drmInfo = makeDrmInfo();
+      drmInfo.keySystem = 'com.widevine.alpha';
+      drm.setDrmInfo(drmInfo);
+      overrideDrmAndManifest(
+          storage,
+          drm,
+          makeManifestWithVideoInitSegments());
+
+      const stored = await storage.store(
+          manifestWithVideoInitSegmentsUri, noMetadata, fakeMimeType).promise;
+      goog.asserts.assert(stored.offlineUri != null, 'URI should not be null!');
+
+      // The manifest chooses the alternate stream, so expect only the alt init
+      // segment.
+      expect(drm.newInitData).toHaveBeenCalledWith('cenc', psshData2);
+    });
+
     it('can store multiple assets at once', async () => {
       // Block the network so that we won't finish the first store command.
       /** @type {!shaka.util.PublicPromise} */
@@ -1012,6 +1034,36 @@ filterDescribe('Storage', storageSupport, () => {
       } finally {
         await muxer.destroy();
       }
+    });
+
+    /**
+     * In some situations, indexedDB.open() can just hang, and call neither the
+     * 'success' nor the 'error' callbacks.
+     * I'm not sure what causes it, but it seems to happen consistently between
+     * reloads when it does so it might be a browser-based issue.
+     * In that case, we should time out with an error, instead of also hanging.
+     */
+    it('throws an error if indexedDB open times out', async () => {
+      const oldOpen = window.indexedDB.open;
+      window.indexedDB.open = () => {
+        // Just return a dummy object.
+        return /** @type {!IDBOpenDBRequest} */ ({
+          onsuccess: (event) => {},
+          onerror: (error) => {},
+        });
+      };
+
+      /** @type {!shaka.offline.StorageMuxer} */
+      const muxer = new shaka.offline.StorageMuxer();
+      const expectedError = shaka.test.Util.jasmineError(new shaka.util.Error(
+          shaka.util.Error.Severity.CRITICAL,
+          shaka.util.Error.Category.STORAGE,
+          shaka.util.Error.Code.INDEXED_DB_INIT_TIMED_OUT));
+
+      await expectAsync(muxer.init())
+          .toBeRejectedWith(expectedError);
+
+      window.indexedDB.open = oldOpen;
     });
 
     it('throws an error if the content is a live stream', async () => {
@@ -1090,10 +1142,7 @@ filterDescribe('Storage', storageSupport, () => {
           aRequestIsStarted.resolve();
           await promise;
 
-          // All downloads for a given stream are in the same "download group",
-          // and will be downloaded sequentially. Thus, we expect only the first
-          // download to be aborted.
-          expect(abortCheck()).toBe(i == 0 ? true : false);
+          expect(abortCheck()).toBe(true);
 
           return new ArrayBuffer(16);
         });
@@ -1234,11 +1283,11 @@ filterDescribe('Storage', storageSupport, () => {
       goog.asserts.assert(
           content.offlineUri != null, 'URI should not be null!');
 
-      /**
-       * @type {!Array.<number>}
-       */
+      // We expect 5 progress events because there are 4 unique segments, plus
+      // the manifest.
+      /** @type {!Array.<number>}*/
       const progressSteps = [
-        0.111, 0.222, 0.333, 0.444, 0.555, 0.666, 0.777, 0.888, 1.0,
+        0.2, 0.4, 0.6, 0.8, 1,
       ];
 
       const progressCallback = (content, progress) => {
@@ -1273,6 +1322,44 @@ filterDescribe('Storage', storageSupport, () => {
     });
   });
 
+  describe('deduplication', () => {
+    const testSchemeMimeType = 'application/x-test-manifest';
+    const manifestUri = 'test:sintel';
+
+    // Regression test for https://github.com/shaka-project/shaka-player/issues/2781
+    it('does not cache failures or cancellations', async () => {
+      /** @type {shaka.offline.Storage} */
+      const storage = new shaka.offline.Storage();
+
+      try {
+        storage.getNetworkingEngine().registerRequestFilter(
+            (type, request) => {
+              if (type == shaka.net.NetworkingEngine.RequestType.SEGMENT) {
+                throw new Error('Break download!');
+              }
+            });
+
+        const firstOperation = storage.store(
+            manifestUri, noMetadata, testSchemeMimeType);
+        // We killed the operation with a network failure, so this should be
+        // rejected.
+        await expectAsync(firstOperation.promise).toBeRejected();
+
+        // Clear the filter that caused the error.
+        storage.getNetworkingEngine().clearAllRequestFilters();
+
+        // Now we can try again, and it should be able to succeed, even though
+        // some downloads for the same URIs failed in the first attempt.  In
+        // #2781, this would fail because the network failure was cached.
+        const secondOperation = storage.store(
+            manifestUri, noMetadata, testSchemeMimeType);
+        await expectAsync(secondOperation.promise).toBeResolved();
+      } finally {
+        await storage.destroy();
+      }
+    });
+  });
+
   /**
    * @param {number} id
    * @param {number} height
@@ -1289,28 +1376,39 @@ filterDescribe('Storage', storageSupport, () => {
       type: 'variant',
       bandwidth: bandwidth,
       language: language,
+      originalLanguage: language,
       label: null,
       kind: null,
       width: height * (16 / 9),
       height: height,
       frameRate: 30,
       pixelAspectRatio: '59:54',
+      hdr: null,
+      colorGamut: null,
+      videoLayout: null,
       mimeType: 'video/mp4,audio/mp4',
+      audioMimeType: 'audio/mp4',
+      videoMimeType: 'video/mp4',
       codecs: 'mp4,mp4',
       audioCodec: 'mp4',
       videoCodec: 'mp4',
       primary: false,
       roles: [],
       audioRoles: [],
+      forced: false,
       videoId: videoId,
       audioId: audioId,
       channelsCount: 2,
       audioSamplingRate: 48000,
+      spatialAudio: false,
+      tilesLayout: null,
       audioBandwidth: bandwidth * 0.33,
       videoBandwidth: bandwidth * 0.67,
       originalVideoId: videoId.toString(),
       originalAudioId: audioId.toString(),
       originalTextId: null,
+      originalImageId: null,
+      accessibilityPurpose: null,
     };
   }
 
@@ -1326,29 +1424,96 @@ filterDescribe('Storage', storageSupport, () => {
       type: 'text',
       bandwidth: 1000,
       language: language,
+      originalLanguage: language,
       label: null,
       kind: null,
       width: null,
       height: null,
       frameRate: null,
       pixelAspectRatio: null,
+      hdr: null,
+      colorGamut: null,
+      videoLayout: null,
       mimeType: 'text/vtt',
+      audioMimeType: null,
+      videoMimeType: null,
       codecs: 'vtt',
       audioCodec: null,
       videoCodec: null,
       primary: false,
       roles: [],
       audioRoles: null,
+      forced: false,
       videoId: null,
       audioId: null,
       channelsCount: null,
       audioSamplingRate: null,
+      spatialAudio: false,
+      tilesLayout: null,
       audioBandwidth: null,
       videoBandwidth: null,
       originalVideoId: null,
       originalAudioId: null,
       originalTextId: id.toString(),
+      originalImageId: null,
+      accessibilityPurpose: null,
     };
+  }
+
+  /** @return {shaka.extern.Manifest} */
+  function makeManifestWithVideoInitSegments() {
+    const manifest = shaka.test.ManifestGenerator.generate((manifest) => {
+      manifest.presentationTimeline.setDuration(20);
+
+      manifest.addVariant(0, (variant) => {
+        variant.bandwidth = kbps(13);
+        variant.addVideo(1, (stream) => {
+          stream.bandwidth = kbps(13);
+          stream.size(100, 200);
+        });
+      });
+      manifest.addVariant(2, (variant) => {
+        variant.bandwidth = kbps(20);
+        variant.addVideo(3, (stream) => {
+          stream.bandwidth = kbps(20);
+          stream.size(200, 400);
+        });
+      });
+    });
+
+    const stream = manifest.variants[0].video;
+    goog.asserts.assert(stream, 'The first stream should exist');
+    stream.encrypted = true;
+    const init = new shaka.media.InitSegmentReference(
+        () => [initSegmentUri], 0, null);
+    const refs = [
+      makeReference(segment1Uri, 0, 1),
+      makeReference(segment2Uri, 1, 2),
+      makeReference(segment3Uri, 2, 3),
+      makeReference(segment4Uri, 3, 4),
+    ];
+    for (const ref of refs) {
+      ref.initSegmentReference = init;
+    }
+    overrideSegmentIndex(stream, refs);
+
+    const streamAlt = manifest.variants[1].video;
+    goog.asserts.assert(streamAlt, 'The second stream should exist');
+    streamAlt.encrypted = true;
+    const initAlt = new shaka.media.InitSegmentReference(
+        () => [alternateInitSegmentUri], 0, null);
+    const refsAlt = [
+      makeReference(alternateSegment1Uri, 0, 1),
+      makeReference(alternateSegment2Uri, 1, 2),
+      makeReference(alternateSegment3Uri, 2, 3),
+      makeReference(alternateSegment4Uri, 3, 4),
+    ];
+    for (const ref of refsAlt) {
+      ref.initSegmentReference = initAlt;
+    }
+    overrideSegmentIndex(streamAlt, refsAlt);
+
+    return manifest;
   }
 
   /** @return {shaka.extern.Manifest} */
@@ -1371,10 +1536,7 @@ filterDescribe('Storage', storageSupport, () => {
       manifest.addVariant(3, (variant) => {
         variant.language = frenchCanadian;
         variant.bandwidth = kbps(13);
-        variant.addVideo(4, (stream) => {
-          stream.bandwidth = kbps(10);
-          stream.size(100, 200);
-        });
+        variant.addExistingStream(1);
         variant.addAudio(5, (stream) => {
           stream.language = frenchCanadian;
           stream.bandwidth = kbps(3);
@@ -1534,12 +1696,15 @@ filterDescribe('Storage', storageSupport, () => {
   function makeDrmInfo() {
     const drmInfo = {
       keySystem: 'com.example.abc',
+      encryptionScheme: 'example',
       licenseServerUri: 'http://example.com',
       persistentStateRequired: true,
       distinctiveIdentifierRequired: false,
       initData: null,
       keyIds: null,
+      sessionType: 'temporary',
       serverCertificate: null,
+      serverCertificateUri: '',
       audioRobustness: 'HARDY',
       videoRobustness: 'OTHER',
     };
@@ -1562,6 +1727,8 @@ filterDescribe('Storage', storageSupport, () => {
           makeManifestWithLiveTimeline();
       this.map_[manifestWithAlternateSegmentsUri] =
           makeManifestWithAlternateSegments();
+      this.map_[manifestWithVideoInitSegmentsUri] =
+          makeManifestWithVideoInitSegments();
     }
 
     /** @override */
@@ -1582,6 +1749,15 @@ filterDescribe('Storage', storageSupport, () => {
 
     /** @override */
     onExpirationUpdated(session, number) {}
+
+    /** @override */
+    onInitialVariantChosen(variant) {}
+
+    /** @override */
+    banLocation(uri) {}
+
+    /** @override */
+    setMediaElement(mediaElement) {}
   };
 
   /**
@@ -1592,7 +1768,8 @@ filterDescribe('Storage', storageSupport, () => {
    * @suppress {accessControls}
    */
   function loadOfflineSession(drmEngine, sessionName) {
-    return drmEngine.loadOfflineSession_(sessionName);
+    return drmEngine.loadOfflineSession_(
+        sessionName, {initData: null, initDataType: null});
   }
 
   /**

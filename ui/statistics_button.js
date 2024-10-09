@@ -246,6 +246,24 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
 
   /** @private */
   loadContainer_() {
+    const closeElement = shaka.util.Dom.createHTMLElement('div');
+    closeElement.classList.add('shaka-no-propagation');
+    closeElement.classList.add('shaka-statistics-close');
+
+    const icon = shaka.util.Dom.createHTMLElement('i');
+    icon.textContent = 'close';
+    icon.classList.add('q-icon');
+    icon.classList.add('material-icons');
+    icon.classList.add('notranslate');
+    icon.classList.add('material-icons-round');
+    closeElement.appendChild(icon);
+    this.container_.appendChild(closeElement);
+
+    this.eventManager.listen(icon, 'click', () => {
+      this.onClick_();
+      this.updateLocalizedStrings_();
+    });
+
     for (const name of this.controls.getConfig().statisticsList) {
       if (name in this.currentStats_ && !this.skippedStats_.includes(name)) {
         const element = this.generateComponent_(name);

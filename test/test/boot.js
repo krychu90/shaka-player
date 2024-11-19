@@ -347,9 +347,15 @@ function configureJasmineEnvironment() {
     shaka.log.setLevel(shaka.log.Level.INFO);
   }
 
-  // Ensure node modules are loaded before any tests execute.
   beforeAll(async () => {
+    // Ensure node modules are loaded before any tests execute.
     await loadNodeModules();
+
+    // Replace jasmine's global error handler, since we have our own more
+    // nuanced version.  You can't set this to null, since jasmine still tries
+    // to call it.  Note also that our handler uses window.addEventListener
+    // instead of window.onerror.
+    window.onerror = () => {};
   });
 
   const originalSetTimeout = window.setTimeout;
@@ -426,43 +432,17 @@ function configureJasmineEnvironment() {
   };
 }
 
-async function loadImaScript() {
-  await new Promise((resolve, reject) => {
-    const script = /** @type {!HTMLScriptElement} */(
-      document.createElement('script'));
-    script.defer = false;
-    script['async'] = false;
-    script.onload = resolve;
-    script.onerror = reject;
-    script.setAttribute('src',
-        'https://imasdk.googleapis.com/js/sdkloader/ima3.js');
-    document.head.appendChild(script);
-  });
-}
-
-async function loadDaiScript() {
-  await new Promise((resolve, reject) => {
-    const script = /** @type {!HTMLScriptElement} */(
-      document.createElement('script'));
-    script.defer = false;
-    script['async'] = false;
-    script.onload = resolve;
-    script.onerror = reject;
-    script.setAttribute('src',
-        'https://imasdk.googleapis.com/js/sdkloader/ima3_dai.js');
-    document.head.appendChild(script);
-  });
-}
-
-async function logSupport() {
+async function checkSupport() {
   try {
-    const support = await shaka.Player.probeSupport();
+    const startMs = Date.now();
+    window.shakaSupport = await shaka.Player.probeSupport();
+    const endMs = Date.now();
     // Bypass Karma's log settings and dump this to the console.
-    window.dump('Platform support:' + JSON.stringify(support, null, 2));
-    window['shakaSupport'] = support;
+    window.dump('Platform support: ' + JSON.stringify(shakaSupport, null, 2));
+    window.dump(`Platform support check took ${endMs - startMs} ms.`);
     // eslint-disable-next-line no-restricted-syntax
   } catch (error) {
-    console.error('Support check failed at boot!', error);
+    window.dump('Support check failed at boot: ' + error);
   }
 }
 
@@ -477,15 +457,12 @@ async function setupTestEnvironment() {
   disableScrollbars();
   workAroundLegacyEdgePromiseIssues();
 
-  await loadImaScript();
-  await loadDaiScript();
-
   // The spec filter callback occurs before calls to beforeAll, so we need to
   // install polyfills here to ensure that browser support is correctly
   // detected.
   shaka.polyfill.installAll();
 
-  await logSupport();
+  await checkSupport();
 
   configureJasmineEnvironment();
 }
@@ -553,7 +530,7 @@ window.__karma__.start = async () => {
 
     // eslint-disable-next-line no-restricted-syntax
   } catch (error) {
-    console.error('Error during setup:', error);
+    window.dump('Error during setup: ' + error);
     window.__karma__.error(error);
     return;
   }

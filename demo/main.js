@@ -395,21 +395,6 @@ shakaDemo.Main = class {
     const ui = video['ui'];
     this.player_ = ui.getControls().getPlayer();
 
-    // Change the poster by the APIC ID3 if the stream is audio only.
-    this.player_.addEventListener('metadata', (event) => {
-      if (!this.player_.isAudioOnly()) {
-        return;
-      }
-      const payload = event['payload'];
-      if (payload &&
-          payload['key'] == 'APIC' && payload['mimeType'] == '-->') {
-        const url = payload['data'];
-        if (url && url != video.poster) {
-          video.poster = url;
-        }
-      }
-    });
-
     if (!this.noInput_) {
       // Don't add the close button if in noInput mode; it doesn't make much
       // sense to stop playing a video if you can't start playing other videos.
@@ -429,8 +414,7 @@ shakaDemo.Main = class {
     // default values assigned to UI config elements as well as the decision
     // about what values to place in the URL hash.
     this.player_.configure(
-        'manifest.dash.clockSyncUri',
-        'https://shaka-player-demo.appspot.com/time.txt');
+        'manifest.dash.clockSyncUri', 'https://time.akamai.com/?ms&iso');
 
     // Get default config.
     this.defaultConfig_ = this.player_.getConfiguration();
@@ -601,7 +585,9 @@ shakaDemo.Main = class {
         asset.storedProgress = 0;
         this.dispatchEventWithName_('shaka-main-offline-progress');
         const start = Date.now();
-        const stored = await storage.store(asset.manifestUri, metadata).promise;
+        const stored = await storage.store(asset.manifestUri, metadata,
+            /* mimeType= */ null, asset.extraThumbnail,
+            asset.extraText).promise;
         const end = Date.now();
         console.log('Download time:', end - start);
         asset.storedContent = stored;
@@ -754,6 +740,9 @@ shakaDemo.Main = class {
     }
     if (asset.features.includes(shakaAssets.Feature.CONTAINERLESS)) {
       mimeTypes.push('audio/aac');
+    }
+    if (asset.features.includes(shakaAssets.Feature.DOLBY_VISION_P5)) {
+      mimeTypes.push('video/mp4; codecs="dvh1.05.01"');
     }
     if (asset.features.includes(shakaAssets.Feature.DOLBY_VISION_3D)) {
       mimeTypes.push('video/mp4; codecs="dvh1.20.01"');
@@ -981,6 +970,11 @@ shakaDemo.Main = class {
     if ('preferredAudioCodecs' in params) {
       this.configure('preferredAudioCodecs',
           params['preferredAudioCodecs'].split(','));
+    }
+
+    if ('preferredTextFormats' in params) {
+      this.configure('preferredTextFormats',
+          params['preferredTextFormats'].split(','));
     }
 
     // Add compiled/uncompiled links.
@@ -1386,18 +1380,19 @@ shakaDemo.Main = class {
         this.video_.poster = shakaDemo.Main.audioOnlyPoster_;
       }
 
-      for (const extraText of asset.extraText) {
-        if (extraText.mime) {
-          this.player_.addTextTrackAsync(extraText.uri, extraText.language,
-              extraText.kind, extraText.mime, extraText.codecs);
-        } else {
-          this.player_.addTextTrackAsync(extraText.uri, extraText.language,
-              extraText.kind);
+      if (!(asset.storedContent && asset.storedContent.offlineUri)) {
+        for (const extraText of asset.extraText) {
+          if (extraText.mime) {
+            this.player_.addTextTrackAsync(extraText.uri, extraText.language,
+                extraText.kind, extraText.mime, extraText.codecs);
+          } else {
+            this.player_.addTextTrackAsync(extraText.uri, extraText.language,
+                extraText.kind);
+          }
         }
-      }
-
-      for (const extraThumbnail of asset.extraThumbnail) {
-        this.player_.addThumbnailsTrack(extraThumbnail);
+        for (const extraThumbnail of asset.extraThumbnail) {
+          this.player_.addThumbnailsTrack(extraThumbnail);
+        }
       }
 
       for (const extraChapter of asset.extraChapter) {
@@ -1435,52 +1430,13 @@ shakaDemo.Main = class {
 
       // Set media session title, but only if the browser supports that API.
       if (navigator.mediaSession) {
+        const icon = asset.iconUri || shakaDemo.Main.logo_;
         const metadata = {
           title: asset.name,
-          artwork: [{src: asset.iconUri}],
+          artwork: [{src: icon}],
+          artist: asset.source,
         };
-        metadata.artist = asset.source;
         navigator.mediaSession.metadata = new MediaMetadata(metadata);
-
-        const addMediaSessionHandler = (type, callback) => {
-          try {
-            navigator.mediaSession.setActionHandler(type, (details) => {
-              callback(details);
-            });
-          } catch (error) {
-            console.warn(
-                `The "${type}" media session action is not supported.`);
-          }
-        };
-        const commonHandler = (details) => {
-          switch (details.action) {
-            case 'pause':
-              this.video_.pause();
-              break;
-            case 'play':
-              this.video_.play();
-              break;
-            case 'seekbackward':
-              this.video_.currentTime -= (details.seekOffset || 10);
-              break;
-            case 'seekforward':
-              this.video_.currentTime += (details.seekOffset || 10);
-              break;
-            case 'stop':
-              this.unload();
-              break;
-            case 'enterpictureinpicture':
-              this.controls_.togglePiP();
-              break;
-          }
-        };
-
-        addMediaSessionHandler('pause', commonHandler);
-        addMediaSessionHandler('play', commonHandler);
-        addMediaSessionHandler('seekbackward', commonHandler);
-        addMediaSessionHandler('seekforward', commonHandler);
-        addMediaSessionHandler('stop', commonHandler);
-        addMediaSessionHandler('enterpictureinpicture', commonHandler);
       }
 
       if (this.visualizer_ && this.visualizer_.active) {
@@ -1549,7 +1505,13 @@ shakaDemo.Main = class {
     }
     params.push('uilang=' + this.getUILocale());
 
-    for (const key of ['preferredVideoCodecs', 'preferredAudioCodecs']) {
+    const preferredArray = [
+      'preferredVideoCodecs',
+      'preferredAudioCodecs',
+      'preferredTextFormats',
+    ];
+
+    for (const key of preferredArray) {
       const array = /** @type {!Array.<string>} */(
         this.getCurrentConfigValue(key));
       if (array.length) {
@@ -1999,6 +1961,14 @@ shakaDemo.Main.mainPoster_ =
  */
 shakaDemo.Main.audioOnlyPoster_ =
     'https://shaka-player-demo.appspot.com/assets/audioOnly.gif';
+
+
+/**
+ * @private
+ * @const {string}
+ */
+shakaDemo.Main.logo_ =
+    'https://shaka-player-demo.appspot.com/demo/shaka_logo_trans.png';
 
 
 // If setup fails and the global error handler does, too, (as happened on IE

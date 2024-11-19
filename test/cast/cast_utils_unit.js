@@ -35,6 +35,7 @@ describe('CastUtils', () => {
       'getNonDefaultConfiguration',
       'addFont',
       'getFetchedPlaybackInfo',
+      'isRemotePlayback',
 
       // Test helper methods (not @export'd)
       'createDrmEngine',
@@ -227,6 +228,8 @@ describe('CastUtils', () => {
             {
               getKeySystem: () => null,
               onMetadata: () => {},
+              onEvent: () => {},
+              onManifestUpdate: () => {},
             });
         const config =
             shaka.util.PlayerConfiguration.createDefault().mediaSource;

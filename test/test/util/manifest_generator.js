@@ -93,8 +93,6 @@ shaka.test.ManifestGenerator.Manifest = class {
     this.presentationTimeline = timeline;
     /** @type {!Array.<string>} */
     this.offlineSessionIds = [];
-    /** @type {number} */
-    this.minBufferTime = 0;
     /** @type {boolean} */
     this.sequenceMode = false;
     /** @type {boolean} */
@@ -530,17 +528,25 @@ shaka.test.ManifestGenerator.Stream = class {
     }
 
     if (!isPartial) {
+      const shaka_ = manifest ? manifest.shaka_ : shaka;
+
+      /** @type {shaka.media.SegmentIndex} */
+      this.segmentIndex = shaka_.media.SegmentIndex.forSingleSegment(
+          /* startTime= */ 0, /* duration= */ 10, ['testUri']);
+
       const create =
           jasmine.createSpy('createSegmentIndex').and.callFake(() => {
+            this.segmentIndex = shaka_.media.SegmentIndex.forSingleSegment(
+                /* startTime= */ 0, /* duration= */ 10, ['testUri']);
             return Promise.resolve();
           });
-      const close =
-          jasmine.createSpy('closeSegmentIndex').and.callFake(() => {
-            return Promise.resolve();
-          });
-      const shaka_ = manifest ? manifest.shaka_ : shaka;
-      const segmentIndex = shaka_.media.SegmentIndex.forSingleSegment(
-          /* startTime= */ 0, /* duration= */ 10, ['testUri']);
+      const close = jasmine.createSpy('closeSegmentIndex').and.callFake(() => {
+        if (this.segmentIndex) {
+          this.segmentIndex.release();
+        }
+        this.segmentIndex = null;
+        return Promise.resolve();
+      });
 
       /** @type {?string} */
       this.originalId = null;
@@ -550,8 +556,6 @@ shaka.test.ManifestGenerator.Stream = class {
       this.createSegmentIndex = shaka.test.Util.spyFunc(create);
       /** @type {!function()|undefined} */
       this.closeSegmentIndex = shaka.test.Util.spyFunc(close);
-      /** @type {shaka.media.SegmentIndex} */
-      this.segmentIndex = segmentIndex;
       /** @type {string} */
       this.mimeType = defaultMimeType;
       /** @type {string} */
@@ -612,6 +616,8 @@ shaka.test.ManifestGenerator.Stream = class {
       this.external = false;
       /** @type {boolean} */
       this.fastSwitching = false;
+      /** @type {boolean} */
+      this.isAudioMuxedInVideo = false;
     }
     /** @type {!Set.<string>} */
     this.fullMimeTypes = new Set([shaka.util.MimeUtils.getFullType(

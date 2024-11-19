@@ -16,19 +16,33 @@ Candidate features for future release cycles:
  - Predict next segment in DASH SegmentTimeline
    https://github.com/shaka-project/shaka-player/issues/898
  - Smaller, more modular binary
+ - CMCD v2
 
-v5.0 - 2024 Q4
+v5.0
  - Conversion to Typescript
+
+v4.13 - 2025 Q1
+ - Time ID3, emsg, and metadata events to the presentation timeline
+   https://github.com/shaka-project/shaka-player/issues/7556
+
+=====
+
+v4.12 - 2024 Q4
+ - Performance improvements
+ - HLS - Make dummy streams for tags representing muxed audio
+   https://github.com/shaka-project/shaka-player/issues/5836
+ - Enable AirPlay in MSE
+   https://github.com/shaka-project/shaka-player/issues/5022
+ - DASH compatibility with FairPlay
 
 v4.11 - 2024 Q3
  - HLS: EXT-X-START support
+ - HLS: EXT-X-I-FRAME-STREAM-INF support
  - Basic support of VAST and VMAP without IMA (playback without tracking)
  - DASH: DVB Fonts
  - TTML: IMSC1 (CMAF) image subtitle
  - Render native cues using text displayer
    https://github.com/shaka-project/shaka-player/issues/2585
-
-=====
 
 v4.10 - 2024 Q3
  - HLS support for EXT-X-DATERANGE

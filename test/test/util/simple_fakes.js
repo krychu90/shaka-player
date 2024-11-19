@@ -188,9 +188,10 @@ shaka.test.FakeVideo = class {
     this.autoplay = false;
     this.paused = false;
     this.buffered = createFakeBuffered([]);
-    this.src = '';
     this.offsetWidth = 1000;
     this.offsetHeight = 1000;
+    /** @private {!Array<!Element>} */
+    this.children_ = [];
 
     /** @type {!jasmine.Spy} */
     this.addTextTrack =
@@ -234,6 +235,19 @@ shaka.test.FakeVideo = class {
 
     /** @type {!jasmine.Spy} */
     this.canPlayType = jasmine.createSpy('canPlayType');
+
+    /** @type {!jasmine.Spy} */
+    this.appendChild =
+      jasmine.createSpy('appendChild').and.callFake((element) => {
+        this.children_.push(element);
+      });
+
+    /** @type {!jasmine.Spy} */
+    this.getElementsByTagName =
+      jasmine.createSpy('getElementsByTagName').and.callFake((tagName) => {
+        tagName = tagName.toUpperCase();
+        return this.children_.filter((tag) => tag.tagName === tagName);
+      });
   }
 };
 
@@ -448,6 +462,10 @@ shaka.test.FakeSegmentIndex = class {
     this.release = jasmine.createSpy('release');
 
     /** @type {!jasmine.Spy} */
+    this.getNumReferences =
+        jasmine.createSpy('getNumReferences').and.returnValue(0);
+
+    /** @type {!jasmine.Spy} */
     this.find = jasmine.createSpy('find').and.returnValue(null);
 
     /** @type {!jasmine.Spy} */
@@ -482,6 +500,9 @@ shaka.test.FakeSegmentIndex = class {
     this.getIteratorForTime = jasmine.createSpy('getIteratorForTime')
         .and.callFake((time) => {
           let nextPosition = this.find(time);
+          if (nextPosition == null) {
+            nextPosition = this.getNumReferences();
+          }
 
           return {
             next: () => {
@@ -506,6 +527,8 @@ shaka.test.FakeSegmentIndex = class {
             },
 
             setReverse: () => {},
+
+            resetToLastIndependent: () => {},
           };
         });
   }

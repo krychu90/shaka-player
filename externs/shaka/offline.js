@@ -142,7 +142,8 @@ shaka.extern.ManifestDB;
  *   closedCaptions: Map.<string, string>,
  *   tilesLayout: (string|undefined),
  *   external: boolean,
- *   fastSwitching: boolean
+ *   fastSwitching: boolean,
+ *   isAudioMuxedInVideo: boolean
  * }}
  *
  * @property {number} id
@@ -218,6 +219,8 @@ shaka.extern.ManifestDB;
  *   Eg: external text tracks.
  * @property {boolean} fastSwitching
  *   Indicate if the stream should be used for fast switching.
+ * @property {boolean} isAudioMuxedInVideo
+ *   Indicate if the audio of this stream is muxed in the video of other stream.
  */
 shaka.extern.StreamDB;
 
@@ -235,7 +238,8 @@ shaka.extern.StreamDB;
  *   pendingInitSegmentRefId: (string|undefined),
  *   dataKey: number,
  *   mimeType: ?string,
- *   codecs: ?string
+ *   codecs: ?string,
+ *   thumbnailSprite: ?shaka.extern.ThumbnailSprite
  * }}
  *
  * @property {?number} initSegmentKey
@@ -272,6 +276,8 @@ shaka.extern.StreamDB;
  *   The mimeType of the segment.
  * @property {?string} codecs
  *   The codecs of the segment.
+ * @property {?shaka.extern.ThumbnailSprite} thumbnailSprite
+ *   The segment's thumbnail sprite.
  */
 shaka.extern.SegmentDB;
 

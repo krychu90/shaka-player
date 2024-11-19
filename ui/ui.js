@@ -194,7 +194,6 @@ shaka.ui.Overlay = class {
         'playback_rate',
         'recenter_vr',
         'toggle_stereoscopic',
-        'save_video_frame',
       ],
       statisticsList: [
         'videoCodecs',
@@ -271,11 +270,13 @@ shaka.ui.Overlay = class {
       fullScreenElement: this.videoContainer_,
       preferDocumentPictureInPicture: true,
       showAudioChannelCountVariants: true,
-      seekOnTaps: true,
+      seekOnTaps: navigator.maxTouchPoints > 0,
       tapSeekDistance: 10,
       refreshTickInSeconds: 0.125,
       displayInVrMode: false,
       defaultVrProjectionMode: 'equirectangular',
+      setupMediaSession: true,
+      preferVideoFullScreenInVisionOS: false,
     };
 
     // eslint-disable-next-line no-restricted-syntax
@@ -293,6 +294,9 @@ shaka.ui.Overlay = class {
       config.controlPanelElements = config.controlPanelElements.filter(
           (name) => name != 'play_pause' && name != 'volume');
     }
+
+    // Set this button here to push it at the end.
+    config.overflowMenuButtons.push('save_video_frame');
 
     return config;
   }
@@ -487,24 +491,28 @@ shaka.ui.Overlay = class {
     //    <source src='foo.m2u8'/>
     //  </video>
     // It should not be specified on both.
+    const urls = [];
     const src = video.getAttribute('src');
     if (src) {
-      const sourceElem = document.createElement('source');
-      sourceElem.setAttribute('src', src);
-      video.appendChild(sourceElem);
+      urls.push(src);
       video.removeAttribute('src');
     }
 
-    for (const elem of video.querySelectorAll('source')) {
+    for (const source of video.getElementsByTagName('source')) {
+      urls.push(/** @type {!HTMLSourceElement} */ (source).src);
+      video.removeChild(source);
+    }
+
+    await player.attach(shaka.util.Dom.asHTMLMediaElement(video));
+
+    for (const url of urls) {
       try { // eslint-disable-next-line no-await-in-loop
-        await ui.getControls().getPlayer().load(elem.getAttribute('src'));
+        await ui.getControls().getPlayer().load(url);
         break;
       } catch (e) {
         shaka.log.error('Error auto-loading asset', e);
       }
     }
-
-    await player.attach(shaka.util.Dom.asHTMLMediaElement(video));
   }
 
 

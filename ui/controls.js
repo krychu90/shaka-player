@@ -29,6 +29,7 @@ goog.require('shaka.util.EventManager');
 goog.require('shaka.util.FakeEvent');
 goog.require('shaka.util.FakeEventTarget');
 goog.require('shaka.util.IDestroyable');
+goog.require('shaka.util.Platform');
 goog.require('shaka.util.Timer');
 
 goog.requireType('shaka.Player');
@@ -181,6 +182,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     // Configure and create the layout of the controls
     this.configure(this.config_);
     this.addEventListeners_();
+    this.setupMediaSession_();
 
     /**
      * The pressed keys set is used to record which keys are currently pressed
@@ -202,6 +204,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
         shaka.ui.Localization.LOCALE_CHANGED, (e) => {
           const locale = e['locales'][0];
           this.adManager_.setLocale(locale);
+          this.videoContainer_.setAttribute('lang', locale);
         });
 
     this.adManager_.initInterstitial(
@@ -262,6 +265,16 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
       this.castProxy_ = null;
     }
 
+    if (this.spinnerContainer_) {
+      this.videoContainer_.removeChild(this.spinnerContainer_);
+      this.spinnerContainer_ = null;
+    }
+
+    if (this.clientAdContainer_) {
+      this.videoContainer_.removeChild(this.clientAdContainer_);
+      this.clientAdContainer_ = null;
+    }
+
     if (this.localPlayer_) {
       await this.localPlayer_.destroy();
       this.localPlayer_ = null;
@@ -273,6 +286,8 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
     this.localization_ = null;
     this.pressedKeys_.clear();
+
+    this.removeMediaSession_();
 
     // FakeEventTarget implements IReleasable
     super.release();
@@ -521,6 +536,8 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
    * @export
    */
   getClientSideAdContainer() {
+    goog.asserts.assert(
+        this.clientAdContainer_, 'No client ad container after destruction!');
     return this.clientAdContainer_;
   }
 
@@ -589,15 +606,37 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
   /**
    * @return {boolean}
+   * @private
+   */
+  shouldUseDocumentFullscreen_() {
+    if (!document.fullscreenEnabled) {
+      return false;
+    }
+    // When the preferVideoFullScreenInVisionOS configuration value applies,
+    // we avoid using document fullscreen, even if it is available.
+    const video = /** @type {HTMLVideoElement} */(this.localVideo_);
+    if (video.webkitSupportsFullscreen) {
+      if (this.config_.preferVideoFullScreenInVisionOS &&
+          shaka.util.Platform.isVisionOS()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * @return {boolean}
    * @export
    */
   isFullScreenSupported() {
-    if (document.fullscreenEnabled) {
+    if (this.shouldUseDocumentFullscreen_()) {
       return true;
     }
-    const video = /** @type {HTMLVideoElement} */(this.localVideo_);
-    if (video.webkitSupportsFullscreen) {
-      return true;
+    if (!this.ad_ || !this.ad_.isUsingAnotherMediaElement()) {
+      const video = /** @type {HTMLVideoElement} */(this.localVideo_);
+      if (video.webkitSupportsFullscreen) {
+        return true;
+      }
     }
     return false;
   }
@@ -607,7 +646,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
    * @export
    */
   isFullScreenEnabled() {
-    if (document.fullscreenEnabled) {
+    if (this.shouldUseDocumentFullscreen_()) {
       return !!document.fullscreenElement;
     }
     const video = /** @type {HTMLVideoElement} */(this.localVideo_);
@@ -620,7 +659,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
   /** @private */
   async enterFullScreen_() {
     try {
-      if (document.fullscreenEnabled) {
+      if (this.shouldUseDocumentFullscreen_()) {
         if (document.pictureInPictureElement) {
           await document.exitPictureInPicture();
         }
@@ -651,7 +690,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
   /** @private */
   async exitFullScreen_() {
-    if (document.fullscreenEnabled) {
+    if (this.shouldUseDocumentFullscreen_()) {
       if (screen.orientation) {
         screen.orientation.unlock();
       }
@@ -977,7 +1016,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
 
   /** @private */
   addBufferingSpinner_() {
-    /** @private {!HTMLElement} */
+    /** @private {HTMLElement} */
     this.spinnerContainer_ = shaka.util.Dom.createHTMLElement('div');
     this.spinnerContainer_.classList.add('shaka-spinner-container');
     this.videoContainer_.appendChild(this.spinnerContainer_);
@@ -1136,7 +1175,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
    * @private
    */
   addClientAdContainer_() {
-    /** @private {!HTMLElement} */
+    /** @private {HTMLElement} */
     this.clientAdContainer_ = shaka.util.Dom.createHTMLElement('div');
     this.clientAdContainer_.classList.add('shaka-client-side-ad-container');
     shaka.ui.Utils.setDisplay(this.clientAdContainer_, false);
@@ -1219,12 +1258,14 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
         this.adManager_, shaka.ads.Utils.AD_STARTED, (e) => {
           this.ad_ = (/** @type {!Object} */ (e))['ad'];
           this.showAdUI();
+          this.onBufferingStateChange_();
         });
 
     this.eventManager_.listen(
         this.adManager_, shaka.ads.Utils.AD_STOPPED, () => {
           this.ad_ = null;
           this.hideAdUI();
+          this.onBufferingStateChange_();
         });
 
     if (screen.orientation) {
@@ -1232,6 +1273,171 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
         await this.onScreenRotation_();
       });
     }
+  }
+
+
+  /**
+   * @private
+   */
+  setupMediaSession_() {
+    if (!this.config_.setupMediaSession || !navigator.mediaSession) {
+      return;
+    }
+    const addMediaSessionHandler = (type, callback) => {
+      try {
+        navigator.mediaSession.setActionHandler(type, (details) => {
+          callback(details);
+        });
+      } catch (error) {
+        shaka.log.debug(
+            `The "${type}" media session action is not supported.`);
+      }
+    };
+    const updatePositionState = () => {
+      const seekRange = this.player_.seekRange();
+      let duration = seekRange.end - seekRange.start;
+      const position = parseFloat(
+          (this.video_.currentTime - seekRange.start).toFixed(2));
+      if (this.player_.isLive() && Math.abs(duration - position) < 1) {
+        // Positive infinity indicates media without a defined end, such as a
+        // live stream.
+        duration = Infinity;
+      }
+      try {
+        if ((this.ad_ && this.ad_.isLinear())) {
+          navigator.mediaSession.setPositionState();
+        } else {
+          navigator.mediaSession.setPositionState({
+            duration: Math.max(0, duration),
+            playbackRate: this.video_.playbackRate,
+            position: Math.max(0, position),
+          });
+        }
+      } catch (error) {
+        shaka.log.v2(
+            'setPositionState in media session is not supported.');
+      }
+    };
+    const commonHandler = (details) => {
+      const keyboardSeekDistance = this.config_.keyboardSeekDistance;
+      const seekRange = this.player_.seekRange();
+      switch (details.action) {
+        case 'pause':
+          this.onPlayPauseClick_();
+          break;
+        case 'play':
+          this.onPlayPauseClick_();
+          break;
+        case 'seekbackward':
+          if (!this.ad_ || !this.ad_.isLinear()) {
+            this.seek_(this.seekBar_.getValue() -
+                (details.seekOffset || keyboardSeekDistance));
+          }
+          break;
+        case 'seekforward':
+          if (!this.ad_ || !this.ad_.isLinear()) {
+            this.seek_(this.seekBar_.getValue() +
+                (details.seekOffset || keyboardSeekDistance));
+          }
+          break;
+        case 'seekto':
+          if (!this.ad_ || !this.ad_.isLinear()) {
+            this.seek_(seekRange.start + details.seekTime);
+          }
+          break;
+        case 'stop':
+          this.player_.unload();
+          break;
+        case 'enterpictureinpicture':
+          if (!this.ad_ || !this.ad_.isLinear()) {
+            this.togglePiP();
+          }
+          break;
+      }
+    };
+
+    addMediaSessionHandler('pause', commonHandler);
+    addMediaSessionHandler('play', commonHandler);
+    addMediaSessionHandler('seekbackward', commonHandler);
+    addMediaSessionHandler('seekforward', commonHandler);
+    addMediaSessionHandler('seekto', commonHandler);
+    addMediaSessionHandler('stop', commonHandler);
+    if ('documentPictureInPicture' in window ||
+        document.pictureInPictureEnabled) {
+      addMediaSessionHandler('enterpictureinpicture', commonHandler);
+    }
+
+    this.eventManager_.listen(this.video_, 'timeupdate', () => {
+      updatePositionState();
+    });
+
+    this.eventManager_.listen(this.player_, 'metadata', (event) => {
+      const payload = event['payload'];
+      if (!payload) {
+        return;
+      }
+      let title;
+      if (payload['key'] == 'TIT2' && payload['data']) {
+        title = payload['data'];
+      }
+      let imageUrl;
+      if (payload['key'] == 'APIC' && payload['mimeType'] == '-->') {
+        imageUrl = payload['data'];
+      }
+      if (title) {
+        let metadata = {
+          title: title,
+          artwork: [],
+        };
+        if (navigator.mediaSession.metadata) {
+          metadata = navigator.mediaSession.metadata;
+          metadata.title = title;
+        }
+        navigator.mediaSession.metadata = new MediaMetadata(metadata);
+      }
+      if (imageUrl) {
+        const video = /** @type {HTMLVideoElement} */ (this.localVideo_);
+        if (imageUrl != video.poster) {
+          video.poster = imageUrl;
+        }
+        let metadata = {
+          title: '',
+          artwork: [{src: imageUrl}],
+        };
+        if (navigator.mediaSession.metadata) {
+          metadata = navigator.mediaSession.metadata;
+          metadata.artwork = [{src: imageUrl}];
+        }
+        navigator.mediaSession.metadata = new MediaMetadata(metadata);
+      }
+    });
+  }
+
+
+  /**
+   * @private
+   */
+  removeMediaSession_() {
+    if (!this.config_.setupMediaSession || !navigator.mediaSession) {
+      return;
+    }
+    try {
+      navigator.mediaSession.setPositionState();
+    } catch (error) {}
+
+    const disableMediaSessionHandler = (type) => {
+      try {
+        navigator.mediaSession.setActionHandler(type, null);
+      } catch (error) {}
+    };
+
+    disableMediaSessionHandler('pause');
+    disableMediaSessionHandler('play');
+    disableMediaSessionHandler('seekbackward');
+    disableMediaSessionHandler('seekforward');
+    disableMediaSessionHandler('seekto');
+    disableMediaSessionHandler('stop');
+    disableMediaSessionHandler('enterpictureinpicture');
   }
 
 
@@ -1292,7 +1498,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     }
 
     // Use the cursor specified in the CSS file.
-    this.videoContainer_.style.cursor = '';
+    this.videoContainer_.classList.remove('no-cursor');
 
     this.recentMouseMovement_ = true;
 
@@ -1345,7 +1551,7 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
    */
   onMouseStill_() {
     // Hide the cursor.
-    this.videoContainer_.style.cursor = 'none';
+    this.videoContainer_.classList.add('no-cursor');
     this.recentMouseMovement_ = false;
     this.computeOpacity();
   }
@@ -1570,6 +1776,11 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
    */
   onBufferingStateChange_() {
     if (!this.enabled_) {
+      return;
+    }
+
+    if (this.ad_ && this.ad_.isClientRendering() && this.ad_.isLinear()) {
+      shaka.ui.Utils.setDisplay(this.spinnerContainer_, false);
       return;
     }
 

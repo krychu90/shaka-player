@@ -17,7 +17,6 @@
  *   textStreams: !Array.<shaka.extern.Stream>,
  *   imageStreams: !Array.<shaka.extern.Stream>,
  *   offlineSessionIds: !Array.<string>,
- *   minBufferTime: number,
  *   sequenceMode: boolean,
  *   ignoreManifestTimestampsInSegmentsMode: boolean,
  *   type: string,
@@ -76,11 +75,6 @@
  * @property {!Array.<string>} offlineSessionIds
  *   <i>Defaults to [].</i> <br>
  *   An array of EME sessions to load for offline playback.
- * @property {number} minBufferTime
- *   <i>Defaults to 0.</i> <br>
- *   The minimum number of seconds of content that must be buffered before
- *   playback can begin.  Can be overridden by a higher value from the Player
- *   configuration.
  * @property {boolean} sequenceMode
  *   If true, we will append the media segments using sequence mode; that is to
  *   say, ignoring any timestamps inside the media files.
@@ -387,7 +381,8 @@ shaka.extern.SegmentIndex = class {
  *   mssPrivateData: (shaka.extern.MssPrivateData|undefined),
  *   external: boolean,
  *   fastSwitching: boolean,
- *   fullMimeTypes: !Set.<string>
+ *   fullMimeTypes: !Set.<string>,
+ *   isAudioMuxedInVideo: boolean
  * }}
  *
  * @description
@@ -534,6 +529,8 @@ shaka.extern.SegmentIndex = class {
  *   represents the types used in each period of the original manifest.
  *   Meant for being used by compatibility checking, such as with
  *   MediaSource.isTypeSupported.
+ * @property {boolean} isAudioMuxedInVideo
+ *   Indicate if the audio of this stream is muxed in the video of other stream.
  *
  * @exportDoc
  */
@@ -562,3 +559,25 @@ shaka.extern.Stream;
  * @exportDoc
  */
 shaka.extern.MssPrivateData;
+
+
+/**
+ * @typedef {{
+ *   height: number,
+ *   positionX: number,
+ *   positionY: number,
+ *   width: number
+ * }}
+ *
+ * @property {number} height
+ *    The thumbnail height in px.
+ * @property {number} positionX
+ *    The thumbnail left position in px.
+ * @property {number} positionY
+ *    The thumbnail top position in px.
+ * @property {number} width
+ *    The thumbnail width in px.
+ *
+ * @exportDoc
+ */
+shaka.extern.ThumbnailSprite;

@@ -10,6 +10,10 @@ describe('tXml', () => {
 
   const TXml = shaka.util.TXml;
 
+  beforeAll(() => {
+    TXml.setKnownNameSpace('urn:scte:scte35:2014:xml+bin', 'scte35');
+  });
+
   describe('findChild', () => {
     it('finds a child node', () => {
       const xmlString = [
@@ -514,5 +518,68 @@ describe('tXml', () => {
       {name: 'S', id: null, position: null,
         t: null, n: 42, attribute: null},
     ]);
+  });
+
+  it('txmlNodeToDomElement', () => {
+    const node = {
+      tagName: 'Event',
+      parent: null,
+      attributes: {
+        'presentationTime': '0',
+      },
+      children: [
+        {
+          tagName: 'scte35:Signal',
+          parent: null,
+          attributes: {},
+          children: [],
+        },
+      ],
+    };
+    node.children[0].parent = node;
+
+    const element = TXml.txmlNodeToDomElement(node);
+    expect(element.tagName).toBe('Event');
+    expect(element.getAttribute('presentationTime')).toBe('0');
+    const signal = element.firstElementChild;
+    expect(signal.tagName).toBe('scte35:Signal');
+  });
+
+  it('cloneNode', () => {
+    expect(TXml.cloneNode(null)).toBe(null);
+    const root = {
+      tagName: 'Parent',
+      attributes: {},
+      children: [],
+      parent: null,
+    };
+    const node = {
+      tagName: 'Test',
+      attributes: {
+        'attr1': 'val1',
+        'attr2': 'val2',
+      },
+      children: ['string_child'],
+      parent: root,
+    };
+    const child = {
+      tagName: 'child',
+      attributes: {},
+      children: [],
+      parent: node,
+    };
+    root.children.push(node);
+    node.children.push(child);
+
+    const clone = TXml.cloneNode(node);
+    expect(clone).not.toBe(node);
+    expect(clone.tagName).toBe(node.tagName);
+    expect(clone.attributes).not.toBe(node.attributes);
+    expect(clone.attributes).toEqual(node.attributes);
+    expect(clone.parent).toBe(null);
+    expect(clone.children[0]).toBe('string_child');
+    expect(clone.children[1]).not.toBe(child);
+    expect(clone.children[1].tagName).toBe(child.tagName);
+    expect(clone.children[1].parent).toBe(clone);
   });
 });

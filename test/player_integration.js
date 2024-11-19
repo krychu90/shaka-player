@@ -82,7 +82,8 @@ describe('Player', () => {
       // Play the stream.
       await player.load('/base/test/test/assets/3675/dash_0.mpd');
       await video.play();
-
+      const seekRangeForStart = player.seekRange();
+      const start = seekRangeForStart.start;
       // Wait for the stream to be over.
       eventManager.listen(player, 'error', Util.spyFunc(onErrorSpy));
       /** @type {shaka.test.Waiter} */
@@ -97,7 +98,48 @@ describe('Player', () => {
 
       // Check that the final seek range is as expected.
       const seekRange = player.seekRange();
-      expect(seekRange.end).toBeCloseTo(14);
+      expect(seekRange.end).toBeCloseTo(24);
+      expect(seekRange.start).toBeCloseTo(start);
+    });
+  });
+  describe('Live to VOD', () => {
+    it('playback transition when current time is in the past', async () => {
+      const netEngine = player.getNetworkingEngine();
+      const startTime = Date.now();
+      netEngine.registerRequestFilter((type, request) => {
+        if (type != shaka.net.NetworkingEngine.RequestType.MANIFEST) {
+          return;
+        }
+        // Simulate a live stream by providing different manifests over time.
+        const time = (Date.now() - startTime) / 1000;
+        const manifestNumber = Math.min(5, Math.floor(0.5 + time / 2));
+        request.uris = [
+          '/base/test/test/assets/7401/dash_' + manifestNumber + '.mpd',
+        ];
+        console.log('getting manifest', request.uris);
+      });
+      player.configure('streaming.bufferBehind', 1);
+      player.configure('streaming.evictionGoal', 1);
+      // Play the stream .
+      await player.load('/base/test/test/assets/7401/dash_0.mpd', 1020);
+      await video.play();
+      video.pause();
+      // Wait for the stream to be over.
+      eventManager.listen(player, 'error', Util.spyFunc(onErrorSpy));
+      /** @type {shaka.test.Waiter} */
+      const waiter = new shaka.test.Waiter(eventManager)
+          .setPlayer(player)
+          .timeoutAfter(40)
+          .failOnTimeout(true);
+      // wait for Dynamic to static
+      await waiter.waitUntilVodTransition(video);
+      expect(player.isLive()).toBe(false);
+      // set the playback to 1020 in middle of the second period
+      video.currentTime = 1020;
+      await video.play();
+      await waiter.waitForEnd(video);
+      // The stream should have transitioned to VOD by now.
+      expect(player.isLive()).toBe(false);
     });
   });
 
@@ -121,6 +163,9 @@ describe('Player', () => {
     // Regression test for:
     // https://github.com/shaka-project/shaka-player/issues/4850
     it('does not leave any lingering timers', async () => {
+      // First destroy player instance created in standard routine, so
+      // media element is not attached to it.
+      await player.destroy();
       shaka.util.Timer.activeTimers.clear();
 
       // Unlike the other tests in this file, this uses an uncompiled build of
@@ -1197,10 +1242,9 @@ describe('Player', () => {
   /** Regression test for Issue #2741 */
   describe('unloading', () => {
     drmIt('unloads properly after DRM error', async () => {
-      const drmSupport = await shaka.media.DrmEngine.probeSupport();
-      if (!drmSupport['com.widevine.alpha'] &&
-          !drmSupport['com.microsoft.playready'] &&
-          !drmSupport['com.chromecast.playready']) {
+      if (!shakaSupport.drm['com.widevine.alpha'] &&
+          !shakaSupport.drm['com.microsoft.playready'] &&
+          !shakaSupport.drm['com.chromecast.playready']) {
         pending('Skipping DRM error test, only runs on Widevine and PlayReady');
       }
 
@@ -1341,6 +1385,8 @@ describe('Player', () => {
 
           expect(player.getImageTracks()).toEqual([newTrack]);
 
+          expect(newTrack.mimeType).toBe('image/jpeg');
+
           const thumbnail1 = await player.getThumbnails(newTrack.id, 0);
           expect(thumbnail1.startTime).toBe(0);
           expect(thumbnail1.duration).toBe(5);
@@ -1378,6 +1424,8 @@ describe('Player', () => {
               await player.addThumbnailsTrack(absoluteUri.toString());
 
           expect(player.getImageTracks()).toEqual([newTrack]);
+
+          expect(newTrack.mimeType).toBe('image/jpeg');
 
           const thumbnail1 = await player.getThumbnails(newTrack.id, 0);
           expect(thumbnail1.startTime).toBe(0);

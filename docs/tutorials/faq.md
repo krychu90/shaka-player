@@ -191,19 +191,6 @@ the ad blocker in compiled mode as well.
 
 <hr>
 
-**Q:** Why does some DASH content take a long time to start playback?
-
-**A:** Shaka Player honors the `minBufferTime` field in DASH.  If this field is
-set to a large value, Shaka Player will buffer that much content before
-beginning playback.  To override this behavior and ignore the `minBufferTime`
-field, we offer the following configuration:
-
-```js
-player.configure('manifest.dash.ignoreMinBufferTime', true);
-```
-
-<hr>
-
 **Q:** My HLS stream is failing on Chrome, with a chunk demuxer append failed
 error.
 
@@ -256,6 +243,15 @@ servers. After approval, the upload process then usually takes several hours.
 Therefore it is not unusual for a day or two to pass before a new version of
 Shaka Player is hosted on Google's ajax.googleapis.com website. We ask for your
 patience in these matters.
+
+<hr>
+
+**Q:** My HLS streams video/audio are out of sync.
+
+**A:** This error may be caused by your Media Playlists using #EXTINF with
+integer durations. Although the HLS spec allows it, Shaka Player requires that
+the duration must be precise with decimal-floating-point or decimal-integer
+number. If this is not your case, please open an issue so we can investigate it.
 
 
 [386]: https://github.com/shaka-project/shaka-player/issues/386#issuecomment-227898001

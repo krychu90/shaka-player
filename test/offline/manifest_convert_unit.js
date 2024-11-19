@@ -321,6 +321,7 @@ describe('ManifestConverter', () => {
       closedCaptions: null,
       external: false,
       fastSwitching: false,
+      isAudioMuxedInVideo: false,
     };
 
     return streamDB;
@@ -347,6 +348,7 @@ describe('ManifestConverter', () => {
       tilesLayout: '',
       mimeType,
       codecs,
+      thumbnailSprite: null,
     };
 
     return segment;
@@ -410,6 +412,7 @@ describe('ManifestConverter', () => {
       accessibilityPurpose: null,
       external: false,
       fastSwitching: false,
+      isAudioMuxedInVideo: false,
     };
   }
 
@@ -471,6 +474,7 @@ describe('ManifestConverter', () => {
       accessibilityPurpose: null,
       external: false,
       fastSwitching: false,
+      isAudioMuxedInVideo: false,
     };
   }
 
@@ -531,6 +535,7 @@ describe('ManifestConverter', () => {
       accessibilityPurpose: null,
       external: false,
       fastSwitching: false,
+      isAudioMuxedInVideo: false,
     };
   }
 
@@ -587,6 +592,7 @@ describe('ManifestConverter', () => {
       fastSwitching: streamDb.fastSwitching,
       fullMimeTypes: new Set([shaka.util.MimeUtils.getFullType(
           streamDb.mimeType, streamDb.codecs)]),
+      isAudioMuxedInVideo: streamDb.isAudioMuxedInVideo,
     };
 
     expect(stream).toEqual(expectedStream);

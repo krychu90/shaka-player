@@ -19,6 +19,7 @@ goog.require('shaka.ui.SettingsMenu');
 goog.require('shaka.ui.Utils');
 goog.require('shaka.util.Dom');
 goog.require('shaka.util.FakeEvent');
+goog.require('shaka.util.Functional');
 goog.requireType('shaka.ui.Controls');
 
 
@@ -159,6 +160,7 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
           return false;
         }
         if (this.controls.getConfig().showAudioChannelCountVariants &&
+            track.channelsCount && selectedTrack.channelsCount &&
             track.channelsCount != selectedTrack.channelsCount) {
           return false;
         }
@@ -185,7 +187,8 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
         return tracks.findIndex((t) => t.bandwidth == track.bandwidth) == idx;
       });
     } else {
-      const audiosIds = [...new Set(tracks.map((t) => t.audioId))];
+      const audiosIds = [...new Set(tracks.map((t) => t.audioId))]
+          .filter(shaka.util.Functional.isNotNull);
       if (audiosIds.length > 1) {
         tracks = tracks.filter((track, idx) => {
           // Keep the first one with the same height and framerate or bandwidth.
@@ -335,9 +338,17 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
     if (height == 2160) {
       text = '4K';
     }
-    const frameRate = track.frameRate;
-    if (frameRate && (frameRate >= 50 || frameRate <= 20)) {
-      text += Math.round(track.frameRate);
+    const frameRates = new Set();
+    for (const item of tracks) {
+      if (item.frameRate) {
+        frameRates.add(Math.round(item.frameRate));
+      }
+    }
+    if (frameRates.size > 1) {
+      const frameRate = track.frameRate;
+      if (frameRate && (frameRate >= 50 || frameRate <= 20)) {
+        text += Math.round(track.frameRate);
+      }
     }
     if (track.hdr == 'PQ' || track.hdr == 'HLG') {
       text += ' (HDR)';

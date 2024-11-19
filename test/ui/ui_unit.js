@@ -70,6 +70,67 @@ describe('UI', () => {
       });
     });
 
+    describe('set up with one container and src=', () => {
+      /** @type {!HTMLElement} */
+      let container;
+      /** @type {!HTMLVideoElement} */
+      let video;
+
+      beforeEach(async () => {
+        container =
+          /** @type {!HTMLElement} */ (document.createElement('div'));
+        document.body.appendChild(container);
+
+        video = shaka.test.UiUtils.createVideoElement();
+        video.src = 'test:sintel_multi_lingual_multi_res';
+        container.appendChild(video);
+
+        await UiUtils.createUIThroughDOMAutoSetup(
+            [container], [video]);
+      });
+
+      it('has loaded the video', () => {
+        // The above promise for DOMAutoSetup() doesn't guarantee that load()
+        // is complete, only that we started it.  So don't check duration or
+        // other things that require load() to complete.
+        const overlay = /** @type {!shaka.ui.Overlay} */(video['ui']);
+        const player = overlay.getControls().getPlayer();
+        expect(player.getAssetUri()).toBeTruthy();
+      });
+    });
+
+    describe('set up with one container and source element', () => {
+      /** @type {!HTMLElement} */
+      let container;
+      /** @type {!HTMLVideoElement} */
+      let video;
+
+      beforeEach(async () => {
+        container =
+          /** @type {!HTMLElement} */ (document.createElement('div'));
+        document.body.appendChild(container);
+
+        video = shaka.test.UiUtils.createVideoElement();
+        container.appendChild(video);
+
+        const sourceElement = shaka.util.Dom.createSourceElement(
+            'test:sintel_multi_lingual_multi_res');
+        video.appendChild(sourceElement);
+
+        await UiUtils.createUIThroughDOMAutoSetup(
+            [container], [video]);
+      });
+
+      it('has loaded the video', () => {
+        // The above promise for DOMAutoSetup() doesn't guarantee that load()
+        // is complete, only that we started it.  So don't check duration or
+        // other things that require load() to complete.
+        const overlay = /** @type {!shaka.ui.Overlay} */(video['ui']);
+        const player = overlay.getControls().getPlayer();
+        expect(player.getAssetUri()).toBeTruthy();
+      });
+    });
+
     describe('set up with several containers', () => {
       /** @type {!HTMLElement} */
       let container1;
@@ -792,7 +853,8 @@ describe('UI', () => {
       it('displays all the available statistics', () => {
         const skippedStats = ['stateHistory', 'switchHistory'];
         const nodes = statisticsContainer.childNodes;
-        let nodeIndex = 0;
+        // First index is close button.
+        let nodeIndex = 1;
 
         for (const statistic in new shaka.util.Stats().getBlob()) {
           if (!skippedStats.includes(statistic)) {

@@ -199,6 +199,7 @@ shakaDemo.Config = class {
         .addBoolInput_('Disable Video', 'manifest.disableVideo')
         .addBoolInput_('Disable Text', 'manifest.disableText')
         .addBoolInput_('Disable Thumbnails', 'manifest.disableThumbnails')
+        .addBoolInput_('Disable I-Frames', 'manifest.disableIFrames')
         .addBoolInput_('Enable segment-relative VTT Timing',
             'manifest.segmentRelativeVttTiming')
         .addBoolInput_('Continue loading when paused',
@@ -225,7 +226,6 @@ shakaDemo.Config = class {
         .addBoolInput_('Allow DASH multi type variants',
             'manifest.dash.multiTypeVariantsAllowed')
         .addTextInput_('Clock Sync URI', 'manifest.dash.clockSyncUri')
-        .addBoolInput_('Enable Audio Groups', 'manifest.dash.enableAudioGroups')
         .addBoolInput_('Ignore Min Buffer Time',
             'manifest.dash.ignoreMinBufferTime')
         .addNumberInput_('Initial Segment Limit',
@@ -267,7 +267,9 @@ shakaDemo.Config = class {
         .addBoolInput_('Disable closed caption detection',
             'manifest.hls.disableClosedCaptionsDetection')
         .addBoolInput_('Allow LL-HLS byterange optimization',
-            'manifest.hls.allowLowLatencyByteRangeOptimization');
+            'manifest.hls.allowLowLatencyByteRangeOptimization')
+        .addNumberInput_('override the Update time of the manifest',
+            'manifest.hls.updatePeriod');
   }
 
   /** @private */
@@ -375,7 +377,11 @@ shakaDemo.Config = class {
         .addBoolInput_('Skip play detection',
             'ads.skipPlayDetection')
         .addBoolInput_('Supports multiple media elements',
-            'ads.supportsMultipleMediaElements');
+            'ads.supportsMultipleMediaElements')
+        .addBoolInput_('Ignore HLS Interstitial',
+            'ads.disableHLSInterstitial')
+        .addBoolInput_('Ignore DASH Interstitial',
+            'ads.disableDASHInterstitial');
   }
 
   /**
@@ -444,6 +450,9 @@ shakaDemo.Config = class {
         .addNumberInput_('Gap detection threshold',
             'streaming.gapDetectionThreshold',
             /* canBeDecimal= */ true)
+        .addNumberInput_('Gap padding',
+            'streaming.gapPadding',
+            /* canBeDecimal= */ true)
         .addNumberInput_('Gap Jump Timer Time', 'streaming.gapJumpTimerTime',
             /* canBeDecimal= */ true)
         .addNumberInput_('Buffering Goal', 'streaming.bufferingGoal',
@@ -457,6 +466,8 @@ shakaDemo.Config = class {
         .addNumberInput_('Eviction Goal', 'streaming.evictionGoal',
             /* canBeDecimal= */ true)
         .addNumberInput_('Safe Seek Offset', 'streaming.safeSeekOffset',
+            /* canBeDecimal= */ true)
+        .addNumberInput_('Safe Seek Offset', 'streaming.safeSeekEndOffset',
             /* canBeDecimal= */ true)
         .addNumberInput_('Stall Threshold', 'streaming.stallThreshold',
             /* canBeDecimal= */ true)
@@ -476,14 +487,10 @@ shakaDemo.Config = class {
         .addNumberInput_('Update interval seconds',
             'streaming.updateIntervalSeconds',
             /* canBeDecimal= */ true)
-        .addBoolInput_('Dispatch all emsg boxes',
-            'streaming.dispatchAllEmsgBoxes')
         .addBoolInput_('Observe media quality changes',
             'streaming.observeQualityChanges')
         .addNumberInput_('Max Variant Disabled Time',
             'streaming.maxDisabledTime')
-        .addBoolInput_('Parse PRFT box',
-            'streaming.parsePrftBox')
         .addNumberInput_('Segment Prefetch Limit',
             'streaming.segmentPrefetchLimit',
             /* canBeDecimal= */ false,
@@ -636,7 +643,9 @@ shakaDemo.Config = class {
             'Codec Switching Strategy',
             'mediaSource.codecSwitchingStrategy',
             strategyOptions,
-            strategyOptionsNames);
+            strategyOptionsNames)
+        .addBoolInput_('Dispatch all emsg boxes',
+            'mediaSource.dispatchAllEmsgBoxes');
   }
 
   /** @private */
@@ -682,7 +691,9 @@ shakaDemo.Config = class {
         .addArrayStringInput_('Preferred video codecs',
             'preferredVideoCodecs')
         .addArrayStringInput_('Preferred audio codecs',
-            'preferredAudioCodecs');
+            'preferredAudioCodecs')
+        .addArrayStringInput_('Preferred text formats',
+            'preferredTextFormats');
   }
 
   /** @private */

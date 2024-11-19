@@ -50,12 +50,14 @@ assignees: ''
   enough to reproduce your issue, and we **will** ask you to send a
   URI instead.  You can copy the URI of the demo app to send us the
   exact asset, licence server, and settings you have selected there.
+  Avoid geo-blocked content if at all possible, as the contributors who diagnose
+  Shaka Player issues may not be able to access it.
   If you send the URIs to email, the response time and resolution
   will be much higher.
 -->
 
 
-**What configuration are you using?  What is the output of `player.getConfiguration()`?**
+**What configuration are you using?  What is the output of `player.getNonDefaultConfiguration()`?**
 <!-- NOTE:
   You can censor URLs to keep them private, but include them in the email.  You
   can also use JSON.stringify(player.getNonDefaultConfiguration(), null, 2) to

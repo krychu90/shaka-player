@@ -37,7 +37,8 @@ describe('Demo', () => {
     it('does not have entries for invalid config options', () => {
       const exceptions = new Set()
           .add('preferredAudioCodecs')
-          .add('preferredVideoCodecs');
+          .add('preferredVideoCodecs')
+          .add('preferredTextFormats');
       // We determine whether a config option has been made or not by looking at
       // which config values have been queried (via the fake main object's
       // |getCurrentConfigValue| method).
@@ -78,6 +79,7 @@ describe('Demo', () => {
     function checkConfig(checkValueNameFn) {
       const configPrimitives = new Set(['number', 'string', 'boolean']);
       const exceptions = new Set()
+          .add('ignoreHardwareResolution')
           .add('playRangeStart')
           .add('playRangeEnd')
           .add('manifest.dash.keySystemsByURI')

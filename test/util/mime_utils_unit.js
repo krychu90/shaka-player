@@ -48,6 +48,9 @@ describe('MimeUtils', () => {
     expect(getNormalizedCodec('hvc1')).toBe('hevc');
     expect(getNormalizedCodec('hev1')).toBe('hevc');
 
+    expect(getNormalizedCodec('vvc1')).toBe('vvc');
+    expect(getNormalizedCodec('vvi1')).toBe('vvc');
+
     expect(getNormalizedCodec('dvh1.05')).toBe('dovi-hevc');
     expect(getNormalizedCodec('dvhe.05')).toBe('dovi-hevc');
 
@@ -55,6 +58,9 @@ describe('MimeUtils', () => {
     expect(getNormalizedCodec('dvav.05')).toBe('dovi-avc');
 
     expect(getNormalizedCodec('dav1.05')).toBe('dovi-av1');
+
+    expect(getNormalizedCodec('dvc1.05')).toBe('dovi-vvc');
+    expect(getNormalizedCodec('dvi1.05')).toBe('dovi-vvc');
   });
 
   it('isHlsType', () => {

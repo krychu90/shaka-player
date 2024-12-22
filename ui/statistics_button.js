@@ -169,6 +169,7 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
       'nonFatalErrorCount': parseErrors,
       'manifestPeriodCount': parsePeriods,
       'manifestGapCount': parseGaps,
+      'audioNormalization': noParse,
     };
 
     /** @private {shaka.util.Timer} */
@@ -232,7 +233,11 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
     const section = shaka.util.Dom.createHTMLElement('div');
 
     const label = shaka.util.Dom.createHTMLElement('label');
-    label.textContent = name + ':';
+    if (name === 'audioNormalization') {
+      label.textContent = 'Volume / Normalized:';
+    } else {
+      label.textContent = name + ':';
+    }
     section.appendChild(label);
 
     const value = shaka.util.Dom.createHTMLElement('span');
@@ -268,7 +273,7 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
         this.container_.appendChild(element);
         this.statisticsList_.push(name);
         shaka.ui.Utils.setDisplay(element.parentElement,
-          ['videoCodecs', 'audioCodecs'].includes(name) ?
+          ['videoCodecs', 'audioCodecs', 'audioNormalization'].includes(name) ?
             this.currentStats_[name] !== null :
             !isNaN(this.currentStats_[name]));
       } else {
@@ -285,10 +290,12 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
       const element = this.displayedElements_[name];
       element.textContent = this.parseFrom_[name](name);
       if (element && element.parentElement) {
-        shaka.ui.Utils.setDisplay(element.parentElement,
-            ['videoCodecs', 'audioCodecs'].includes(name) ?
-              this.currentStats_[name] !== null :
-              !isNaN(this.currentStats_[name]));
+        shaka.ui.Utils.setDisplay(
+            element.parentElement,
+            ['videoCodecs', 'audioCodecs', 'audioNormalization']
+                .includes(name) ? this.currentStats_[name] !== null :
+                !isNaN(this.currentStats_[name]),
+        );
       }
     }
   }
@@ -301,6 +308,10 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
       variant.video.codecs + ' (' + variant.video.mimeType + ')' : null;
     stats.audioCodecs = variant && variant.audio ?
       variant.audio.codecs + ' (' + variant.audio.mimeType + ')' : null;
+
+    stats.audioNormalization = Math.round(
+        this.video.volume / this.player.getMaxAudioVolume() * 100,
+    ) + '% / ' + Math.round(this.video.volume * 100) + '%';
 
     return stats;
   }

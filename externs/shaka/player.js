@@ -63,6 +63,7 @@ shaka.extern.StateChange;
  * @typedef {{
  *   videoCodecs: (string|null|undefined),
  *   audioCodecs: (string|null|undefined),
+ *   audioNormalization: (string|undefined),
  *   width: number,
  *   height: number,
  *   streamBandwidth: number,
@@ -2317,7 +2318,8 @@ shaka.extern.TextDisplayerConfiguration;
  *   playRangeStart: number,
  *   playRangeEnd: number,
  *   textDisplayer: shaka.extern.TextDisplayerConfiguration,
- *   textDisplayFactory: shaka.extern.TextDisplayer.Factory
+ *   textDisplayFactory: shaka.extern.TextDisplayer.Factory,
+ *   maxAudioVolume: number
  * }}
  *
  * @property {shaka.extern.AdsConfiguration} ads

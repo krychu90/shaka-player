@@ -52,6 +52,46 @@ HTMLMediaElement.prototype.webkitPresentationMode;
 
 
 /**
+ * @constructor
+ * @implements {EventTarget}
+ */
+function PictureInPictureWindow() {}
+
+
+/** @type {number} */
+PictureInPictureWindow.prototype.width;
+
+
+/** @type {number} */
+PictureInPictureWindow.prototype.height;
+
+
+/** @override */
+PictureInPictureWindow.prototype.addEventListener =
+    function(type, listener, options) {};
+
+
+/** @override */
+PictureInPictureWindow.prototype.removeEventListener =
+    function(type, listener, options) {};
+
+
+/** @override */
+PictureInPictureWindow.prototype.dispatchEvent = function(event) {};
+
+
+/**
+ * @constructor
+ * @extends {Event}
+ */
+function PictureInPictureEvent() {}
+
+
+/** @type {PictureInPictureWindow} */
+PictureInPictureEvent.prototype.pictureInPictureWindow;
+
+
+/**
  * @typedef {{
  *   width: (number|undefined),
  *   height: (number|undefined),
@@ -69,7 +109,7 @@ function DocumentPictureInPicture() {}
 
 /**
  * @param {DocumentPictureInPictureOptions} options
- * @return {!Promise.<Window>}
+ * @return {!Promise<Window>}
  */
 DocumentPictureInPicture.prototype.requestWindow = function(options) {};
 

@@ -53,8 +53,6 @@ describe('DashParser Manifest', () => {
       onEvent: shaka.test.Util.spyFunc(onEventSpy),
       onError: fail,
       isLowLatencyMode: () => false,
-      isAutoLowLatencyMode: () => false,
-      enableLowLatencyMode: () => {},
       updateDuration: () => {},
       newDrmInfo: (stream) => {},
       onManifestUpdated: () => {},
@@ -73,15 +71,15 @@ describe('DashParser Manifest', () => {
   /**
    * Makes a series of tests for the given manifest type.
    *
-   * @param {!Array.<string>} startLines
-   * @param {!Array.<string>} endLines
+   * @param {!Array<string>} startLines
+   * @param {!Array<string>} endLines
    * @param {shaka.extern.Manifest} expected
    */
   function makeTestsForEach(startLines, endLines, expected) {
     /**
      * Makes manifest text for testing.
      *
-     * @param {!Array.<string>} lines
+     * @param {!Array<string>} lines
      * @return {string}
      */
     function makeTestManifest(lines) {
@@ -661,7 +659,7 @@ describe('DashParser Manifest', () => {
     });
 
     /**
-     * @param {!Array.<string>} lines
+     * @param {!Array<string>} lines
      * @return {string}
      */
     function makeManifest(lines) {
@@ -1015,6 +1013,60 @@ describe('DashParser Manifest', () => {
     });
   });
 
+  it('parses dependencyStream tracks', async () => {
+    const manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="main" bandwidth="1" codecs="avc1.4d401f"',
+      '          bandwidth="2">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet id="2" mimeType="video/mp4">',
+      '      <Representation id="enhance" dependencyId="main"',
+      '          bandwidth="1" codecs="avc1.4d401f">',
+      '        <SegmentTemplate media="2.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    expect(manifest.variants.length).toBe(2);
+    expect(manifest.textStreams.length).toBe(0);
+
+    let variant = manifest.variants[0];
+    expect(variant.bandwidth).toBe(2);
+    let video = variant && variant.video;
+    expect(video).toEqual(jasmine.objectContaining({
+      originalId: 'main',
+      type: shaka.util.ManifestParserUtils.ContentType.VIDEO,
+      bandwidth: 2,
+    }));
+    let dependencyStream = video && video.dependencyStream;
+    expect(dependencyStream).toBeNull();
+
+    variant = manifest.variants[1];
+    expect(variant.bandwidth).toBe(3);
+    video = variant && variant.video;
+    expect(video).toEqual(jasmine.objectContaining({
+      originalId: 'main',
+      type: shaka.util.ManifestParserUtils.ContentType.VIDEO,
+      bandwidth: 2,
+    }));
+    dependencyStream = video && video.dependencyStream;
+    expect(dependencyStream).toEqual(jasmine.objectContaining({
+      originalId: 'enhance',
+      type: shaka.util.ManifestParserUtils.ContentType.VIDEO,
+      bandwidth: 1,
+      baseOriginalId: 'main',
+    }));
+  });
+
   it('parses trickmode tracks', async () => {
     const manifestText = [
       '<MPD minBufferTime="PT75S">',
@@ -1098,7 +1150,7 @@ describe('DashParser Manifest', () => {
     }));
   });
 
-  it('multiple trick-mode tracks with multiple AdaptationSet elements', async () => { // eslint-disable-line max-len
+  it('multiple trick-mode tracks with multiple AdaptationSet elements', async () => { // eslint-disable-line @stylistic/max-len
     const manifestText = [
       '<MPD minBufferTime="PT75S">',
       '  <Period id="1" duration="PT30S">',
@@ -1450,7 +1502,7 @@ describe('DashParser Manifest', () => {
   describe('AudioChannelConfiguration', () => {
     /**
      * @param {?number} expectedNumChannels The expected number of channels
-     * @param {!Object.<string, string>} schemeMap A map where the map key is
+     * @param {!Object<string, string>} schemeMap A map where the map key is
      *   the AudioChannelConfiguration's schemeIdUri attribute, and the map
      *   value is the value attribute.
      * @return {!Promise}
@@ -1867,9 +1919,9 @@ describe('DashParser Manifest', () => {
   });
 
   it('Uses 1.5 times minBufferTime as default presentation delay', async () => {
-    // When sugguestedPresentDelay should be ignored, and
-    // config.defaultpresentdelay is not set other than 0, use 1.5*minBufferTime
-    // as the presentationDelay.
+    // When suggestedPresentDelay should be ignored, and
+    // config.defaultPresentationDelay is not set other than 0,
+    // use 1.5*minBufferTime as the presentationDelay.
     const manifestText = [
       '<MPD minBufferTime="PT2S" suggestedPresentationDelay="PT25S">',
       '  <Period id="1" duration="PT30S">',
@@ -2411,7 +2463,7 @@ describe('DashParser Manifest', () => {
       '      <SegmentTemplate media="$Number$.jpg" ',
       '        duration="2" startNumber="1"/>',
       '      <Representation id="thumbnails" width="1024" height="1152">',
-      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line max-len
+      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line @stylistic/max-len
       '      </Representation>',
       '    </AdaptationSet>',
       '  </Period>',
@@ -2447,7 +2499,7 @@ describe('DashParser Manifest', () => {
       '      <SegmentTemplate media="$Number$.jpg" ',
       '        duration="2" startNumber="1"/>',
       '      <Representation id="thumbnails" width="1024" height="1152">',
-      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line max-len
+      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line @stylistic/max-len
       '      </Representation>',
       '    </AdaptationSet>',
       '  </Period>',
@@ -2487,10 +2539,10 @@ describe('DashParser Manifest', () => {
       '      <SegmentTemplate media="$Number$.jpg" ',
       '        duration="2" startNumber="1"/>',
       '      <Representation id="thumbnails" width="1024" height="1152">',
-      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line max-len
+      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="10x20"/>`, // eslint-disable-line @stylistic/max-len
       '      </Representation>',
       '      <Representation id="thumbnails" width="2048" height="1152">',
-      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="20x20"/>`, // eslint-disable-line max-len
+      `        <EssentialProperty schemeIdUri="${thumbnailScheme}" value="20x20"/>`, // eslint-disable-line @stylistic/max-len
       '      </Representation>',
       '    </AdaptationSet>',
       '  </Period>',
@@ -2617,9 +2669,9 @@ describe('DashParser Manifest', () => {
   });
 
   /**
-     * @param {!Array.<number>} periods Start time of multiple periods
-     * @return {string}
-     */
+   * @param {!Array<number>} periods Start time of multiple periods
+   * @return {string}
+   */
   function buildManifestWithPeriodStartTime(periods) {
     const mpdTemplate = [
       `<MPD type="dynamic"`,
@@ -2754,7 +2806,7 @@ describe('DashParser Manifest', () => {
     expect(manifest.nextUrl).toBe('https://nextUrl');
   });
 
-  it('parses urn:mpeg:dash:ssr:2023', async () => { // eslint-disable-line max-len
+  it('parses urn:mpeg:dash:ssr:2023', async () => { // eslint-disable-line @stylistic/max-len
     const manifestText = [
       '<MPD minBufferTime="PT75S">',
       '  <Period id="1" duration="PT30S">',
@@ -3324,7 +3376,7 @@ describe('DashParser Manifest', () => {
       '  <Period id="2" start="PT31S" duration="PT30S">',
       '    <AdaptationSet id="2" mimeType="video/mp4">',
       '      <EssentialProperty schemeIdUri="urn:dvb:dash:fontdownload:2014"',
-      '         value="1" dvb:url="htpps://foo/foo2.woff"',
+      '         value="1" dvb:url="https://foo/foo2.woff"',
       '         dvb:mimeType="application/font-woff" dvb:fontFamily="foo2"/>',
       '      <Representation id="video" bandwidth="1">',
       '        <SegmentBase indexRange="100-200" />',
@@ -3339,7 +3391,7 @@ describe('DashParser Manifest', () => {
     await parser.start('dummy://foo', playerInterface);
     expect(addFontSpy).toHaveBeenCalledTimes(2);
     expect(addFontSpy).toHaveBeenCalledWith('foo', 'dummy://foo/foo.woff');
-    expect(addFontSpy).toHaveBeenCalledWith('foo2', 'htpps://foo/foo2.woff');
+    expect(addFontSpy).toHaveBeenCalledWith('foo2', 'https://foo/foo2.woff');
   });
 
   // DASH: Annex I
@@ -3594,7 +3646,7 @@ describe('DashParser Manifest', () => {
     });
   });
 
-  it('mixing SegmentTemplate-SegmentTimeline with SegmentTemplate-numbering', async () => { // eslint-disable-line max-len
+  it('mixing SegmentTemplate-SegmentTimeline with SegmentTemplate-numbering', async () => { // eslint-disable-line @stylistic/max-len
     const manifestText = [
       '<MPD type="static">',
       '  <Period id="1" duration="PT2S">',
@@ -3627,7 +3679,7 @@ describe('DashParser Manifest', () => {
     expect(timeline.getSeekRangeEnd()).toBe(32);
   });
 
-  it('mixing SegmentTemplate-numbering with SegmentTemplate-SegmentTimeline', async () => { // eslint-disable-line max-len
+  it('mixing SegmentTemplate-numbering with SegmentTemplate-SegmentTimeline', async () => { // eslint-disable-line @stylistic/max-len
     const manifestText = [
       '<MPD type="static">',
       '  <Period id="4" duration="PT30S">',
@@ -3658,5 +3710,74 @@ describe('DashParser Manifest', () => {
     const timeline = manifest.presentationTimeline;
     expect(timeline.getSeekRangeStart()).toBe(0);
     expect(timeline.getSeekRangeEnd()).toBe(32);
+  });
+
+  it('supports scte214:supplementalCodecs', async () => {
+    const manifestText = [
+      '<MPD type="static" xmlns:scte214="urn:scte:dash:scte214-extensions">',
+      '  <Period id="0" duration="PT2S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="2" width="640" height="480"',
+      '          codecs="av01.0.04M.10.0.111.09.16.09.0"',
+      '          scte214:supplementalCodecs="dav1.10.01">',
+      '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4">',
+      '          <SegmentTimeline>',
+      '            <S t="0" d="2" />',
+      '          </SegmentTimeline>',
+      '        </SegmentTemplate>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+
+    expect(manifest.variants.length).toBe(2);
+    expect(manifest.textStreams.length).toBe(0);
+
+    const video1 = manifest.variants[0] && manifest.variants[0].video;
+    expect(video1.codecs).toBe('av01.0.04M.10.0.111.09.16.09.0');
+
+    const video2 = manifest.variants[1] && manifest.variants[1].video;
+    expect(video2.codecs).toBe('dav1.10.01');
+  });
+
+  it('ignore scte214:supplementalCodecs by config', async () => {
+    const manifestText = [
+      '<MPD type="static" xmlns:scte214="urn:scte:dash:scte214-extensions">',
+      '  <Period id="0" duration="PT2S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="2" width="640" height="480"',
+      '          codecs="av01.0.04M.10.0.111.09.16.09.0"',
+      '          scte214:supplementalCodecs="dav1.10.01">',
+      '        <SegmentTemplate startNumber="1" media="l-$Number$.mp4">',
+      '          <SegmentTimeline>',
+      '            <S t="0" d="2" />',
+      '          </SegmentTimeline>',
+      '        </SegmentTemplate>',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+
+    const config = shaka.util.PlayerConfiguration.createDefault().manifest;
+    config.ignoreSupplementalCodecs = true;
+    parser.configure(config);
+
+    /** @type {shaka.extern.Manifest} */
+    const manifest = await parser.start('dummy://foo', playerInterface);
+
+    expect(manifest.variants.length).toBe(1);
+    expect(manifest.textStreams.length).toBe(0);
+
+    const video1 = manifest.variants[0] && manifest.variants[0].video;
+    expect(video1.codecs).toBe('av01.0.04M.10.0.111.09.16.09.0');
   });
 });

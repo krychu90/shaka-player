@@ -68,7 +68,7 @@ def get_lint_files():
       get('build'))
   main_sources.remove(os.path.join(base, 'build', 'wrapper.template.js'))
   tool_sources = [
-      os.path.join(base, '.eslintrc.js'),
+      os.path.join(base, 'eslint.config.mjs'),
       os.path.join(base, 'docs', 'jsdoc-plugin.js'),
       os.path.join(base, 'karma.conf.js'),
   ]
@@ -82,7 +82,7 @@ def check_js_lint(args):
   logging.info('Linting JavaScript...')
 
   base = shakaBuildHelpers.get_source_base()
-  config_path = os.path.join(base, '.eslintrc.js')
+  config_path = os.path.join(base, 'eslint.config.mjs')
 
   linter = compiler.Linter(get_lint_files(), config_path)
   return linter.lint(fix=args.fix, force=args.force)
@@ -150,114 +150,29 @@ def check_complete(_):
     return False
   return True
 
-
 @_Check('spelling')
 def check_spelling(_):
-  """Checks that source files don't have any common misspellings."""
-  logging.info('Checking for common misspellings...')
-
-  complete_build = complete_build_files()
-  if not complete_build:
-    return False
-
   base = shakaBuildHelpers.get_source_base()
-  complete_build.update(shakaBuildHelpers.get_all_js_files('test'))
-  complete_build.update(shakaBuildHelpers.get_all_js_files('demo'))
-  complete_build.update(shakaBuildHelpers.get_all_js_files('externs'))
-  complete_build.update(shakaBuildHelpers.get_all_files(
-      os.path.join(base, 'build'), re.compile(r'.*\.(js|py)$')))
-
-  with shakaBuildHelpers.open_file(
-      os.path.join(base, 'build', 'misspellings.txt')) as f:
-    misspellings = ast.literal_eval(f.read())
-  has_error = False
-  for path in complete_build:
-    with shakaBuildHelpers.open_file(path) as f:
-      for i, line in enumerate(f):
-        for regex, replace_pattern in misspellings.items():
-          for match in re.finditer(regex, line):
-            repl = match.expand(replace_pattern).lower()
-            if match.group(0).lower() == repl:
-              continue  # No-op suggestion
-
-            if not has_error:
-              logging.error('The following file(s) have misspellings:')
-            logging.error(
-                '  %s:%d:%d: Did you mean %r?' %
-                (os.path.relpath(path, base), i + 1, match.start() + 1, repl))
-            has_error = True
-
-  return not has_error
-
-
-@_Check('eslint_disable')
-def check_eslint_disable(_):
-  """Checks that source files correctly use "eslint-disable".
-
-  - Rules are disabled/enabled in nested blocks.
-  - Rules are not disabled multiple times.
-  - Rules are enabled again by the end of the file.
-
-  Returns:
-    True on success, False on failure.
-  """
-  logging.info('Checking correct usage of eslint-disable...')
-
-  complete_build = complete_build_files()
-  if not complete_build:
+  config_path = os.path.join(base, 'cspell.config.yaml')
+  lint_files = get_lint_files()
+  py_match = re.compile(r'.*\.py$')
+  py_files = shakaBuildHelpers.get_all_files(
+        os.path.join(base, 'build'), py_match)
+  md_match = re.compile(r'.*\.md$')
+  md_files = shakaBuildHelpers.get_all_files(
+        os.path.join(base, 'docs'), md_match)
+  cspell = shakaBuildHelpers.get_node_binary('cspell')
+  cmd_line = cspell + ['--config=' + config_path] + ['--no-progress']
+  logging.info('Checking for spelling mistakes in js files...')
+  if shakaBuildHelpers.execute_get_code(cmd_line + lint_files) != 0:
     return False
-
-  base = shakaBuildHelpers.get_source_base()
-  complete_build.update(shakaBuildHelpers.get_all_js_files('test'))
-  complete_build.update(shakaBuildHelpers.get_all_js_files('demo'))
-
-  has_error = False
-  for path in complete_build:
-    # The stack of rules that are disabled.
-    disabled = []
-
-    with shakaBuildHelpers.open_file(path, 'r') as f:
-      rel_path = os.path.relpath(path, base)
-      for i, line in enumerate(f):
-        match = re.match(r'^\s*/\* eslint-(disable|enable) ([\w-]*) \*/$', line)
-        if match:
-          if match.group(1) == 'disable':
-            # |line| disables a rule; validate it isn't already disabled.
-            if match.group(2) in disabled:
-              logging.error('%s:%d Rule %r already disabled',
-                            rel_path, i + 1, match.group(2))
-              has_error = True
-            else:
-              disabled.append(match.group(2))
-          else:
-            # |line| enabled a rule; validate it's already disabled and it's
-            # enabled in the correct order.
-            if not disabled or match.group(2) not in disabled:
-              logging.error("%s:%d Rule %r isn't disabled",
-                            rel_path, i + 1, match.group(2))
-              has_error = True
-            elif disabled[-1] != match.group(2):
-              logging.error('%s:%d Rule %r enabled out of order',
-                            rel_path, i + 1, match.group(2))
-              has_error = True
-              disabled = [x for x in disabled if x != match.group(2)]
-            else:
-              disabled = disabled[:-1]
-        else:
-          # |line| is not a normal eslint-disable or eslint-enable line.  Verify
-          # we don't have this text elsewhere where eslint will ignore it.
-          if re.search(r'eslint-(disable|enable)(?!-(next-)?line)', line):
-            logging.error('%s:%d Invalid eslint-disable',
-                          rel_path, i + 1)
-            has_error = True
-
-      for rule in disabled:
-        logging.error('%s:%d Rule %r still disabled at end of file',
-                      rel_path, i + 1, rule)
-        has_error = True
-
-  return not has_error
-
+  logging.info('Checking for spelling mistakes in md files...')
+  if shakaBuildHelpers.execute_get_code(cmd_line + md_files) != 0:
+    return False
+  logging.info('Checking for spelling mistakes in py files...')
+  if shakaBuildHelpers.execute_get_code(cmd_line + py_files) != 0:
+    return False
+  return True
 
 @_Check('test_type')
 def check_tests(args):

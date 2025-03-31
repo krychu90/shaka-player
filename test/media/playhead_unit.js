@@ -17,7 +17,7 @@ let TimeRange;
 
 /**
  * @typedef {{
- *   buffered: !Array.<TimeRange>,
+ *   buffered: !Array<TimeRange>,
  *   start: number,
  *   waitingAt: number,
  *   expectedEndTime: number,
@@ -31,7 +31,7 @@ let TimeRange;
  * detects a stall through the StallDetector, and a 'gapjumped' event when the
  * Playhead jumps over a gap in the buffered range(s).
  *
- * @property {!Array.<TimeRange>} buffered
+ * @property {!Array<TimeRange>} buffered
  *   The buffered ranges for the test.
  * @property {number} start
  *   The time to start playing at.
@@ -48,8 +48,8 @@ let PlayingTestInfo;
 
 /**
  * @typedef {{
- *   buffered: !Array.<TimeRange>,
- *   newBuffered: (!Array.<TimeRange>|undefined),
+ *   buffered: !Array<TimeRange>,
+ *   newBuffered: (!Array<TimeRange>|undefined),
  *   start: number,
  *   seekTo: number,
  *   expectedEndTime: number,
@@ -61,9 +61,9 @@ let PlayingTestInfo;
  * to a given time, which may have different buffered ranges.  If we are in a
  * gap, Playhead should jump the gap to the expected time.
  *
- * @property {!Array.<TimeRange>} buffered
+ * @property {!Array<TimeRange>} buffered
  *   The buffered ranges for the test.
- * @property {(!Array.<TimeRange>|undefined)} newBuffered
+ * @property {(!Array<TimeRange>|undefined)} newBuffered
  *   Used in the unbuffered seek tests.  Represents the buffered ranges to
  *   use after the seek.
  * @property {number} start
@@ -101,11 +101,21 @@ describe('Playhead', () => {
   /** @type {!jasmine.Spy} */
   let onEvent;
 
+  let originalSupportsInfiniteDuration;
+  /** @type {!jasmine.Spy} */
+  let supportsInfiniteDuration;
+
   beforeAll(() => {
     jasmine.clock().install();
+
+    originalSupportsInfiniteDuration =
+        shaka.media.Capabilities.isInfiniteLiveStreamDurationSupported;
   });
 
   afterAll(() => {
+    shaka.media.Capabilities.isInfiniteLiveStreamDurationSupported =
+        originalSupportsInfiniteDuration;
+
     jasmine.clock().uninstall();
   });
 
@@ -144,6 +154,15 @@ describe('Playhead', () => {
     };
 
     config = shaka.util.PlayerConfiguration.createDefault().streaming;
+
+    // By default, pretend we don't have support for setLiveSeekableRange,
+    // because we are frequently testing the seeking behavior of Playhead that
+    // is only enabled in this case.
+    supportsInfiniteDuration = jasmine.createSpy(
+        'isInfiniteLiveStreamDurationSupported');
+    shaka.media.Capabilities.isInfiniteLiveStreamDurationSupported =
+        shaka.test.Util.spyFunc(supportsInfiniteDuration);
+    supportsInfiniteDuration.and.returnValue(false);
   });
 
   afterEach(() => {
@@ -605,6 +624,55 @@ describe('Playhead', () => {
     video.on['seeking']();
     expect(onSeek).toHaveBeenCalled();
   });  // clamps playhead after seeking for VOD
+
+  it('does not clamp playhead if setLiveSeekableRange is used', () => {
+    // This indicates support for setLiveSeekableRange, in which case we trust
+    // MediaSource to handle seek range corrections and Playhead does nothing.
+    supportsInfiniteDuration.and.returnValue(true);
+
+    video.readyState = HTMLMediaElement.HAVE_METADATA;
+
+    video.buffered = createFakeBuffered([{start: 25, end: 55}]);
+
+    timeline.isLive.and.returnValue(false);
+    timeline.getSeekRangeStart.and.returnValue(5);
+    timeline.getSafeSeekRangeStart.and.returnValue(5);
+    timeline.getSeekRangeEnd.and.returnValue(60);
+    timeline.getDuration.and.returnValue(60);
+
+    playhead = new shaka.media.MediaSourcePlayhead(
+        video,
+        manifest,
+        config,
+        /* startTime= */ 5,
+        Util.spyFunc(onSeek),
+        Util.spyFunc(onEvent));
+
+    setMockDate(0);
+    video.on['seeking']();
+    expect(video.currentTime).toBe(5);
+    expect(playhead.getTime()).toBe(5);
+
+    // Seek past end.
+    setMockDate(10);
+    video.currentTime = 120;
+    video.on['seeking']();
+    expect(video.currentTime).toBe(120);
+    setMockDate(20);
+    video.on['seeking']();
+    expect(video.currentTime).toBe(120);
+
+    onSeek.calls.reset();
+
+    // Seek before start.
+    setMockDate(30);
+    video.currentTime = 1;
+    video.on['seeking']();
+    expect(video.currentTime).toBe(1);
+    setMockDate(40);
+    video.on['seeking']();
+    expect(video.currentTime).toBe(1);
+  });  // does not clamp playhead if setLiveSeekableRange is used
 
   it('doesn\'t repeatedly re-seek in seeking slow platforms', () => {
     if (!shaka.util.Platform.isSeekingSlow()) {
@@ -1390,7 +1458,7 @@ describe('Playhead', () => {
     }
 
     /**
-     * @param {!Array.<{start: number, end: number}>} buffers
+     * @param {!Array<{start: number, end: number}>} buffers
      * @param {number} time
      * @return {number}
      */

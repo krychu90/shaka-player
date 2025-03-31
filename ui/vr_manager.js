@@ -93,8 +93,17 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
       let unsupported = false;
       switch (spatialInfo.projection) {
         case 'hequ':
-          unsupported = spatialInfo.hfov != 360;
-          this.vrAsset_ = 'equirectangular';
+          switch (spatialInfo.hfov) {
+            case 360:
+              this.vrAsset_ = 'equirectangular';
+              break;
+            case 180:
+              this.vrAsset_ = 'halfequirectangular';
+              break;
+            default:
+              unsupported = true;
+              break;
+          }
           break;
         case 'fish':
           this.vrAsset_ = 'equirectangular';
@@ -338,7 +347,7 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
     if (this.gl_ && this.canvas_) {
       this.vrWebgl_ = new shaka.ui.VRWebgl(
           this.video_, this.player_, this.canvas_, this.gl_, projectionMode);
-      this.setupVRListerners_();
+      this.setupVRListeners_();
     }
   }
 
@@ -371,7 +380,7 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
   /**
    * @private
    */
-  setupVRListerners_() {
+  setupVRListeners_() {
     // Start
     this.eventManager_.listen(this.container_, 'mousedown', (event) => {
       if (!this.onGesture_) {
@@ -495,6 +504,9 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
    */
   setupDeviceOrientationListener_() {
     this.eventManager_.listen(window, 'deviceorientation', (e) => {
+      if (!this.vrWebgl_) {
+        return;
+      }
       const event = /** @type {!DeviceOrientationEvent} */(e);
       let alphaDif = (event.alpha || 0) - this.prevAlpha_;
       let betaDif = (event.beta || 0) - this.prevBeta_;
@@ -551,7 +563,7 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
 };
 
 /**
- * @constant {number}
+ * @const {number}
  * @private
  */
 shaka.ui.VRManager.TO_RADIANS_ = Math.PI / 180;

@@ -239,7 +239,7 @@ describe('Player', () => {
 
     it('destroys drmEngine before mediaSourceEngine with webkit polyfill',
         async () => {
-          spyOn(shaka.util.Platform, 'isMediaKeysPolyfilled')
+          spyOn(shaka.drm.DrmUtils, 'isMediaKeysPolyfilled')
               .and.returnValue(true);
           goog.asserts.assert(manifest, 'Manifest should be non-null');
 
@@ -731,6 +731,62 @@ describe('Player', () => {
       });
     });
 
+    describe('when config.streaming.preferNativeDash is set to true', () => {
+      beforeAll(() => {
+        shaka.media.ManifestParser.registerParserByMime(
+            'application/dash+xml',
+            () => new shaka.test.FakeManifestParser(manifest));
+      });
+
+      afterAll(() => {
+        // IMPORTANT: restore the ORIGINAL parser.  DO NOT just unregister the
+        // fake!
+        shaka.media.ManifestParser.registerParserByMime(
+            'application/dash+xml',
+            () => new shaka.dash.DashParser());
+      });
+
+      afterEach(() => {
+        video.canPlayType.calls.reset();
+      });
+
+      it('only applies to DASH streams', async () => {
+        video.canPlayType.and.returnValue('maybe');
+        spyOn(shaka.util.Platform, 'anyMediaElement').and.returnValue(video);
+        spyOn(shaka.util.Platform, 'supportsMediaSource').and.returnValue(true);
+        // Make sure player.load() resolves for src=
+        spyOn(shaka.util.MediaReadyState, 'waitForReadyState').and.callFake(
+            (mediaElement, readyState, eventManager, callback) => {
+              callback();
+            });
+
+        player.configure({
+          streaming: {
+            preferNativeDash: true,
+          },
+        });
+
+        await player.load(fakeManifestUri, undefined, 'application/dash+xml');
+
+        expect(player.getLoadMode()).toBe(shaka.Player.LoadMode.SRC_EQUALS);
+      });
+
+      it('does not apply to non-DASH streams', async () => {
+        video.canPlayType.and.returnValue('maybe');
+        spyOn(shaka.util.Platform, 'supportsMediaSource').and.returnValue(true);
+
+        player.configure({
+          streaming: {
+            preferNativeDash: true,
+          },
+        });
+
+        await player.load(fakeManifestUri, 0, fakeMimeType);
+
+        expect(player.getLoadMode()).toBe(shaka.Player.LoadMode.MEDIA_SOURCE);
+      });
+    });
+
     describe('when config.streaming.preferNativeHls is set to true', () => {
       beforeAll(() => {
         shaka.media.ManifestParser.registerParserByMime(
@@ -831,6 +887,17 @@ describe('Player', () => {
     expect(nonDefaultConfiguration['mediaSource']).toBeUndefined();
     expect(nonDefaultConfiguration['manifest']['availabilityWindowOverride'])
         .toBeUndefined();
+  });
+
+  it('configurationForLowLatency and getConfigurationForLowLatency', () => {
+    let configurationForLowLatency = player.getConfigurationForLowLatency();
+    expect(configurationForLowLatency).not.toBeNull();
+    player.configurationForLowLatency({
+      ignoreHardwareResolution: true,
+    });
+    configurationForLowLatency = player.getConfigurationForLowLatency();
+    expect(configurationForLowLatency).not.toBeNull();
+    expect(configurationForLowLatency['ignoreHardwareResolution']).toBeTruthy();
   });
 
   describe('configure', () => {
@@ -1286,67 +1353,6 @@ describe('Player', () => {
       expect(fooConfig2.distinctiveIdentifierRequired).toBe(true);
       expect(barConfig2.distinctiveIdentifierRequired).toBe(false);
     });
-
-    it('sets default streaming configuration with low latency mode', () => {
-      player.configure({
-        streaming: {
-          lowLatencyMode: true,
-          inaccurateManifestTolerance: 1,
-          segmentPrefetchLimit: 1,
-          updateIntervalSeconds: 10,
-          maxDisabledTime: 10,
-          retryParameters: {
-            baseDelay: 2000,
-          },
-        },
-        manifest: {
-          dash: {
-            autoCorrectDrift: true,
-          },
-          retryParameters: {
-            baseDelay: 2000,
-          },
-        },
-        drm: {
-          retryParameters: {
-            baseDelay: 2000,
-          },
-        },
-      });
-      expect(player.getConfiguration().streaming.inaccurateManifestTolerance)
-          .toBe(1);
-      expect(player.getConfiguration().streaming.segmentPrefetchLimit).toBe(1);
-      expect(player.getConfiguration().streaming.updateIntervalSeconds)
-          .toBe(10);
-      expect(player.getConfiguration().streaming.maxDisabledTime).toBe(10);
-      expect(player.getConfiguration().streaming.retryParameters.baseDelay)
-          .toBe(2000);
-      expect(player.getConfiguration().manifest.dash.autoCorrectDrift)
-          .toBe(true);
-      expect(player.getConfiguration().manifest.retryParameters.baseDelay)
-          .toBe(2000);
-      expect(player.getConfiguration().drm.retryParameters.baseDelay)
-          .toBe(2000);
-
-      // When low latency streaming gets enabled, inaccurateManifestTolerance
-      // will default to 0 unless specified, and segmentPrefetchLimit will
-      // default to 2 unless specified.
-      player.configure('streaming.lowLatencyMode', true);
-      expect(player.getConfiguration().streaming.inaccurateManifestTolerance)
-          .toBe(0);
-      expect(player.getConfiguration().streaming.segmentPrefetchLimit).toBe(2);
-      expect(player.getConfiguration().streaming.updateIntervalSeconds)
-          .toBe(0.1);
-      expect(player.getConfiguration().streaming.maxDisabledTime).toBe(1);
-      expect(player.getConfiguration().streaming.retryParameters.baseDelay)
-          .toBe(100);
-      expect(player.getConfiguration().manifest.dash.autoCorrectDrift)
-          .toBe(false);
-      expect(player.getConfiguration().manifest.retryParameters.baseDelay)
-          .toBe(100);
-      expect(player.getConfiguration().drm.retryParameters.baseDelay)
-          .toBe(100);
-    });
   });
 
   describe('preload', () => {
@@ -1382,6 +1388,31 @@ describe('Player', () => {
       const config = player.getSharedConfiguration();
       player.resetConfiguration();
       expect(player.getSharedConfiguration()).toBe(config);
+    });
+  });
+
+  describe('AdaptationSetCriteria.Factory', () => {
+    it('uses the provided Factory method', async () => {
+      const preferenceBasedCriteria = new shaka.media.PreferenceBasedCriteria();
+      /** @type {!jasmine.Spy} */
+      const spy1 =
+          jasmine.createSpy('AdaptationSetCriteria.Factory')
+              .and.returnValue(preferenceBasedCriteria);
+      /** @type {!jasmine.Spy} */
+      const spy2 =
+          jasmine.createSpy('AdaptationSetCriteria.Factory')
+              .and.returnValue(preferenceBasedCriteria);
+      player.configure({adaptationSetCriteriaFactory: spy1});
+
+      await player.load(fakeManifestUri, 0, fakeMimeType);
+      expect(spy1).toHaveBeenCalled();
+      expect(spy2).not.toHaveBeenCalled();
+      spy1.calls.reset();
+
+      player.configure({adaptationSetCriteriaFactory: spy2});
+      await player.load(fakeManifestUri, 0, fakeMimeType);
+      expect(spy1).not.toHaveBeenCalled();
+      expect(spy2).toHaveBeenCalled();
     });
   });
 
@@ -1488,11 +1519,13 @@ describe('Player', () => {
   });
 
   describe('tracks', () => {
-    /** @type {!Array.<shaka.extern.Track>} */
+    /** @type {!Array<shaka.extern.Track>} */
     let variantTracks;
-    /** @type {!Array.<shaka.extern.Track>} */
+    /** @type {!Array<shaka.extern.AudioTrack>} */
+    let audioTracks;
+    /** @type {!Array<shaka.extern.Track>} */
     let textTracks;
-    /** @type {!Array.<shaka.extern.Track>} */
+    /** @type {!Array<shaka.extern.Track>} */
     let imageTracks;
 
     beforeEach(async () => {
@@ -1676,6 +1709,7 @@ describe('Player', () => {
           forced: false,
           videoId: 1,
           audioId: 3,
+          audioGroupId: null,
           channelsCount: 6,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -1716,6 +1750,7 @@ describe('Player', () => {
           forced: false,
           videoId: 2,
           audioId: 3,
+          audioGroupId: null,
           channelsCount: 6,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -1756,6 +1791,7 @@ describe('Player', () => {
           forced: false,
           videoId: 1,
           audioId: 4,
+          audioGroupId: null,
           channelsCount: 2,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -1796,6 +1832,7 @@ describe('Player', () => {
           forced: false,
           videoId: 2,
           audioId: 4,
+          audioGroupId: null,
           channelsCount: 2,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -1836,6 +1873,7 @@ describe('Player', () => {
           forced: false,
           videoId: 1,
           audioId: 5,
+          audioGroupId: null,
           channelsCount: 2,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -1876,6 +1914,7 @@ describe('Player', () => {
           forced: false,
           videoId: 2,
           audioId: 5,
+          audioGroupId: null,
           channelsCount: 2,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -1916,6 +1955,7 @@ describe('Player', () => {
           forced: false,
           videoId: 1,
           audioId: 6,
+          audioGroupId: null,
           channelsCount: 2,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -1956,6 +1996,7 @@ describe('Player', () => {
           forced: false,
           videoId: 2,
           audioId: 6,
+          audioGroupId: null,
           channelsCount: 2,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -1996,6 +2037,7 @@ describe('Player', () => {
           forced: false,
           videoId: 1,
           audioId: 7,
+          audioGroupId: null,
           channelsCount: 2,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -2036,6 +2078,7 @@ describe('Player', () => {
           forced: false,
           videoId: 2,
           audioId: 7,
+          audioGroupId: null,
           channelsCount: 2,
           audioSamplingRate: 48000,
           spatialAudio: false,
@@ -2050,6 +2093,79 @@ describe('Player', () => {
         },
       ];
 
+      audioTracks = [
+        {
+          active: true,
+          language: 'en',
+          label: null,
+          mimeType: 'audio/mp4',
+          codecs: 'mp4a.40.2',
+          primary: false,
+          roles: ['main'],
+          accessibilityPurpose: undefined,
+          channelsCount: 6,
+          audioSamplingRate: 48000,
+          spatialAudio: false,
+          originalLanguage: 'en',
+        },
+        {
+          active: false,
+          language: 'en',
+          label: null,
+          mimeType: 'audio/mp4',
+          codecs: 'mp4a.40.2',
+          primary: false,
+          roles: ['main'],
+          accessibilityPurpose: undefined,
+          channelsCount: 2,
+          audioSamplingRate: 48000,
+          spatialAudio: false,
+          originalLanguage: 'en',
+        },
+        {
+          active: false,
+          language: 'en',
+          label: null,
+          mimeType: 'audio/mp4',
+          codecs: 'mp4a.40.2',
+          primary: false,
+          roles: ['commentary'],
+          accessibilityPurpose: undefined,
+          channelsCount: 2,
+          audioSamplingRate: 48000,
+          spatialAudio: false,
+          originalLanguage: 'en',
+        },
+        {
+          active: false,
+          language: 'es',
+          label: 'es-label',
+          mimeType: 'audio/mp4',
+          codecs: 'mp4a.40.2',
+          primary: false,
+          roles: [],
+          accessibilityPurpose: undefined,
+          channelsCount: 2,
+          audioSamplingRate: 48000,
+          spatialAudio: false,
+          originalLanguage: 'es',
+        },
+        {
+          active: false,
+          language: 'es',
+          label: null,
+          mimeType: 'audio/mp4',
+          codecs: 'ec-3',
+          primary: false,
+          roles: [],
+          accessibilityPurpose: undefined,
+          channelsCount: 2,
+          audioSamplingRate: 48000,
+          spatialAudio: false,
+          originalLanguage: 'es',
+        },
+      ];
+
       textTracks = [
         {
           id: 50,
@@ -2060,35 +2176,12 @@ describe('Player', () => {
           label: 'Spanish',
           kind: 'caption',
           mimeType: 'text/vtt',
-          audioMimeType: null,
-          videoMimeType: null,
           codecs: null,
-          audioCodec: null,
-          videoCodec: null,
           primary: false,
           roles: [],
-          audioRoles: null,
           forced: false,
-          channelsCount: null,
-          audioSamplingRate: null,
-          spatialAudio: false,
-          tilesLayout: null,
-          audioBandwidth: null,
-          videoBandwidth: null,
-          bandwidth: 0,
-          width: null,
-          height: null,
-          frameRate: null,
-          pixelAspectRatio: null,
-          hdr: null,
-          colorGamut: null,
-          videoLayout: null,
-          videoId: null,
-          audioId: null,
-          originalAudioId: null,
-          originalVideoId: null,
+          bandwidth: 10,
           originalTextId: 'text-es',
-          originalImageId: null,
           accessibilityPurpose: undefined,
         },
         {
@@ -2100,35 +2193,12 @@ describe('Player', () => {
           label: 'English',
           kind: 'caption',
           mimeType: 'application/ttml+xml',
-          audioMimeType: null,
-          videoMimeType: null,
           codecs: null,
-          audioCodec: null,
-          videoCodec: null,
           primary: false,
           roles: ['main'],
-          audioRoles: null,
           forced: false,
-          channelsCount: null,
-          audioSamplingRate: null,
-          spatialAudio: false,
-          tilesLayout: null,
-          audioBandwidth: null,
-          videoBandwidth: null,
-          bandwidth: 0,
-          width: null,
-          height: null,
-          frameRate: null,
-          pixelAspectRatio: null,
-          hdr: null,
-          colorGamut: null,
-          videoLayout: null,
-          videoId: null,
-          audioId: null,
-          originalAudioId: null,
-          originalVideoId: null,
+          bandwidth: 10,
           originalTextId: 'text-en',
-          originalImageId: null,
           accessibilityPurpose: undefined,
         },
         {
@@ -2140,35 +2210,12 @@ describe('Player', () => {
           label: 'English',
           kind: 'caption',
           mimeType: 'application/ttml+xml',
-          audioMimeType: null,
-          videoMimeType: null,
           codecs: null,
-          audioCodec: null,
-          videoCodec: null,
           primary: false,
           roles: ['commentary'],
-          audioRoles: null,
           forced: false,
-          channelsCount: null,
-          spatialAudio: false,
-          audioSamplingRate: null,
-          tilesLayout: null,
-          audioBandwidth: null,
-          videoBandwidth: null,
-          bandwidth: 0,
-          width: null,
-          height: null,
-          frameRate: null,
-          pixelAspectRatio: null,
-          hdr: null,
-          colorGamut: null,
-          videoLayout: null,
-          videoId: null,
-          audioId: null,
-          originalAudioId: null,
-          originalVideoId: null,
+          bandwidth: 10,
           originalTextId: 'text-commentary',
-          originalImageId: null,
           accessibilityPurpose: undefined,
         },
       ];
@@ -2176,43 +2223,14 @@ describe('Player', () => {
       imageTracks = [
         {
           id: 53,
-          active: false,
           type: ContentType.IMAGE,
-          language: '',
-          originalLanguage: null,
-          label: null,
-          kind: null,
           mimeType: 'image/jpeg',
-          audioMimeType: null,
-          videoMimeType: null,
           codecs: null,
-          audioCodec: null,
-          videoCodec: null,
-          primary: false,
-          roles: [],
-          audioRoles: null,
-          forced: false,
-          channelsCount: null,
-          audioSamplingRate: null,
-          spatialAudio: false,
           tilesLayout: '1x1',
-          audioBandwidth: null,
-          videoBandwidth: null,
           bandwidth: 10,
           width: 200,
           height: 400,
-          frameRate: null,
-          pixelAspectRatio: null,
-          hdr: null,
-          colorGamut: null,
-          videoLayout: null,
-          videoId: null,
-          audioId: null,
-          originalAudioId: null,
-          originalVideoId: null,
-          originalTextId: null,
           originalImageId: 'thumbnail',
-          accessibilityPurpose: null,
         },
       ];
 
@@ -2233,6 +2251,7 @@ describe('Player', () => {
 
     it('returns the correct tracks', () => {
       expect(player.getVariantTracks()).toEqual(variantTracks);
+      expect(player.getAudioTracks()).toEqual(audioTracks);
       expect(player.getTextTracks()).toEqual(textTracks);
       expect(player.getImageTracks()).toEqual(imageTracks);
     });
@@ -2243,6 +2262,7 @@ describe('Player', () => {
       parser.start.and.callFake((manifestUri, playerInterface) => {
         // The player does not yet have a manifest.
         expect(player.getVariantTracks()).toEqual([]);
+        expect(player.getAudioTracks()).toEqual([]);
         expect(player.getTextTracks()).toEqual([]);
         expect(player.getImageTracks()).toEqual([]);
 
@@ -2253,6 +2273,7 @@ describe('Player', () => {
       await player.load(fakeManifestUri, 0, fakeMimeType);
 
       expect(player.getVariantTracks()).toEqual(variantTracks);
+      expect(player.getAudioTracks()).toEqual(audioTracks);
       expect(player.getTextTracks()).toEqual(textTracks);
       expect(player.getImageTracks()).toEqual(imageTracks);
     });
@@ -2619,6 +2640,9 @@ describe('Player', () => {
       /** @type {jasmine.Spy} */
       let variantChanged;
 
+      /** @type {jasmine.Spy} */
+      let audioTracksChanged;
+
       beforeEach(() => {
         textChanged = jasmine.createSpy('textChanged');
         player.addEventListener('textchanged', Util.spyFunc(textChanged));
@@ -2631,6 +2655,10 @@ describe('Player', () => {
           expect(e.newTrack.active).toBe(true);
         });
         player.addEventListener('variantchanged', Util.spyFunc(variantChanged));
+
+        audioTracksChanged = jasmine.createSpy('audioTracksChanged');
+        player.addEventListener('audiotrackschanged',
+            Util.spyFunc(audioTracksChanged));
       });
 
       it('in selectTextTrack', async () => {
@@ -2708,6 +2736,24 @@ describe('Player', () => {
         await shaka.test.Util.shortDelay();
         expect(variantChanged).not.toHaveBeenCalled();
       });
+
+      it('in selectAudioLanguage', async () => {
+        // New audio track.
+        const newAudioTrack = player.getAudioTracks().find((t) => !t.active);
+        goog.asserts.assert(newAudioTrack, 'audio track must be non-null');
+
+        // Call selectAudioTrack with a audio track.  Expect an event to fire.
+        player.selectAudioTrack(newAudioTrack);
+        await shaka.test.Util.shortDelay();
+        expect(audioTracksChanged).toHaveBeenCalled();
+        audioTracksChanged.calls.reset();
+
+        // Call again with the same audio track, and expect no event to fire,
+        // since nothing changed this time.
+        player.selectAudioTrack(newAudioTrack);
+        await shaka.test.Util.shortDelay();
+        expect(audioTracksChanged).not.toHaveBeenCalled();
+      });
     });
 
     it('chooses the configured text language and role at start', async () => {
@@ -2754,7 +2800,7 @@ describe('Player', () => {
       await runTest(['en', 'pt', 'pt-BR'], 'pt', 1);
     });
 
-    it('chooses exact match for subtags', async () => {
+    it('chooses exact match for sub tags', async () => {
       await runTest(['en', 'pt', 'pt-BR'], 'PT-BR', 2);
     });
 
@@ -2762,7 +2808,7 @@ describe('Player', () => {
       await runTest(['en', 'es', 'pt'], 'pt-BR', 2);
     });
 
-    it('chooses other subtags if base language does not exist', async () => {
+    it('chooses other sub tags if base language does not exist', async () => {
       await runTest(['en', 'es', 'pt-BR'], 'pt-PT', 2);
     });
 
@@ -2837,7 +2883,7 @@ describe('Player', () => {
     });
 
     /**
-     * @param {!Array.<string>} languages
+     * @param {!Array<string>} languages
      * @param {string} preference
      * @param {number} expectedIndex
      * @return {!Promise}
@@ -2871,6 +2917,58 @@ describe('Player', () => {
       expect(getActiveVariantTrack().id).toBe(expectedIndex);
     }
   });  // describe('languages')
+
+  describe('getLiveLatency()', () => {
+    let timeline;
+
+    beforeEach(async () => {
+      // Create a presentation timeline for a live stream.
+      timeline = new shaka.media.PresentationTimeline(300, 0);
+      timeline.setStatic(false); // Indicate that this is a live stream.
+
+      // Set an initial program date time to simulate a live stream with a
+      // known start time.
+      timeline.setInitialProgramDateTime(1000);
+
+      // Generate a manifest that uses this timeline.
+      manifest = shaka.test.ManifestGenerator.generate((manifest) => {
+        manifest.presentationTimeline = timeline;
+        manifest.addVariant(0, (variant) => {
+          variant.addVideo(1);
+        });
+      });
+
+      // Load the player with the live manifest.
+      await player.load(fakeManifestUri, null, fakeMimeType);
+    });
+
+    it('returns null if video element does not exist', async () => {
+      video.currentTime = 10; // Simulate that we're 10 seconds into playback.
+      await player.detach();
+      const latency = player.getLiveLatency();
+      expect(latency).toBeNull();
+    });
+
+    it('returns null if no position defined yet', () => {
+      video.currentTime = 0;
+      const latency = player.getLiveLatency();
+      expect(latency).toBeNull();
+    });
+
+    it('returns correct latency when video is playing', () => {
+      video.currentTime = 10; // Simulate that we're 10 seconds into playback.
+      Date.now = () => 2000 * 1000;
+      const latency = player.getLiveLatency();
+      expect(latency).toBe(990000);
+    });
+
+    it('returns integer latency also when Date.now returns float', () => {
+      video.currentTime = 10; // Simulate that we're 10 seconds into playback.
+      Date.now = () => 2000 * 1000.3;
+      const latency = player.getLiveLatency();
+      expect(latency).toBe(990600);
+    });
+  });
 
   describe('getStats', () => {
     const oldDateNow = Date.now;
@@ -3019,7 +3117,8 @@ describe('Player', () => {
       });
 
       it('includes selectVariantTrack choices', () => {
-        const track = player.getVariantTracks()[3];
+        const track = player.getVariantTracks().find((t) => !t.active);
+        goog.asserts.assert(track, 'track should not be null!');
 
         const variants = manifest.variants;
         const variant = variants.find((variant) => variant.id == track.id);
@@ -3037,7 +3136,7 @@ describe('Player', () => {
       });
 
       it('includes adaptation choices', () => {
-        const variant = manifest.variants[3];
+        const variant = manifest.variants[2];
 
         switch_(variant);
         checkHistory(jasmine.arrayContaining([
@@ -3053,7 +3152,7 @@ describe('Player', () => {
 
       /**
        * Checks that the switch history is correct.
-       * @param {!Array.<shaka.extern.TrackChoice>} additional
+       * @param {!Array<shaka.extern.TrackChoice>} additional
        */
       function checkHistory(additional) {
         const variantPrefix = {
@@ -3673,6 +3772,8 @@ describe('Player', () => {
             stream.mimeType = 'video';
             stream.codecs = 'unsupported';
             stream.addDrmInfo('foo.bar');
+            stream.fullMimeTypes = new Set([shaka.util.MimeUtils.getFullType(
+                stream.mimeType, stream.codecs)]);
           });
         });
         manifest.addVariant(1, (variant) => {
@@ -4193,9 +4294,9 @@ describe('Player', () => {
     it('gets current segment availability duration', () => {
       playhead.getTime.and.returnValue(20);
 
-      const segmentAvailabiltyDuration =
+      const segmentAvailabilityDuration =
           player.getSegmentAvailabilityDuration();
-      expect(segmentAvailabiltyDuration).toBe(1000);
+      expect(segmentAvailabilityDuration).toBe(1000);
     });
   });
 
@@ -4879,7 +4980,7 @@ describe('Player', () => {
 
   /**
    * Gets the currently active text track.
-   * @return {?shaka.extern.Track}
+   * @return {?shaka.extern.TextTrack}
    */
   function getActiveTextTrack() {
     const activeTracks = player.getTextTracks().filter((track) => {
@@ -4901,7 +5002,7 @@ describe('Player', () => {
   }
 
   /**
-   * @param {!Object.<string, string>} keyStatusMap
+   * @param {!Object<string, string>} keyStatusMap
    * @suppress {accessControls}
    */
   function onKeyStatus(keyStatusMap) {

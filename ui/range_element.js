@@ -30,8 +30,8 @@ shaka.ui.RangeElement = class extends shaka.ui.Element {
   /**
    * @param {!HTMLElement} parent
    * @param {!shaka.ui.Controls} controls
-   * @param {!Array.<string>} containerClassNames
-   * @param {!Array.<string>} barClassNames
+   * @param {!Array<string>} containerClassNames
+   * @param {!Array<string>} barClassNames
    */
   constructor(parent, controls, containerClassNames, barClassNames) {
     super(parent, controls);
@@ -61,7 +61,6 @@ shaka.ui.RangeElement = class extends shaka.ui.Element {
     this.bar.classList.add('shaka-range-element');
     this.bar.classList.add(...barClassNames);
     this.bar.type = 'range';
-    // TODO(#2027): step=any causes keyboard nav problems on IE 11.
     this.bar.step = 'any';
     this.bar.min = '0';
     this.bar.max = '1';

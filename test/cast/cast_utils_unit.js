@@ -35,6 +35,7 @@ describe('CastUtils', () => {
       'getNonDefaultConfiguration',
       'addFont',
       'getFetchedPlaybackInfo',
+      'getLiveLatency',
       'isRemotePlayback',
 
       // Test helper methods (not @export'd)
@@ -48,9 +49,10 @@ describe('CastUtils', () => {
 
     const castMembers = CastUtils.PlayerVoidMethods
         .concat(CastUtils.PlayerPromiseMethods)
-        .concat(Object.keys(CastUtils.PlayerGetterMethods))
-        .concat(Object.keys(CastUtils.LargePlayerGetterMethods))
-        .concat(Object.keys(CastUtils.PlayerGetterMethodsThatRequireLive));
+        .concat(Array.from(CastUtils.PlayerGetterMethods.keys()))
+        .concat(Array.from(CastUtils.LargePlayerGetterMethods.keys()))
+        .concat(Array.from(
+            CastUtils.PlayerGetterMethodsThatRequireLive.keys()));
     // eslint-disable-next-line no-restricted-syntax
     const allPlayerMembers = Object.getOwnPropertyNames(shaka.Player.prototype);
     expect(
@@ -228,6 +230,7 @@ describe('CastUtils', () => {
             {
               getKeySystem: () => null,
               onMetadata: () => {},
+              onEmsg: () => {},
               onEvent: () => {},
               onManifestUpdate: () => {},
             });

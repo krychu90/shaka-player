@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// cspell:ignore customdatascheme
+
 describe('MediaSourceEngine', () => {
   const ContentType = shaka.util.ManifestParserUtils.ContentType;
   const Uint8ArrayUtils = shaka.util.Uint8ArrayUtils;
@@ -155,6 +157,8 @@ describe('MediaSourceEngine', () => {
   /** @type {!jasmine.Spy} */
   let onMetadata;
   /** @type {!jasmine.Spy} */
+  let onEmsg;
+  /** @type {!jasmine.Spy} */
   let onEvent;
   /** @type {!jasmine.Spy} */
   let onManifestUpdate;
@@ -171,6 +175,7 @@ describe('MediaSourceEngine', () => {
     textDisplayer = new shaka.test.FakeTextDisplayer();
 
     onMetadata = jasmine.createSpy('onMetadata');
+    onEmsg = jasmine.createSpy('onEmsg');
     onEvent = jasmine.createSpy('onEvent');
     onManifestUpdate = jasmine.createSpy('onManifestUpdate');
 
@@ -180,6 +185,7 @@ describe('MediaSourceEngine', () => {
         {
           getKeySystem: () => null,
           onMetadata: Util.spyFunc(onMetadata),
+          onEmsg: Util.spyFunc(onEmsg),
           onEvent: Util.spyFunc(onEvent),
           onManifestUpdate: Util.spyFunc(onManifestUpdate),
         });
@@ -382,7 +388,7 @@ describe('MediaSourceEngine', () => {
     expect(mediaSource.duration).toBeCloseTo(30);
   });
 
-  it('does not throw if endOfStrem called more than once', async () => {
+  it('does not throw if endOfStream called more than once', async () => {
     const initObject = new Map();
     initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     await mediaSourceEngine.init(initObject, false);
@@ -395,9 +401,9 @@ describe('MediaSourceEngine', () => {
   });
 
   it('queues operations', async () => {
-    /** @type {!Array.<number>} */
+    /** @type {!Array<number>} */
     const resolutionOrder = [];
-    /** @type {!Array.<!Promise>} */
+    /** @type {!Array<!Promise>} */
     const requests = [];
 
     function checkOrder(p) {
@@ -850,10 +856,10 @@ describe('MediaSourceEngine', () => {
           videoStream,
           /* mimeType= */ 'video/mp4');
 
-      expect(onEvent).toHaveBeenCalledTimes(1);
+      expect(onEmsg).toHaveBeenCalledTimes(1);
 
-      const event = onEvent.calls.argsFor(0)[0];
-      expect(event.detail).toEqual(emsgObj);
+      const emsgInfo = onEmsg.calls.argsFor(0)[0];
+      expect(emsgInfo).toEqual(emsgObj);
     });
 
     it('raises an event for registered embedded v1 emsg boxes', () => {
@@ -868,10 +874,10 @@ describe('MediaSourceEngine', () => {
           videoStream,
           /* mimeType= */ 'video/mp4');
 
-      expect(onEvent).toHaveBeenCalledTimes(1);
+      expect(onEmsg).toHaveBeenCalledTimes(1);
 
-      const event = onEvent.calls.argsFor(0)[0];
-      expect(event.detail).toEqual(emsgObjWithOffset);
+      const emsgInfo = onEmsg.calls.argsFor(0)[0];
+      expect(emsgInfo).toEqual(emsgObjWithOffset);
     });
 
     it('raises multiple events', () => {
@@ -886,7 +892,7 @@ describe('MediaSourceEngine', () => {
           videoStream,
           /* mimeType= */ 'video/mp4');
 
-      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onEmsg).toHaveBeenCalledTimes(2);
     });
 
     it('won\'t raise an event for an unregistered emsg box', () => {
@@ -900,7 +906,7 @@ describe('MediaSourceEngine', () => {
           videoStream,
           /* mimeType= */ 'video/mp4');
 
-      expect(onEvent).not.toHaveBeenCalled();
+      expect(onEmsg).not.toHaveBeenCalled();
     });
 
     it('triggers manifest updates', () => {
@@ -915,7 +921,7 @@ describe('MediaSourceEngine', () => {
           videoStream,
           /* mimeType= */ 'video/mp4');
 
-      expect(onEvent).not.toHaveBeenCalled();
+      expect(onEmsg).not.toHaveBeenCalled();
       expect(onManifestUpdate).toHaveBeenCalled();
     });
 
@@ -935,29 +941,8 @@ describe('MediaSourceEngine', () => {
           videoStream,
           /* mimeType= */ 'video/mp4');
 
-      expect(onEvent).toHaveBeenCalled();
+      expect(onEmsg).toHaveBeenCalled();
       expect(onMetadata).toHaveBeenCalled();
-    });
-
-    it('only triggers emsg event for ID3 if event canceled', () => {
-      const videoStream =
-          shaka.test.StreamingEngineUtil.createMockVideoStream(1);
-      videoStream.emsgSchemeIdUris = [id3SchemeUri];
-
-      onEvent.and.callFake((emsgEvent) => {
-        expect(emsgEvent.type).toBe('emsg');
-        emsgEvent.preventDefault();
-      });
-
-      mediaSourceEngine.getTimestampAndDispatchMetadata(
-          ContentType.VIDEO,
-          emsgSegmentV0ID3,
-          reference,
-          videoStream,
-          /* mimeType= */ 'video/mp4');
-
-      expect(onEvent).toHaveBeenCalled();
-      expect(onMetadata).not.toHaveBeenCalled();
     });
 
     it('event start matches presentation time', () => {
@@ -972,10 +957,10 @@ describe('MediaSourceEngine', () => {
           videoStream,
           /* mimeType= */ 'video/mp4');
 
-      expect(onEvent).toHaveBeenCalledTimes(1);
+      expect(onEmsg).toHaveBeenCalledTimes(1);
 
-      const event = onEvent.calls.argsFor(0)[0];
-      expect(event.detail).toEqual(emsgObj);
+      const emsgInfo = onEmsg.calls.argsFor(0)[0];
+      expect(emsgInfo).toEqual(emsgObj);
     });
   });
 });

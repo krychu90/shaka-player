@@ -12,7 +12,6 @@ const _ = require('lodash');
 const fs = require('fs');
 const glob = require('glob');
 const Jimp = require('jimp');
-const path = require('path');
 const rimraf = require('rimraf');
 const {ssim} = require('ssim.js');
 const util = require('karma/common/util');
@@ -217,7 +216,7 @@ module.exports = (config) => {
       // is specifically the compiled, minified, cross-browser build of it.  It
       // is necessary to use the compiled version to avoid problems on older
       // TVs.
-      // eslint-disable-next-line max-len
+      // eslint-disable-next-line @stylistic/max-len
       'node_modules/eme-encryption-scheme-polyfill/dist/eme-encryption-scheme-polyfill.js',
 
       // load closure base, the deps tree, and the uncompiled library
@@ -254,12 +253,14 @@ module.exports = (config) => {
       {pattern: 'third_party/**/*.js', included: false},
       {pattern: 'test/**/*.js', included: false},
       {pattern: 'test/test/assets/*', included: false},
+      {pattern: 'test/test/assets/clear-encrypted/*', included: false},
       {pattern: 'test/test/assets/dash-multi-codec/*', included: false},
       {pattern: 'test/test/assets/dash-multi-codec-ec3/*', included: false},
       {pattern: 'test/test/assets/3675/*', included: false},
       {pattern: 'test/test/assets/7401/*', included: false},
       {pattern: 'test/test/assets/6339/*', included: false},
       {pattern: 'test/test/assets/dash-aes-128/*', included: false},
+      {pattern: 'test/test/assets/dash-audio-ac3/*', included: false},
       {pattern: 'test/test/assets/dash-clearkey/*', included: false},
       {pattern: 'test/test/assets/dash-mpd-alternate/*', included: false},
       {pattern: 'test/test/assets/dash-vr/*', included: false},
@@ -267,12 +268,13 @@ module.exports = (config) => {
       {pattern: 'test/test/assets/dv-p10-av1/*', included: false},
       {pattern: 'test/test/assets/hls-aes-256/*', included: false},
       {pattern: 'test/test/assets/hls-interstitial/*', included: false},
+      {pattern: 'test/test/assets/hls-muxed-mp4-ts/*', included: false},
       {pattern: 'test/test/assets/hls-raw-aac/*', included: false},
       {pattern: 'test/test/assets/hls-raw-ac3/*', included: false},
       {pattern: 'test/test/assets/hls-raw-ec3/*', included: false},
       {pattern: 'test/test/assets/hls-raw-mp3/*', included: false},
       {pattern: 'test/test/assets/hls-sample-aes/*', included: false},
-      // eslint-disable-next-line max-len
+      // eslint-disable-next-line @stylistic/max-len
       {pattern: 'test/test/assets/hls-text-no-discontinuity/*', included: false},
       {pattern: 'test/test/assets/hls-text-offset/*', included: false},
       {pattern: 'test/test/assets/hls-ts-aac/*', included: false},
@@ -282,6 +284,10 @@ module.exports = (config) => {
       {pattern: 'test/test/assets/hls-ts-h265/*', included: false},
       {pattern: 'test/test/assets/hls-ts-mp3/*', included: false},
       {pattern: 'test/test/assets/hls-ts-muxed-aac-h264/*', included: false},
+      // eslint-disable-next-line @stylistic/max-len
+      {pattern: 'test/test/assets/hls-ts-muxed-aac-h264-with-overflow-nalus/*', included: false},
+      // eslint-disable-next-line @stylistic/max-len
+      {pattern: 'test/test/assets/hls-ts-muxed-aac-h264-with-overflow-samples/*', included: false},
       {pattern: 'test/test/assets/hls-ts-muxed-aac-h265/*', included: false},
       {pattern: 'test/test/assets/hls-ts-muxed-ac3-h264/*', included: false},
       {pattern: 'test/test/assets/hls-ts-muxed-mp3-h264/*', included: false},
@@ -360,6 +366,14 @@ module.exports = (config) => {
 
         // Overrides the default test timeout value.
         testTimeout: settings.test_timeout,
+
+        // Without this flag, we don't trust Safari to run native layout tests.
+        // Rendering on these is super inconsistent from device to device, so
+        // this flag is used in our lab environment explicitly.
+        trustSafariNativeTextLayout: settings.trust_safari_native_text_layout,
+
+        // True if the test.py --grid_config option was used.
+        runningInLab: !!settings.grid_config,
       }],
     },
 
@@ -380,7 +394,7 @@ module.exports = (config) => {
     // Set Karma's level of logging.
     logLevel: KARMA_LOG_MAP[settings.log_level],
 
-    // Should Karma xecute tests whenever a file changes?
+    // Should Karma execute tests whenever a file changes?
     autoWatch: settings.auto_watch,
 
     // Do a single run of the tests on captured browsers and then quit.
@@ -535,8 +549,8 @@ module.exports = (config) => {
  * Resolves a list of paths using globs into a list of explicit paths.
  * Paths are all relative to the source directory.
  *
- * @param {!Array.<string>} list
- * @return {!Array.<string>}
+ * @param {!Array<string>} list
+ * @return {!Array<string>}
  */
 function resolveGlobs(list) {
   const options = {
@@ -557,7 +571,7 @@ function resolveGlobs(list) {
  * array of strings.
  *
  * @param {!Object} config
- * @return {!Array.<string>}
+ * @return {!Array<string>}
  */
 function allUsableBrowserLaunchers(config) {
   const browsers = [];
@@ -604,6 +618,7 @@ function allUsableBrowserLaunchers(config) {
       const browserPath = process.env[ENV_CMD] || DEFAULT_CMD[process.platform];
 
       if (!fs.existsSync(browserPath) &&
+          // cspell: disable-next-line
           !which.sync(browserPath, {nothrow: true})) {
         continue;
       }
@@ -638,7 +653,7 @@ function WebDriverScreenshotMiddlewareFactory(launcher) {
    * Extract URL params from the request.
    *
    * @param {express.Request} request
-   * @return {!Object.<string, string>}
+   * @return {!Object<string, string>}
    */
   function getParams(request) {
     // This can be null for manually-connected browsers.
@@ -700,7 +715,7 @@ function WebDriverScreenshotMiddlewareFactory(launcher) {
    * @param {karma.Launcher.Browser.spec} spec
    * @param {wd.remote} webDriverClient A WebDriver client, an object from the
    *   "wd" package, created by "wd.remote()".
-   * @return {!Promise.<!Buffer>} A Buffer containing a PNG screenshot
+   * @return {!Promise<!Buffer>} A Buffer containing a PNG screenshot
    */
   function getScreenshot(spec, webDriverClient) {
     return new Promise((resolve, reject) => {
@@ -731,8 +746,8 @@ function WebDriverScreenshotMiddlewareFactory(launcher) {
    * Write the diff to disk, as well.
    *
    * @param {karma.Launcher.Browser} browser
-   * @param {!Object.<string, string>} params
-   * @return {!Promise.<number>} A similarity score between 0 and 1.
+   * @param {!Object<string, string>} params
+   * @return {!Promise<number>} A similarity score between 0 and 1.
    */
   async function diffScreenshot(browser, params) {
     const webDriverClient = getWebDriverClient(browser);
@@ -935,7 +950,7 @@ WebDriverScreenshotMiddlewareFactory.$inject = ['launcher'];
  * This could have been done through a fork of Karma itself, but this plugin
  * was clearer in some ways than using a fork of a now-extinct project.
  *
- * @param {karma.Launcher} launcher
+ * @param {!Array<karma.Reporter>} reporters
  * @param {string} settingsJson
  * @return {karma.Middleware}
  */

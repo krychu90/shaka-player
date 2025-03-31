@@ -75,16 +75,18 @@ shaka.ui.AdStatisticsButton = class extends shaka.ui.Element {
     /** @private {!Array} */
     this.statisticsList_ = [];
 
-    /** @private {!Object.<string, (number|!Array.<number>)>} */
+    /** @private {!shaka.extern.AdsStats} */
     this.currentStats_ = this.adManager.getStats();
 
-    /** @private {!Object.<string, HTMLElement>} */
-    this.displayedElements_ = {};
+    shaka.ui.Utils.setDisplay(this.button_, this.currentStats_.started > 0);
+
+    /** @private {!Map<string, HTMLElement>} */
+    this.displayedElements_ = new Map();
 
     const parseLoadTimes = (name) => {
       let totalTime = 0;
       const loadTimes =
-        /** @type {!Array.<number>} */ (this.currentStats_[name]);
+        /** @type {!Array<number>} */ (this.currentStats_[name]);
       for (const loadTime of loadTimes) {
         totalTime += parseFloat(loadTime);
       }
@@ -95,15 +97,15 @@ shaka.ui.AdStatisticsButton = class extends shaka.ui.Element {
       return this.currentStats_[name];
     };
 
-    /** @private {!Object.<string, function(string):string>} */
-    this.parseFrom_ = {
-      'loadTimes': parseLoadTimes,
-      'averageLoadTime': showNumber,
-      'started': showNumber,
-      'playedCompletely': showNumber,
-      'skipped': showNumber,
-      'errors': showNumber,
-    };
+    /** @private {!Map<string, function(string): string>} */
+    this.parseFrom_ = new Map()
+        .set('loadTimes', parseLoadTimes)
+        .set('averageLoadTime', showNumber)
+        .set('started', showNumber)
+        .set('overlayAds', showNumber)
+        .set('playedCompletely', showNumber)
+        .set('skipped', showNumber)
+        .set('errors', showNumber);
 
     /** @private {shaka.util.Timer} */
     this.timer_ = new shaka.util.Timer(() => {
@@ -141,8 +143,6 @@ shaka.ui.AdStatisticsButton = class extends shaka.ui.Element {
 
   /** @private */
   onClick_() {
-    shaka.ui.Utils.setDisplay(this.parent, false);
-
     if (this.container_.classList.contains('shaka-hidden')) {
       this.icon_.textContent =
           shaka.ui.Enums.MaterialDesignIcons.STATISTICS_OFF;
@@ -170,7 +170,11 @@ shaka.ui.AdStatisticsButton = class extends shaka.ui.Element {
     this.stateSpan_.textContent = this.localization.resolve(labelText);
   }
 
-  /** @private */
+  /**
+   * @param {string} name
+   * @return {!HTMLElement}
+   * @private
+   */
   generateComponent_(name) {
     const section = shaka.util.Dom.createHTMLElement('div');
 
@@ -179,10 +183,10 @@ shaka.ui.AdStatisticsButton = class extends shaka.ui.Element {
     section.appendChild(label);
 
     const value = shaka.util.Dom.createHTMLElement('span');
-    value.textContent = this.parseFrom_[name](name);
+    value.textContent = this.parseFrom_.get(name)(name);
     section.appendChild(value);
 
-    this.displayedElements_[name] = value;
+    this.displayedElements_.set(name, value);
 
     return section;
   }
@@ -216,8 +220,8 @@ shaka.ui.AdStatisticsButton = class extends shaka.ui.Element {
     this.currentStats_ = this.adManager.getStats();
 
     for (const name of this.statisticsList_) {
-      this.displayedElements_[name].textContent =
-          this.parseFrom_[name](name);
+      this.displayedElements_.get(name).textContent =
+          this.parseFrom_.get(name)(name);
     }
   }
 

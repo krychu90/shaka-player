@@ -224,7 +224,7 @@ proxy them.
 
 **Q:** My player keeps buffering after each chunk when streaming HLS live.
 
-**A:** It is recommended to have more than 3 chunks in your chunklist. If this
+**A:** It is recommended to have more than 3 chunks in your chunk list. If this
 is not possible, then you have to change the presentationDelay value. We offer
 the following configuration:
 
@@ -252,6 +252,14 @@ patience in these matters.
 integer durations. Although the HLS spec allows it, Shaka Player requires that
 the duration must be precise with decimal-floating-point or decimal-integer
 number. If this is not your case, please open an issue so we can investigate it.
+
+<hr>
+
+**Q:** Why my PlayReady HLS stream with the embedded license url doesn't work?
+
+**A:** Make sure that EXT-X-SESSION-KEY is used in the master playlist, this is
+necessary for the correct operation of the player. If you use Shaka Packager it
+is recommended to use the `--create_session_keys` option.
 
 
 [386]: https://github.com/shaka-project/shaka-player/issues/386#issuecomment-227898001

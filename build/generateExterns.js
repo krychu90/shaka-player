@@ -48,9 +48,9 @@ let partiallyExportedClassesDetected = false;
 /**
  * Topological sort of general objects using a DFS approach.
  * Will add a __mark field to each object as part of the sorting process.
- * @param {!Array.<T>} list
- * @param {function(T):!Array.<T>} getDeps
- * @return {!Array.<T>}
+ * @param {!Array<T>} list
+ * @param {function(T): !Array<T>} getDeps
+ * @return {!Array<T>}
  * @template T
  * @see https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
  */
@@ -222,7 +222,7 @@ function getLeadingBlockComment(node) {
   }
 
   // In case there are multiple (for example, a file-level comment that also
-  // preceeds the node), take the most recent one, which is closest to the node.
+  // precedes the node), take the most recent one, which is closest to the node.
   const mostRecentComment = blockComments[blockComments.length - 1];
 
   // Reconstruct the original block comment by adding back /* and */.
@@ -276,7 +276,7 @@ function getIdentifierString(node) {
 /**
  * @param {ASTNode} node A function definition node from the abstract syntax
  *   tree.
- * @return {!Array.<string>} a list of the parameter names.
+ * @return {!Array<string>} a list of the parameter names.
  */
 function getFunctionParameters(node) {
   assert(node.type == 'FunctionExpression' ||
@@ -315,7 +315,7 @@ function getFunctionParameters(node) {
  * Take the original block comment and prep it for the externs by removing
  * export annotations and blank lines.
  *
- * @param {string}
+ * @param {string} comment
  * @return {string}
  */
 function removeExportAnnotationsFromComment(comment) {
@@ -334,7 +334,7 @@ function removeExportAnnotationsFromComment(comment) {
 /**
  * Recursively find all expression statements in all block nodes.
  * @param {ASTNode} node
- * @return {!Array.<ASTNode>}
+ * @return {!Array<ASTNode>}
  */
 function getAllExpressionStatements(node) {
   assert(node.body && node.body.body);
@@ -352,7 +352,7 @@ function getAllExpressionStatements(node) {
 
 
 /**
- * @param {!Set.<string>} names A set of the names of exported nodes.
+ * @param {!Set<string>} names A set of the names of exported nodes.
  * @param {ASTNode} node An exported node from the abstract syntax tree.
  * @return {string} An extern string for this node.
  */
@@ -425,7 +425,7 @@ function createExternFromExportNode(names, node) {
  * Some classes are not exported, but contain exported members.  These need to
  * have externs generated, too.
  *
- * @param {!Set.<string>} names A set of the names of exported nodes.
+ * @param {!Set<string>} names A set of the names of exported nodes.
  * @param {ASTNode} node An exported node from the abstract syntax tree.
  * @return {string} An extern string for this node.
  */
@@ -498,7 +498,7 @@ function createExternMethod(node) {
 /**
  * Find the constructor of an ES6 class, if it exists.
  *
- * @param {ASTNode} className
+ * @param {ASTNode} classNode
  * @return {ASTNode}
  */
 function getClassConstructor(classNode) {
@@ -715,12 +715,12 @@ function createExternsFromConstructor(className, constructorNode) {
 
 
 /**
- * @param {!Set.<string>} names A set of the names of exported nodes.
+ * @param {!Set<string>} names A set of the names of exported nodes.
  * @param {string} inputPath
  * @return {{
  *   path: string,
- *   provides: !Array.<string>,
- *   requires: !Array.<string>,
+ *   provides: !Array<string>,
+ *   requires: !Array<string>,
  *   externs: string,
  * }}
  */
@@ -782,7 +782,7 @@ function generateExterns(names, inputPath) {
  * Generate externs from exported code.
  * Arguments: --output <EXTERNS> <INPUT> [<INPUT> ...]
  *
- * @param {!Array.<string>} args The args to this script, not counting node and
+ * @param {!Array<string>} args The args to this script, not counting node and
  *   the script name itself.
  */
 function main(args) {
@@ -860,9 +860,9 @@ function main(args) {
       '/**\n' +
       ' * @fileoverview Generated externs.  DO NOT EDIT!\n' +
       ' * @externs\n' +
-      ' * @suppress {duplicate} To prevent compiler errors with the\n' +
-      ' *   namespace being declared both here and by goog.provide in the\n' +
-      ' *   library.\n' +
+      ' * @suppress {constantProperty, duplicate} To prevent compiler\n' +
+      ' *   errors with the namespace being declared both here and by\n' +
+      ' *   goog.provide in the library.\n' +
       ' */\n\n' +
       namespaceDeclarations.join('') + '\n' + externs);
 }

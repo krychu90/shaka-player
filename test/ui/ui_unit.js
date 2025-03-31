@@ -176,7 +176,7 @@ describe('UI', () => {
     });
 
     describe('set up with several videos', () => {
-      /** @type {!Array.<!HTMLVideoElement>} */
+      /** @type {!Array<!HTMLVideoElement>} */
       const videos = [];
 
       beforeEach(async () => {
@@ -913,6 +913,8 @@ describe('UI', () => {
 
         shaka.media.ManifestParser.registerParserByMime(
             fakeMimeType, () => new shaka.test.FakeManifestParser(manifest));
+
+        player.configure('streaming.segmentPrefetchLimit', 0);
 
         await player.load(
             /* uri= */ 'fake', /* startTime= */ 0, fakeMimeType);

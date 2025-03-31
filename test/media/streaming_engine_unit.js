@@ -12,20 +12,20 @@ describe('StreamingEngine', () => {
   // Create empty object first and initialize the fields through
   // [] to allow field names to be expressions.
   /**
-   * @type {!Object.<shaka.util.ManifestParserUtils.ContentType,
-   *                 !Array.<number>>}
+   * @type {!Object<shaka.util.ManifestParserUtils.ContentType,
+   *                 !Array<number>>}
    */
   const initSegmentRanges = {};
   initSegmentRanges[ContentType.AUDIO] = [100, 1000];
   initSegmentRanges[ContentType.VIDEO] = [200, 2000];
 
-  /** @type {!Object.<shaka.util.ManifestParserUtils.ContentType, number>} */
+  /** @type {!Object<shaka.util.ManifestParserUtils.ContentType, number>} */
   const segmentSizes = {};
   segmentSizes[ContentType.AUDIO] = 1000;
   segmentSizes[ContentType.VIDEO] = 10000;
   segmentSizes[ContentType.TEXT] = 500;
 
-  /** @type {!Object.<string, shaka.test.FakeMediaSourceEngine.SegmentData>} */
+  /** @type {!Object<string, shaka.test.FakeMediaSourceEngine.SegmentData>} */
   let segmentData;
   /** @type {number} */
   let presentationTimeInSeconds;
@@ -108,6 +108,7 @@ describe('StreamingEngine', () => {
    * @param {number=} mediaOffset The offset from 0 for the segment start times
    * @param {shaka.extern.aesKey=} aesKey The AES-128 key to put in
    *   the manifest, if one should exist
+   * @param {boolean=} secondaryAudioVariant
    */
   function setupVod(trickMode, mediaOffset, aesKey,
       secondaryAudioVariant = false) {
@@ -370,6 +371,7 @@ describe('StreamingEngine', () => {
    * @param {number} secondPeriodStartTime
    * @param {number} presentationDuration
    * @param {shaka.extern.aesKey=} aesKey
+   * @param {boolean=} secondaryAudioVariant
    */
   function setupManifest(
       firstPeriodStartTime, secondPeriodStartTime, presentationDuration,
@@ -424,7 +426,7 @@ describe('StreamingEngine', () => {
 
   /**
    * Creates the StreamingEngine.
-   **
+   *
    * @param {shaka.extern.StreamingConfiguration=} config Optional
    *   configuration object which overrides the default one.
    */
@@ -445,12 +447,22 @@ describe('StreamingEngine', () => {
       return Promise.resolve();
     });
 
+    const defaultConfig =
+        shaka.util.PlayerConfiguration.createDefault().streaming;
+
     if (!config) {
-      config = shaka.util.PlayerConfiguration.createDefault().streaming;
+      config = defaultConfig;
       config.rebufferingGoal = 2;
       config.bufferingGoal = 5;
       config.bufferBehind = Infinity;
       config.maxDisabledTime = 0; // Do not disable stream by default
+      // We don't want to evict segments in tests where there is no need to
+      // test them.
+      config.evictionGoal = 30;
+    }
+
+    if (defaultConfig.segmentPrefetchLimit == config.segmentPrefetchLimit) {
+      config.segmentPrefetchLimit = 0; // Do not prefetch segments by default
     }
 
     goog.asserts.assert(
@@ -460,6 +472,7 @@ describe('StreamingEngine', () => {
       getPresentationTime: () => presentationTimeInSeconds,
       getBandwidthEstimate: Util.spyFunc(getBandwidthEstimate),
       getPlaybackRate: Util.spyFunc(getPlaybackRate),
+      video: shaka.test.UiUtils.createVideoElement(),
       mediaSourceEngine: mediaSourceEngine,
       netEngine: /** @type {!shaka.net.NetworkingEngine} */(netEngine),
       onError: Util.spyFunc(onError),
@@ -2680,7 +2693,7 @@ describe('StreamingEngine', () => {
       await streamingEngine.start();
       playing = true;
 
-      // Since StreamingEngine is free to peform audio, video, and text updates
+      // Since StreamingEngine is free to perform audio, video, and text updates
       // in any order, there are many valid ways in which StreamingEngine can
       // evict segments. So, instead of verifying the exact, final buffer
       // configuration, ensure the byte limit is never exceeded and at least
@@ -3089,9 +3102,9 @@ describe('StreamingEngine', () => {
     let initialVariant;
     /** @type {shaka.extern.Variant} */
     let newVariant;
-    /** @type {!Array.<string>} */
+    /** @type {!Array<string>} */
     let requestUris;
-    /** @type {!Array.<shaka.util.PublicPromise>} */
+    /** @type {!Array<shaka.util.PublicPromise>} */
     let delayedRequests;
     /** @type {shaka.net.NetworkingEngine.PendingRequest} */
     let lastPendingRequest;
@@ -3461,6 +3474,7 @@ describe('StreamingEngine', () => {
           originalUri: request.uris[0],
           data: buffer,
           headers: {},
+          originalRequest: request,
         };
         return shaka.util.AbortableOperation.completed(response);
       });
@@ -3774,6 +3788,7 @@ describe('StreamingEngine', () => {
 
   /**
    * Expect buffers have been added to MSE.
+   * @param {boolean=} secondaryAudioVariant
    */
   function expectHasBuffer(secondaryAudioVariant = false) {
     expect(mediaSourceEngine.initSegments).toEqual({
@@ -3889,7 +3904,7 @@ describe('StreamingEngine', () => {
       expectSegmentRequest(true);
     });
 
-    it('should disable prefetch when reset config at begining', async () => {
+    it('should disable prefetch when reset config at beginning', async () => {
       const config = shaka.util.PlayerConfiguration.createDefault().streaming;
       config.segmentPrefetchLimit = 0;
       streamingEngine.configure(config);
@@ -4052,7 +4067,7 @@ describe('StreamingEngine', () => {
       expectSegmentRequest(true);
     });
 
-    it('should disable prefetch when limit is reset at begining', async () => {
+    it('should disable prefetch when limit is reset at beginning', async () => {
       const config = shaka.util.PlayerConfiguration.createDefault().streaming;
       config.segmentPrefetchLimit = 0;
       streamingEngine.configure(config);

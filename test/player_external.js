@@ -142,7 +142,7 @@ describe('Player', () => {
         // Rather than awaiting the load() method, catch any load() errors and
         // wait on the 'canplay' event.  This has the advantage that we will
         // get better logging of the media state on a timeout, since that
-        // capabilitiy is built into the waiter for media element events.
+        // capability is built into the waiter for media element events.
         const manifestUri = await getManifestUri(asset);
         player.load(manifestUri).catch(fail);
         await waiter.timeoutAfter(60).waitForEvent(video, 'canplay');
@@ -240,7 +240,7 @@ describe('Player', () => {
 
   /**
    * @param {ShakaDemoAssetInfo} asset
-   * @return {!Promise.<string>}
+   * @return {!Promise<string>}
    */
   async function getManifestUri(asset) {
     let manifestUri = asset.manifestUri;
@@ -259,7 +259,7 @@ describe('Player', () => {
 
   /**
    * @param {ShakaDemoAssetInfo} asset
-   * @return {!Promise.<string>}
+   * @return {!Promise<string>}
    */
   async function getManifestUriFromAdManager(asset) {
     try {
@@ -304,7 +304,7 @@ describe('Player', () => {
 
   /**
    * @param {ShakaDemoAssetInfo} asset
-   * @return {!Promise.<string>}
+   * @return {!Promise<string>}
    */
   async function getManifestUriFromMediaTailorAdManager(asset) {
     try {

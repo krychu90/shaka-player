@@ -75,8 +75,6 @@ describe('HlsParser live', () => {
       onEvent: fail,
       onTimelineRegionAdded: fail,
       isLowLatencyMode: () => false,
-      isAutoLowLatencyMode: () => false,
-      enableLowLatencyMode: () => {},
       updateDuration: () => {},
       newDrmInfo: (stream) => {},
       onManifestUpdated: () => {},
@@ -141,7 +139,7 @@ describe('HlsParser live', () => {
    * @param {string} master
    * @param {string} initialMedia
    * @param {Array=} initialReferences
-   * @return {!Promise.<shaka.extern.Manifest>}
+   * @return {!Promise<shaka.extern.Manifest>}
    */
   async function testInitialManifest(
       master, initialMedia, initialReferences=null) {
@@ -432,6 +430,36 @@ describe('HlsParser live', () => {
         // No new updates were requested.
         expect(fakeNetEngine.request).not.toHaveBeenCalled();
       });
+
+      it('convert variant to encrypted on update', async () => {
+        const manifest = await testInitialManifest(master, media);
+        expect(manifest.variants[0].video.encrypted).toBe(false);
+
+        const initDataBase64 =
+            'dGhpcyBpbml0IGRhdGEgY29udGFpbnMgaGlkZGVuIHNlY3JldHMhISE=';
+
+        const keyId = 'abc123';
+
+        const mediaWithAdditionalInfo = [
+          '#EXTM3U\n',
+          '#EXT-X-PLAYLIST-TYPE:EVENT\n',
+          '#EXT-X-TARGETDURATION:5\n',
+          '#EXT-X-MAP:URI="init.mp4",BYTERANGE="616@0"\n',
+          '#EXTINF:2,\n',
+          'main.mp4\n',
+          '#EXT-X-KEY:METHOD=SAMPLE-AES-CTR,',
+          'KEYID=0X' + keyId + ',',
+          'KEYFORMAT="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed",',
+          'URI="data:text/plain;base64,',
+          initDataBase64, '",\n',
+          '#EXT-X-MAP:URI="init.mp4",BYTERANGE="616@0"\n',
+          '#EXTINF:2,\n',
+          'main2.mp4\n',
+        ].join('');
+
+        await testUpdate(manifest, mediaWithAdditionalInfo);
+        expect(manifest.variants[0].video.encrypted).toBe(true);
+      });
     });  // describe('update')
   });  // describe('playlist type EVENT')
 
@@ -571,7 +599,7 @@ describe('HlsParser live', () => {
           expect(manifest.presentationTimeline.getDelay()).toBe(6);
         });
 
-    it('sets 3 times target duration as presentation delay if not configured and clamped to the start', async () => { // eslint-disable-line max-len
+    it('sets 3 times target duration as presentation delay if not configured and clamped to the start', async () => { // eslint-disable-line @stylistic/max-len
       const media = [
         '#EXTM3U\n',
         '#EXT-X-TARGETDURATION:2\n',
@@ -596,7 +624,7 @@ describe('HlsParser live', () => {
       expect(manifest.startTime).toBe(0);
     });
 
-    it('sets 1 times target duration as presentation delay if there are not enough segments', async () => { // eslint-disable-line max-len
+    it('sets 1 times target duration as presentation delay if there are not enough segments', async () => { // eslint-disable-line @stylistic/max-len
       const media = [
         '#EXTM3U\n',
         '#EXT-X-TARGETDURATION:2\n',
@@ -754,7 +782,7 @@ describe('HlsParser live', () => {
       await testInitialManifest(master, mediaWithPartialSegments, [ref, ref2]);
     });
 
-    it('parses streams with partial and preload hinted segments and BYTERANGE', async () => { // eslint-disable-line max-len
+    it('parses streams with partial and preload hinted segments and BYTERANGE', async () => { // eslint-disable-line @stylistic/max-len
       playerInterface.isLowLatencyMode = () => true;
       const mediaWithPartialSegments = [
         '#EXTM3U\n',
@@ -1397,7 +1425,7 @@ describe('HlsParser live', () => {
   });  // describe('playlist type LIVE')
 
   /**
-   * @param {string|Array.<string>} uri A relative URI to http://example.com
+   * @param {string | Array<string>} uri A relative URI to http://example.com
    * @param {number} start
    * @param {number} end
    * @param {?number} syncTime
@@ -1405,7 +1433,7 @@ describe('HlsParser live', () => {
    * @param {number=} startByte
    * @param {?number=} endByte
    * @param {number=} timestampOffset
-   * @param {!Array.<!shaka.media.SegmentReference>=} partialReferences
+   * @param {!Array<!shaka.media.SegmentReference>=} partialReferences
    * @param {?string=} tilesLayout
    * @return {!shaka.media.SegmentReference}
    */

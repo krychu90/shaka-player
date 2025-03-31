@@ -386,7 +386,7 @@ filterDescribe('Storage', storageSupport, () => {
     let storage;
 
     // CAUTION: Do not put overrideSupport() or clearSupport() in
-    // beforEach/afterEach.  They change what is supported at a static level.
+    // beforeEach/afterEach.  They change what is supported at a static level.
     // When the test is run, a shim will call the support check and the test
     // will be skipped if overrideSupport() has been called already.  A shim of
     // afterEach will call the same check and skip afterEach's body, too, and
@@ -464,8 +464,8 @@ filterDescribe('Storage', storageSupport, () => {
     /** @type {!shaka.offline.Storage} */
     let storage;
 
-    /** @type {!Object.<string, function():!Promise.<ArrayBuffer>>} */
-    let fakeResponses = {};
+    /** @type {!Map<string, function(): !Promise<ArrayBuffer>>} */
+    const fakeResponses = new Map();
 
     let compiledShaka;
 
@@ -475,9 +475,9 @@ filterDescribe('Storage', storageSupport, () => {
 
       compiledShaka.net.NetworkingEngine.registerScheme(
           'fake', (uri, req, type, progress) => {
-            if (fakeResponses[uri]) {
+            if (fakeResponses.has(uri)) {
               const operation = async () => {
-                const data = await fakeResponses[uri]();
+                const data = await fakeResponses.get(uri)();
                 return {
                   uri,
                   data,
@@ -530,7 +530,7 @@ filterDescribe('Storage', storageSupport, () => {
        * @param {?string} dependingOn Another URI, or null
        */
       function setResponseFor(segment, dependingOn) {
-        fakeResponses[segment] = async () => {
+        fakeResponses.set(segment, async () => {
           if (dependingOn) {
             await delays[dependingOn];
           }
@@ -539,9 +539,9 @@ filterDescribe('Storage', storageSupport, () => {
           // now.
           delays[segment].resolve();
           return new ArrayBuffer(16);
-        };
+        });
       }
-      fakeResponses = {};
+      fakeResponses.clear();
       setResponseFor(audioSegment1Uri, null);
       setResponseFor(audioSegment2Uri, videoSegment1Uri);
       setResponseFor(audioSegment3Uri, videoSegment2Uri);
@@ -569,7 +569,7 @@ filterDescribe('Storage', storageSupport, () => {
        * Since the audio stream has smaller segments, its contribution to
        * the overall progress is much smaller than the video stream segments.
        *
-       * @type {!Array.<number>}
+       * @type {!Array<number>}
        */
       const progressSteps = [
         0.057, 0.250, 0.307, 0.500, 0.557, 0.750, 0.807, 1.000,
@@ -593,7 +593,7 @@ filterDescribe('Storage', storageSupport, () => {
            * In this example we see a larger difference between the audio and
            * video contributions to progress.
            *
-           * @type {!Array.<number>}
+           * @type {!Array<number>}
            */
           const progressSteps = [
             0.241, 0.250, 0.491, 0.500, 0.741, 0.750, 0.991, 1.000,
@@ -607,14 +607,14 @@ filterDescribe('Storage', storageSupport, () => {
      * |expectedProgressSteps|.
      *
      * @param {shaka.extern.Manifest} manifest
-     * @param {!Array.<number>} expectedProgressSteps
+     * @param {!Array<number>} expectedProgressSteps
      */
     async function runProgressTest(manifest, expectedProgressSteps) {
       /**
        * Create a copy of the array so that we are not modifying the original
        * while we are tracking progress.
        *
-       * @type {!Array.<number>}
+       * @type {!Array<number>}
        */
       const remainingProgress = expectedProgressSteps.slice();
 
@@ -710,7 +710,7 @@ filterDescribe('Storage', storageSupport, () => {
           'Expecting manifest to have audio stream');
       goog.asserts.assert(
           variant.video,
-          'Expecting manigest to have video stream');
+          'Expecting manifest to have video stream');
 
       // Remove the per stream bandwidth information.
       variant.audio.bandwidth = undefined;
@@ -760,7 +760,7 @@ filterDescribe('Storage', storageSupport, () => {
     });
 
     it('stores and lists content', async () => {
-      /** @type {!Array.<string>} */
+      /** @type {!Array<string>} */
       const manifestUris = [
         manifestWithPerStreamBandwidthUri,
         manifestWithoutPerStreamBandwidthUri,
@@ -1091,7 +1091,7 @@ filterDescribe('Storage', storageSupport, () => {
         return manifest;
       };
 
-      // The uri won't matter much, as we have overriden |parseManifest|.
+      // The uri won't matter much, as we have overridden |parseManifest|.
       /** @type {!shaka.extern.IAbortableOperation} */
       const waitOnStore = storage.store('any-uri', noMetadata, fakeMimeType);
 
@@ -1285,7 +1285,7 @@ filterDescribe('Storage', storageSupport, () => {
 
       // We expect 5 progress events because there are 4 unique segments, plus
       // the manifest.
-      /** @type {!Array.<number>}*/
+      /** @type {!Array<number>}*/
       const progressSteps = [
         0.2, 0.4, 0.6, 0.8, 1,
       ];
@@ -1398,6 +1398,7 @@ filterDescribe('Storage', storageSupport, () => {
       forced: false,
       videoId: videoId,
       audioId: audioId,
+      audioGroupId: null,
       channelsCount: 2,
       audioSamplingRate: 48000,
       spatialAudio: false,
@@ -1446,6 +1447,7 @@ filterDescribe('Storage', storageSupport, () => {
       forced: false,
       videoId: null,
       audioId: null,
+      audioGroupId: null,
       channelsCount: null,
       audioSamplingRate: null,
       spatialAudio: false,
@@ -1626,7 +1628,7 @@ filterDescribe('Storage', storageSupport, () => {
 
   /**
    * @param {shaka.extern.Manifest} manifest
-   * @return {!Array.<shaka.extern.Stream>}
+   * @return {!Array<shaka.extern.Stream>}
    */
   function getAllStreams(manifest) {
     const streams = [];
@@ -1648,7 +1650,7 @@ filterDescribe('Storage', storageSupport, () => {
 
   /**
    * @param {shaka.extern.Stream} stream
-   * @param {!Array.<shaka.media.SegmentReference>} segments
+   * @param {!Array<shaka.media.SegmentReference>} segments
    */
   function overrideSegmentIndex(stream, segments) {
     const index = new shaka.media.SegmentIndex(segments);
@@ -1682,7 +1684,7 @@ filterDescribe('Storage', storageSupport, () => {
 
   /**
    * @param {!shaka.offline.Storage} storage
-   * @param {!shaka.media.DrmEngine} drm
+   * @param {!shaka.drm.DrmEngine} drm
    * @param {shaka.extern.Manifest} manifest
    */
   function overrideDrmAndManifest(storage, drm, manifest) {
@@ -1761,9 +1763,9 @@ filterDescribe('Storage', storageSupport, () => {
   };
 
   /**
-   * @param {!shaka.media.DrmEngine} drmEngine
+   * @param {!shaka.drm.DrmEngine} drmEngine
    * @param {string} sessionName
-   * @return {!Promise.<MediaKeySession>}
+   * @return {!Promise<MediaKeySession>}
    *
    * @suppress {accessControls}
    */
@@ -1774,7 +1776,7 @@ filterDescribe('Storage', storageSupport, () => {
 
   /**
    * @param {!shaka.offline.OfflineUri} uri
-   * @return {!Promise.<shaka.extern.Manifest>}
+   * @return {!Promise<shaka.extern.Manifest>}
    */
   async function getStoredManifest(uri) {
     /** @type {!shaka.offline.ManifestConverter} */
@@ -1800,7 +1802,7 @@ filterDescribe('Storage', storageSupport, () => {
   /**
    * @param {!shaka.Player} player
    * @param {shaka.extern.Manifest} manifest
-   * @param {function(!shaka.media.DrmEngine):Promise} action
+   * @param {function(!shaka.drm.DrmEngine):Promise} action
    * @return {!Promise}
    */
   async function withDrm(player, manifest, action) {
@@ -1809,8 +1811,8 @@ filterDescribe('Storage', storageSupport, () => {
 
     let error = null;
 
-    /** @type {!shaka.media.DrmEngine} */
-    const drm = new shaka.media.DrmEngine({
+    /** @type {!shaka.drm.DrmEngine} */
+    const drm = new shaka.drm.DrmEngine({
       netEngine: net,
       onError: (e) => { error = error || e; },
       onKeyStatus: () => {},

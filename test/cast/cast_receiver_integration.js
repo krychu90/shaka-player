@@ -34,10 +34,10 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
 
   /** @type {shaka.util.PublicPromise} */
   let messageWaitPromise;
-  /** @type {Array.<string>} */
+  /** @type {Array<string>} */
   let pendingMessages = null;
 
-  /** @type {!Array.<function()>} */
+  /** @type {!Array<function()>} */
   let toRestore;
   let pendingWaitWrapperCalls = 0;
 
@@ -324,10 +324,10 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
         'start');
     waitForUpdateMessageWrapper(
         // eslint-disable-next-line no-restricted-syntax
-        shaka.media.DrmEngine.prototype, 'DrmEngine', 'initForPlayback');
+        shaka.drm.DrmEngine.prototype, 'DrmEngine', 'initForPlayback');
     waitForUpdateMessageWrapper(
         // eslint-disable-next-line no-restricted-syntax
-        shaka.media.DrmEngine.prototype, 'DrmEngine', 'attach');
+        shaka.drm.DrmEngine.prototype, 'DrmEngine', 'attach');
     waitForUpdateMessageWrapper(
         // eslint-disable-next-line no-restricted-syntax
         shaka.media.StreamingEngine.prototype, 'StreamingEngine', 'start');
@@ -363,17 +363,21 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
   function waitForUpdateMessageWrapper(prototype, name, methodName) {
     pendingWaitWrapperCalls += 1;
     const original = prototype[methodName];
-    // eslint-disable-next-line no-restricted-syntax
-    prototype[methodName] = /** @this {Object} @return {*} */ async function() {
-      pendingWaitWrapperCalls -= 1;
-      shaka.log.debug(
-          'Waiting for update message before calling ' +
-          name + '.' + methodName + '...');
-      const originalArguments = Array.from(arguments);
-      await waitForUpdateMessages();
+    prototype[methodName] =
+      /**
+       * @this {Object}
+       * @return {*}
+       */
       // eslint-disable-next-line no-restricted-syntax
-      return original.apply(this, originalArguments);
-    };
+      async function() {
+        pendingWaitWrapperCalls -= 1;
+        shaka.log.debug(
+            'Waiting for update message before calling ' +
+            name + '.' + methodName + '...');
+        const originalArguments = Array.from(arguments);
+        await waitForUpdateMessages();
+        return original.apply(this, originalArguments);
+      };
     toRestore.push(() => {
       prototype[methodName] = original;
     });

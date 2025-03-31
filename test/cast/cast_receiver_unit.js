@@ -615,7 +615,7 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
         appData: {},
       }, mockShakaMessageBus);
 
-      // The messages will show up asychronously:
+      // The messages will show up asynchronously:
       await Util.shortDelay();
       expectMediaInfo('URI A', 1);
       mockGenericMessageBus.messages = [];
@@ -698,7 +698,7 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
         appData: {},
       }, mockShakaMessageBus);
 
-      // The messages will show up asychronously:
+      // The messages will show up asynchronously:
       await Util.shortDelay();
       expectMediaInfo('URI A', 1);
       mockGenericMessageBus.messages = [];
@@ -838,7 +838,7 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
         appData: {},
       }, mockShakaMessageBus);
 
-      // The messages will show up asychronously:
+      // The messages will show up asynchronously:
       await Util.shortDelay();
       expectMediaInfo('URI A', 1);
       mockGenericMessageBus.messages = [];
@@ -1070,13 +1070,13 @@ filterDescribe('CastReceiver', castReceiverSupport, () => {
     for (const name of CastUtils.PlayerVoidMethods) {
       player[name] = jasmine.createSpy(name);
     }
-    for (const name in CastUtils.PlayerGetterMethods) {
+    for (const name of CastUtils.PlayerGetterMethods.keys()) {
       player[name] = jasmine.createSpy(name);
     }
-    for (const name in CastUtils.LargePlayerGetterMethods) {
+    for (const name of CastUtils.LargePlayerGetterMethods.keys()) {
       player[name] = jasmine.createSpy(name);
     }
-    for (const name in CastUtils.PlayerGetterMethodsThatRequireLive) {
+    for (const name of CastUtils.PlayerGetterMethodsThatRequireLive.keys()) {
       player[name] = jasmine.createSpy(name);
     }
     for (const name of CastUtils.PlayerPromiseMethods) {

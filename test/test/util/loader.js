@@ -43,7 +43,7 @@ let shakaNamespaceType;
 shaka.test.Loader = class {
   /**
    * @param {boolean} loadUncompiled
-   * @return {!Promise.<shakaNamespaceType>}
+   * @return {!Promise<shakaNamespaceType>}
    */
   static async loadShaka(loadUncompiled) {
     /** @type {!shaka.util.PublicPromise} */
@@ -69,7 +69,7 @@ shaka.test.Loader = class {
 
           loaded.resolve();
 
-          // We need to catch thrown exceptions here to propertly report errors
+          // We need to catch thrown exceptions here to properly report errors
           // in the registration process above.
           // eslint-disable-next-line no-restricted-syntax
         } catch (error) {

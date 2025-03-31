@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// cspell:words bien
+
 filterDescribe('Cue layout', shaka.test.TextLayoutTests.supported, () => {
   /** @type {shaka.test.TextLayoutTests} */
   let helper;
@@ -42,12 +44,14 @@ filterDescribe('Cue layout', shaka.test.TextLayoutTests.supported, () => {
             player, /** @type {!HTMLElement} */(helper.videoContainer),
             shaka.test.UiUtils.createVideoElement());
         // Turn off every part of the UI that we can, so that the screenshot is
-        // less likey to change because of something unrelated to text
+        // less likely to change because of something unrelated to text
         // rendering.
-        ui.configure('controlPanelElements', []);
-        ui.configure('addSeekBar', false);
-        ui.configure('addBigPlayButton', false);
-        ui.configure('enableFullscreenOnRotation', false);
+        ui.configure({
+          controlPanelElements: [],
+          addSeekBar: false,
+          addBigPlayButton: false,
+          enableFullscreenOnRotation: false,
+        });
 
         // Recreate the text displayer so that the text container comes after
         // the controls (as it does in production).  This is important for the
@@ -241,7 +245,7 @@ filterDescribe('Cue layout', shaka.test.TextLayoutTests.supported, () => {
       cue.region.width = 60;  // %
       cue.region.viewportAnchorX = 40; // %
       cue.region.viewportAnchorY = 10; // %
-      // eslint-disable-next-line max-len
+      // eslint-disable-next-line @stylistic/max-len
       cue.backgroundImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHAAAAA8BAMAAABMVCNvAAAAElBMVEX9/vtRldU+uUv6vAnvNjWzvsvH461AAAABvUlEQVRIx7WWwY6CMBRFYQb2Nhn22sS9o5m9icy+aPn/X5lS6r221gfTxLsC0pN7XovE6j1p9d6UcB/apYTUU/YlhT7bArCwUocUg9sCsMxVF7i2Pwd3+v93/Ty5uEbZtVVd+nacphw08oJzMUmhzxWgyYHDBHbRo9sMHmVX5bOJTENyrq0rMjB1EUG61ipMBtBEYM41qakVXLk3eVdyagMQrqNB47ProO4hGCbu+/4MMHUlp6J2F8c58pR3bRVj/B1cm94nB2IlatSDq53BW8Z1i4UEed3PueQqhxTkA781L10JBb2aNwAvGdddAj66NhKon0C6onHZtXKhKxolVx46XbtyUHLdRaaxqyXISoBxYfQOftFVBPnZuSfrSpCFcBXAYwp2HlrtSrBi1BrXlFt2RSEGXOn6DRCc6EpQgYMoXGWQIbLsSpCizAOIABQ4yZVgV2VAwfXlgPJvi6DJgnUGvMEUA0qgBTh6cOCAsmsD8LdDIQYUKiuA50FdBwy4DFqAtXCCDMAGYEtOCDYBrgYfFfn/G0ALsAInVgYruIaHnQSxcroKI1ZrU9/PuQmmq9OO43xhhUI5jR3lBX8x/RKsZNOu/wAAAABJRU5ErkJggg==';
       helper.textDisplayer.append([cue]);
 

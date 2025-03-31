@@ -24,8 +24,7 @@ describe('MssParser Manifest', () => {
 
   const aacCodecPrivateData = '1210';
 
-  // From https://test.playready.microsoft.com/smoothstreaming/SSWSS720H264PR/S
-  //      uperSpeedway_720.ism/Manifest
+  // From https://test.playready.microsoft.com/smoothstreaming/SSWSS720H264PR/SuperSpeedway_720.ism/Manifest
   const protectionHeader = 'jAMAAAEAAQCCAzwAVwBSAE0ASABFAEEARABFAFIAIAB4AG0A' +
       'bABuAHMAPQAiAGgAdAB0AHAAOgAvAC8AcwBjAGgAZQBtAGEAcwAuAG0AaQBjAHIAbwBzA' +
       'G8AZgB0AC4AYwBvAG0ALwBEAFIATQAvADIAMAAwADcALwAwADMALwBQAGwAYQB5AFIAZQ' +
@@ -75,8 +74,6 @@ describe('MssParser Manifest', () => {
       onEvent: shaka.test.Util.spyFunc(onEventSpy),
       onError: fail,
       isLowLatencyMode: () => false,
-      isAutoLowLatencyMode: () => false,
-      enableLowLatencyMode: () => {},
       updateDuration: () => {},
       newDrmInfo: (stream) => {},
       onManifestUpdated: () => {},
@@ -247,7 +244,7 @@ describe('MssParser Manifest', () => {
     fakeNetEngine.setResponseText('dummy://foo', manifestText);
     const config = shaka.util.PlayerConfiguration.createDefault().manifest;
     config.mss.manifestPreprocessorTXml = (mss) => {
-      /** @type{shaka.extern.xml.Node} */ (mss).children.pop();
+      /** @type {shaka.extern.xml.Node} */ (mss).children.pop();
     };
     parser.configure(config);
 

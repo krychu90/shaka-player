@@ -8,6 +8,7 @@
   visibility: hidden;
   width: 15%;
   z-index: 1;
+  pointer-events: none;
 
   #shaka-player-ui-thumbnail-image {
     position: absolute;
@@ -16,12 +17,24 @@
   #shaka-player-ui-thumbnail-time {
     background-color: rgba(0, 0, 0, 50%);
     bottom: 0;
-    color: white;
-    font-size: 16px;
     left: 0;
     position: absolute;
     right: 0;
-    text-align: center;
+    display: flex;
+    justify-content: center;
+
+    #shaka-player-ui-thumbnail-time {
+      background-color: rgb(0, 0, 0, 50%);
+      border-radius: 14px;
+      color: white;
+      font-size: 14px;
+      padding: 0 5px;
+    }
+  }
+
+  &.portrait-thumbnail {
+    min-width: 75px;
+    width: 7.5%;
   }
 }
 

@@ -206,8 +206,8 @@ describe('AdaptationSet', () => {
   /**
    * @param {number} id
    * @param {string} mimeType
-   * @param {!Array.<string>} codecs
-   * @param {!Array.<string>} roles
+   * @param {!Array<string>} codecs
+   * @param {!Array<string>} roles
    * @param {?number} channelsCount
    * @param {boolean=} spatialAudio
    * @return {shaka.extern.Stream}
@@ -236,6 +236,7 @@ describe('AdaptationSet', () => {
       roles: roles,
       forced: false,
       trickModeVideo: null,
+      dependencyStream: null,
       type: '',
       accessibilityPurpose: null,
       external: false,
@@ -244,6 +245,7 @@ describe('AdaptationSet', () => {
       fullMimeTypes: new Set([shaka.util.MimeUtils.getFullType(
           mimeType, codecs.join(','))]),
       isAudioMuxedInVideo: false,
+      baseOriginalId: null,
     };
   }
 });

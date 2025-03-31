@@ -21,7 +21,7 @@ shaka.test.Mss = class {
    * Tests the segment index produced by the MSS manifest parser.
    *
    * @param {string} manifestText
-   * @param {!Array.<shaka.media.SegmentReference>} references
+   * @param {!Array<shaka.media.SegmentReference>} references
    * @return {!Promise}
    */
   static async testSegmentIndex(manifestText, references) {
@@ -41,8 +41,6 @@ shaka.test.Mss = class {
       onEvent: fail,
       onError: fail,
       isLowLatencyMode: () => false,
-      isAutoLowLatencyMode: () => false,
-      enableLowLatencyMode: () => {},
       updateDuration: () => {},
       newDrmInfo: (stream) => {},
       onManifestUpdated: () => {},
@@ -82,8 +80,6 @@ shaka.test.Mss = class {
       onEvent: fail,
       onError: fail,
       isLowLatencyMode: () => false,
-      isAutoLowLatencyMode: () => false,
-      enableLowLatencyMode: () => {},
       updateDuration: () => {},
       newDrmInfo: (stream) => {},
       onManifestUpdated: () => {},
@@ -99,7 +95,7 @@ shaka.test.Mss = class {
 
   /**
    * @param {shaka.extern.Manifest} manifest
-   * @return {!Promise.<shaka.media.SegmentReference>}
+   * @return {!Promise<shaka.media.SegmentReference>}
    */
   static async getFirstAudioSegmentReference(manifest) {
     const variant = manifest.variants[0];

@@ -34,7 +34,7 @@ shaka.ui.ContextMenu = class extends shaka.ui.Element {
     /** @private {HTMLElement} */
     this.controlsContainer_ = this.controls.getControlsContainer();
 
-    /** @private {!Array.<shaka.extern.IUIElement>} */
+    /** @private {!Array<shaka.extern.IUIElement>} */
     this.children_ = [];
 
     /** @private {!HTMLElement} */
@@ -64,6 +64,10 @@ shaka.ui.ContextMenu = class extends shaka.ui.Element {
       shaka.ui.Utils.setDisplay(this.contextMenu_, false);
     });
 
+    this.eventManager.listen(this.contextMenu_, 'click', () => {
+      shaka.ui.Utils.setDisplay(this.contextMenu_, false);
+    });
+
     this.createChildren_();
   }
 
@@ -77,6 +81,13 @@ shaka.ui.ContextMenu = class extends shaka.ui.Element {
 
     this.children_ = [];
     super.release();
+  }
+
+  /**
+   * @export
+   */
+  closeMenu() {
+    shaka.ui.Utils.setDisplay(this.contextMenu_, false);
   }
 
   /**
@@ -105,5 +116,5 @@ shaka.ui.ContextMenu = class extends shaka.ui.Element {
   }
 };
 
-/** @private {!Map.<string, !shaka.extern.IUIElement.Factory>} */
+/** @private {!Map<string, !shaka.extern.IUIElement.Factory>} */
 shaka.ui.ContextMenu.elementNamesToFactories_ = new Map();

@@ -116,6 +116,10 @@ application:
       `panicThreshold`. (deprecated in v4.10.0)
     - `useSafariBehaviorForLive` has been removed.
     - `parsePrftBox` has been removed.
+    - `videoRobustness` and `audioRobustness` are now only an array of strings. (deprecated in v4.13.0)
+    - `streaming.forceHTTP` has been renamed to `networking.forceHTTP` (deprecated in v4.15.0)
+    - `streaming.forceHTTPS` has been renamed to `networking.forceHTTPS` (deprecated in v4.15.0)
+    - `streaming.minBytesForProgressEvents` has been renamed to `networking.minBytesForProgressEvents` (deprecated in v4.15.0)
 
   - Plugin changes:
     - `TextDisplayer` plugins must implement the `configure()` method.
@@ -125,3 +129,5 @@ application:
   - Player API Changes:
     - The constructor no longer takes `mediaElement` as a parameter; use the `attach` method to attach to a media element instead. (Deprecated in v4.6)
     - The `TimelineRegionInfo.eventElement` has been replaced with `TimelineRegionInfo.eventNode` property, the new property type is `shaka.externs.xml.Node` instead of `Element`
+    - New API for audio: `getAudioTracks` and `selectAudioTrack`, we also deprecated in v4.14 `getAudioLanguages`, `getAudioLanguagesAndRoles` and `selectAudioLanguage`.
+    - `shaka.util.FairPlayUtils` is moved to `shaka.drm.FairPlay` (Deprecated in v4.14)

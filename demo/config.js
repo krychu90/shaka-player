@@ -39,7 +39,7 @@ shakaDemo.Config = class {
 
     /**
      * A list of all sections.
-     * @private {!Array.<!shakaDemo.InputContainer>}
+     * @private {!Array<!shakaDemo.InputContainer>}
      */
     this.sections_ = [];
 
@@ -87,13 +87,14 @@ shakaDemo.Config = class {
     this.addOfflineSection_();
     this.addDrmSection_();
     this.addStreamingSection_();
+    this.addNetworkingSection_();
     this.addMediaSourceSection_();
     this.addManifestSection_();
     this.addDashManifestSection_();
     this.addHlsManifestSection_();
     this.addMssManifestSection_();
     this.addRetrySection_('manifest', 'Manifest Retry Parameters');
-    this.addRetrictionsSection_('', 'Restrictions');
+    this.addRestrictionsSection_('', 'Restrictions');
     this.addTextDisplayerSection_();
     this.addCmcdSection_();
     this.addCmsdSection_();
@@ -123,6 +124,14 @@ shakaDemo.Config = class {
 
   /** @private */
   addDrmSection_() {
+    const widevineRobustnessLevels = {
+      '': '',
+      'SW_SECURE_CRYPTO': 'SW_SECURE_CRYPTO',
+      'SW_SECURE_DECODE': 'SW_SECURE_DECODE',
+      'HW_SECURE_CRYPTO': 'HW_SECURE_CRYPTO',
+      'HW_SECURE_DECODE': 'HW_SECURE_DECODE',
+      'HW_SECURE_ALL': 'HW_SECURE_ALL',
+    };
     const docLink = this.resolveExternLink_('.DrmConfiguration');
     this.addSection_('DRM', docLink)
         .addBoolInput_('Delay License Request Until Played',
@@ -137,9 +146,16 @@ shakaDemo.Config = class {
             'drm.parseInbandPsshEnabled')
         .addTextInput_('Min HDCP version', 'drm.minHdcpVersion')
         .addBoolInput_('Ignore duplicate init data',
-            'drm.ignoreDuplicateInitData');
+            'drm.ignoreDuplicateInitData')
+        .addSelectInput_('Default audio robustness for Widevine',
+            'drm.defaultAudioRobustnessForWidevine',
+            widevineRobustnessLevels, widevineRobustnessLevels)
+        .addSelectInput_('Default video robustness for Widevine',
+            'drm.defaultVideoRobustnessForWidevine',
+            widevineRobustnessLevels, widevineRobustnessLevels);
     const advanced = shakaDemoMain.getConfiguration().drm.advanced || {};
-    const addDRMAdvancedField = (name, valueName, suggestions) => {
+    const addDRMAdvancedField = (name, valueName, suggestions,
+        arrayString = false) => {
       // All advanced fields of a given type are set at once.
       this.addDatalistInput_(name, suggestions, (input) => {
         // Add in any common drmSystem not currently in advanced.
@@ -150,7 +166,9 @@ shakaDemo.Config = class {
         }
         // Set the robustness.
         for (const drmSystem in advanced) {
-          advanced[drmSystem][valueName] = input.value;
+          advanced[drmSystem][valueName] = arrayString ?
+              input.value.split(',').filter(Boolean) :
+              input.value;
         }
         shakaDemoMain.configure('drm.advanced', advanced);
         shakaDemoMain.remakeHash();
@@ -176,9 +194,11 @@ shakaDemo.Config = class {
     const sessionTypeSuggestions = ['temporary', 'persistent-license'];
 
     addDRMAdvancedField(
-        'Video Robustness', 'videoRobustness', robustnessSuggestions);
+        'Video Robustness', 'videoRobustness', robustnessSuggestions,
+        /* arrayString= */ true);
     addDRMAdvancedField(
-        'Audio Robustness', 'audioRobustness', robustnessSuggestions);
+        'Audio Robustness', 'audioRobustness', robustnessSuggestions,
+        /* arrayString= */ true);
     addDRMAdvancedField('Session Type', 'sessionType', sessionTypeSuggestions);
 
     this.addRetrySection_('drm', 'DRM Retry Parameters');
@@ -194,7 +214,9 @@ shakaDemo.Config = class {
             /* canBeZero= */ false,
             /* canBeUnset= */ true)
         .addNumberInput_('Default Presentation Delay',
-            'manifest.defaultPresentationDelay')
+            'manifest.defaultPresentationDelay',
+            /* canBeDecimal= */ true,
+            /* canBeZero= */ true)
         .addBoolInput_('Disable Audio', 'manifest.disableAudio')
         .addBoolInput_('Disable Video', 'manifest.disableVideo')
         .addBoolInput_('Disable Text', 'manifest.disableText')
@@ -203,14 +225,18 @@ shakaDemo.Config = class {
         .addBoolInput_('Enable segment-relative VTT Timing',
             'manifest.segmentRelativeVttTiming')
         .addBoolInput_('Continue loading when paused',
-            'manifest.continueLoadingWhenPaused');
+            'manifest.continueLoadingWhenPaused')
+        .addBoolInput_('Ignore supplemental codecs',
+            'manifest.ignoreSupplementalCodecs')
+        .addNumberInput_('Override the Update time of the manifest',
+            'manifest.updatePeriod')
+        .addBoolInput_('Ignore DRM Info', 'manifest.ignoreDrmInfo');
   }
 
   /** @private */
   addDashManifestSection_() {
     const docLink = this.resolveExternLink_('.ManifestConfiguration');
     this.addSection_('DASH Manifest', docLink)
-        .addBoolInput_('Ignore DASH DRM Info', 'manifest.dash.ignoreDrmInfo')
         .addBoolInput_('Auto-Correct DASH Drift',
             'manifest.dash.autoCorrectDrift')
         .addBoolInput_('Disable Xlink processing',
@@ -237,8 +263,6 @@ shakaDemo.Config = class {
             'manifest.dash.sequenceMode')
         .addBoolInput_('Use stream once in period flattening',
             'manifest.dash.useStreamOnceInPeriodFlattening')
-        .addNumberInput_('override the Update period of dash manifest',
-            'manifest.dash.updatePeriod')
         .addBoolInput_('Enable fast switching',
             'manifest.dash.enableFastSwitching');
   }
@@ -268,8 +292,8 @@ shakaDemo.Config = class {
             'manifest.hls.disableClosedCaptionsDetection')
         .addBoolInput_('Allow LL-HLS byterange optimization',
             'manifest.hls.allowLowLatencyByteRangeOptimization')
-        .addNumberInput_('override the Update time of the manifest',
-            'manifest.hls.updatePeriod');
+        .addBoolInput_('Allow range request to guess mime type',
+            'manifest.hls.allowRangeRequestsToGuessMimeType');
   }
 
   /** @private */
@@ -320,7 +344,7 @@ shakaDemo.Config = class {
             /* canBeZero= */ true)
         .addBoolInput_('Prefer Network Information bandwidth',
             'abr.preferNetworkInformationBandwidth');
-    this.addRetrictionsSection_('abr', 'Adaptation Restrictions');
+    this.addRestrictionsSection_('abr', 'Adaptation Restrictions');
   }
 
   /** @private */
@@ -329,6 +353,9 @@ shakaDemo.Config = class {
     this.addSection_('Text displayer', docLink)
         .addNumberInput_('Captions update period',
             'textDisplayer.captionsUpdatePeriod',
+            /* canBeDecimal= */ true)
+        .addNumberInput_('Font scale factor',
+            'textDisplayer.fontScaleFactor',
             /* canBeDecimal= */ true);
   }
 
@@ -339,6 +366,7 @@ shakaDemo.Config = class {
         .addBoolInput_('Enabled', 'cmcd.enabled')
         .addTextInput_('Session ID', 'cmcd.sessionId')
         .addTextInput_('Content ID', 'cmcd.contentId')
+        .addTextInput_('Version', 'cmcd.version')
         .addNumberInput_('RTP safety Factor', 'cmcd.rtpSafetyFactor',
             /* canBeDecimal= */ true)
         .addBoolInput_('Use Headers', 'cmcd.useHeaders');
@@ -381,7 +409,11 @@ shakaDemo.Config = class {
         .addBoolInput_('Ignore HLS Interstitial',
             'ads.disableHLSInterstitial')
         .addBoolInput_('Ignore DASH Interstitial',
-            'ads.disableDASHInterstitial');
+            'ads.disableDASHInterstitial')
+        .addBoolInput_('Allow preload on DOM elements',
+            'ads.allowPreloadOnDomElements')
+        .addBoolInput_('Allow start in the middle of an interstitial',
+            'ads.allowStartInMiddleOfInterstitial');
   }
 
   /**
@@ -389,7 +421,7 @@ shakaDemo.Config = class {
    * @param {string} sectionName
    * @private
    */
-  addRetrictionsSection_(category, sectionName) {
+  addRestrictionsSection_(category, sectionName) {
     const prefix = (category ? category + '.' : '') + 'restrictions.';
     const docLink = this.resolveExternLink_('.Restrictions');
     this.addSection_(sectionName, docLink)
@@ -478,11 +510,8 @@ shakaDemo.Config = class {
             'streaming.inaccurateManifestTolerance',
             /* canBeDecimal= */ true)
         .addBoolInput_('Low Latency Mode', 'streaming.lowLatencyMode')
-        .addBoolInput_('Auto Low Latency Mode', 'streaming.autoLowLatencyMode')
-        .addBoolInput_('Force HTTP', 'streaming.forceHTTP')
-        .addBoolInput_('Force HTTPS', 'streaming.forceHTTPS')
-        .addNumberInput_('Min bytes for progress events',
-            'streaming.minBytesForProgressEvents')
+        .addBoolInput_('Prefer native DASH playback when available',
+            'streaming.preferNativeDash')
         .addBoolInput_('Prefer native HLS playback when available',
             'streaming.preferNativeHls')
         .addNumberInput_('Update interval seconds',
@@ -520,8 +549,6 @@ shakaDemo.Config = class {
         .addNumberInput_('VOD Dynamic Playback Rate Buffer Ratio',
             'streaming.vodDynamicPlaybackRateBufferRatio',
             /* canBeDecimal= */ true)
-        .addBoolInput_('Infinite Live Stream Duration',
-            'streaming.infiniteLiveStreamDuration')
         .addBoolInput_('Clear decodingInfo cache on unload',
             'streaming.clearDecodingCache');
     if (!shakaDemoMain.getNativeControlsEnabled()) {
@@ -566,6 +593,14 @@ shakaDemo.Config = class {
     this.addSelectInput_('Preferred video layout', 'preferredVideoLayout',
         videoLayouts, videoLayoutsNames);
 
+    const strategyOptions = shaka.config.CrossBoundaryStrategy;
+    const strategyOptionsNames = {
+      'KEEP': 'Keep',
+      'RESET': 'Reset',
+      'RESET_TO_ENCRYPTED': 'Reset to encrypted',
+      'RESET_ON_ENCRYPTION_CHANGE': 'Reset on encryption change',
+    };
+
     this.addBoolInput_('Start At Segment Boundary',
         'streaming.startAtSegmentBoundary')
         .addBoolInput_('Ignore Text Stream Failures',
@@ -583,7 +618,12 @@ shakaDemo.Config = class {
         .addBoolInput_('Don\'t choose codecs',
             'streaming.dontChooseCodecs')
         .addBoolInput_('Should fix timestampOffset',
-            'streaming.shouldFixTimestampOffset');
+            'streaming.shouldFixTimestampOffset')
+        .addBoolInput_('Avoid eviction on QuotaExceededError',
+            'streaming.avoidEvictionOnQuotaExceededError')
+        .addSelectInput_('Cross Boundary Strategy',
+            'streaming.crossBoundaryStrategy',
+            strategyOptions, strategyOptionsNames);
     this.addRetrySection_('streaming', 'Streaming Retry Parameters');
     this.addLiveSyncSection_();
   }
@@ -628,14 +668,25 @@ shakaDemo.Config = class {
   }
 
   /** @private */
+  addNetworkingSection_() {
+    const docLink = this.resolveExternLink_('.NetworkingConfiguration');
+    this.addSection_('Networking', docLink)
+        .addBoolInput_('Force HTTP', 'networking.forceHTTP')
+        .addBoolInput_('Force HTTPS', 'networking.forceHTTPS')
+        .addNumberInput_('Min bytes for progress events',
+            'networking.minBytesForProgressEvents');
+  }
+
+  /** @private */
   addMediaSourceSection_() {
+    const docLink = this.resolveExternLink_('.MediaSourceConfiguration');
+
     const strategyOptions = shaka.config.CodecSwitchingStrategy;
     const strategyOptionsNames = {
       'RELOAD': 'reload',
       'SMOOTH': 'smooth',
     };
 
-    const docLink = this.resolveExternLink_('.MediaSourceConfiguration');
     this.addSection_('Media source', docLink)
         .addBoolInput_('Force Transmux', 'mediaSource.forceTransmux')
         .addBoolInput_('Insert fake encryption in init segments when needed ' +
@@ -739,6 +790,11 @@ shakaDemo.Config = class {
     if (shakaDemoMain.getCustomContextMenuEnabled()) {
       this.latestInput_.input().checked = true;
     }
+
+    this.addCustomTextInput_('Watermark text', (input) => {
+      shakaDemoMain.setWatermarkText(input.value);
+    });
+    this.latestInput_.input().value = shakaDemoMain.getWatermarkText();
 
     // shaka.log is not set if logging isn't enabled.
     // I.E. if using the release version of shaka.
@@ -868,7 +924,7 @@ shakaDemo.Config = class {
       shakaDemoMain.remakeHash();
     };
     this.addCustomTextInput_(name, onChange, tooltipMessage);
-    const configValue = /** @type {!Array.<string>} */ (
+    const configValue = /** @type {!Array<string>} */ (
       shakaDemoMain.getCurrentConfigValue(valueName));
     this.latestInput_.input().value = configValue.join(',');
     return this;
@@ -953,7 +1009,7 @@ shakaDemo.Config = class {
 
   /**
    * @param {string} name
-   * @param {!Array.<string>} values
+   * @param {!Array<string>} values
    * @param {function(!HTMLInputElement)} onChange
    * @param {string=} tooltipMessage
    * @return {!shakaDemo.Config}
@@ -968,7 +1024,7 @@ shakaDemo.Config = class {
 
   /**
    * @param {string} name
-   * @param {!Object.<string, string>} values
+   * @param {!Object<string, string>} values
    * @param {function(!HTMLInputElement)} onChange
    * @param {string=} tooltipMessage
    * @return {!shakaDemo.Config}
@@ -986,8 +1042,8 @@ shakaDemo.Config = class {
   /**
    * @param {string} name
    * @param {string} valueName
-   * @param {!Object.<string, ?>} options
-   * @param {!Object.<string, string>} optionNames
+   * @param {!Object<string, ?>} options
+   * @param {!Object<string, string>} optionNames
    * @param {string=} tooltipMessage
    * @return {!shakaDemo.Config}
    * @private

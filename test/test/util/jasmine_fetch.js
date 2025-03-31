@@ -32,8 +32,11 @@ jasmine.Fetch = class {
     /** @type {!Response} */
     jasmine.Fetch.container_.latestResponse;
 
-    window.Headers = /** @type {function (new:Headers,
-          (!Array<!Array<string>>|Headers|Object<string,string>)=)} */(
+    window.Headers =
+    /**
+     * @type {function (new:Headers,
+     *     (!Array<!Array<string>>|Headers|Object<string,string>)=)}
+     */(
         jasmine.Fetch.Headers);
 
     window.AbortController = /** @type {function (new:AbortController)} */
@@ -68,7 +71,7 @@ jasmine.Fetch = class {
   /**
    * @param {string} url
    * @param {RequestInit} init
-   * @return {!Promise.<!Response>}
+   * @return {!Promise<!Response>}
    * @private
    */
   static impl_(url, init) {

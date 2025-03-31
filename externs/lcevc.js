@@ -5,11 +5,11 @@
  */
 
 /**
-* @fileoverview Externs for LcevcDec
-* compiler.
-*
-* @externs
-*/
+ * @fileoverview Externs for LcevcDec
+ * compiler.
+ *
+ * @externs
+ */
 
 // This empty namespace is declared to check if LcevcDec libraries are loaded.
 /** @const */
@@ -18,9 +18,9 @@ var libDPIModule = {};
 var LCEVCdec = {};
 
 /**
-* LCEVC Dec constructor
-* @constructor
-*/
+ * LCEVC Dec constructor
+ * @constructor
+ */
 LCEVCdec.LCEVCdec = class {
   /**
    * @param {HTMLVideoElement} media
@@ -39,8 +39,9 @@ LCEVCdec.LCEVCdec = class {
    * @param {string} type Type of Video Buffer Data.
    * @param {number} variantId Variant that the fragment belongs to.
    * @param {number} timestampOffset Timestamp offset for appended segments
+   * @param {boolean} isMuxed Indicate if the LCEVC content is along the main.
    */
-  appendBuffer(data, type, variantId, timestampOffset) {}
+  appendBuffer(data, type, variantId, timestampOffset, isMuxed) {}
 
   /**
    * Set current variant as variantId to the LCEVC decoder

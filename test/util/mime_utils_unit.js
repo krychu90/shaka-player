@@ -42,6 +42,9 @@ describe('MimeUtils', () => {
     expect(getNormalizedCodec('vp8')).toBe('vp8');
     expect(getNormalizedCodec('vp8.0')).toBe('vp8');
 
+    expect(getNormalizedCodec('vp9')).toBe('vp9');
+    expect(getNormalizedCodec('vp09')).toBe('vp9');
+
     expect(getNormalizedCodec('avc1')).toBe('avc');
     expect(getNormalizedCodec('avc3')).toBe('avc');
 
@@ -51,8 +54,11 @@ describe('MimeUtils', () => {
     expect(getNormalizedCodec('vvc1')).toBe('vvc');
     expect(getNormalizedCodec('vvi1')).toBe('vvc');
 
-    expect(getNormalizedCodec('dvh1.05')).toBe('dovi-hevc');
-    expect(getNormalizedCodec('dvhe.05')).toBe('dovi-hevc');
+    expect(getNormalizedCodec('dvh1.05')).toBe('dovi-p5');
+    expect(getNormalizedCodec('dvhe.05')).toBe('dovi-p5');
+
+    expect(getNormalizedCodec('dvh1.08')).toBe('dovi-hevc');
+    expect(getNormalizedCodec('dvhe.08')).toBe('dovi-hevc');
 
     expect(getNormalizedCodec('dva1.05')).toBe('dovi-avc');
     expect(getNormalizedCodec('dvav.05')).toBe('dovi-avc');

@@ -58,6 +58,35 @@ shaka.test.AnyOrNull = class {
   }
 };
 
+shaka.test.AnythingOrNull = class {
+  constructor() {
+    /** @type {!Object} */
+    this.anything = jasmine.anything();
+  }
+
+  /**
+   * @param {?Object} other
+   * @return {boolean}
+   * @suppress {checkTypes}
+   */
+  asymmetricMatch(other) {
+    if (other == null) {
+      return true;
+    } else {
+      return this.anything.asymmetricMatch(other);
+    }
+  }
+
+  /**
+   * @return {boolean}
+   * @suppress {checkTypes}
+   */
+  jasmineToString() {
+    return this.anything.jasmineToString()
+        .replace('jasmine.anything', 'shaka.test.AnythingOrNull');
+  }
+};
+
 shaka.test.Util = class {
   /**
    * Fakes an event loop. Each tick processes some number of instantaneous
@@ -288,7 +317,7 @@ shaka.test.Util = class {
    * Fetches the resource at the given URI.
    *
    * @param {string} uri
-   * @return {!Promise.<!ArrayBuffer>}
+   * @return {!Promise<!ArrayBuffer>}
    */
   static async fetch(uri) {
     const response = await fetch(uri);
@@ -345,7 +374,7 @@ shaka.test.Util = class {
    * @param {!string} mimetype
    * @param {?number=} width
    * @param {?number=} height
-   * @return {!Promise.<boolean>}
+   * @return {!Promise<boolean>}
    */
   static async isTypeSupported(mimetype, width, height) {
     const MimeUtils = shaka.util.MimeUtils;
@@ -360,10 +389,6 @@ shaka.test.Util = class {
       const baseMimeType = MimeUtils.getBasicType(mimetype);
       const codecs = StreamUtils.getCorrectAudioCodecs(
           MimeUtils.getCodecs(mimetype), baseMimeType);
-      if (codecs == 'ac-3' && shaka.util.Platform.isTizen()) {
-        // AC3 is flaky in some Tizen devices, so we need omit it for now.
-        return false;
-      }
       // AudioConfiguration
       mediaDecodingConfig.audio = {
         contentType: MimeUtils.getFullOrConvertedType(
@@ -373,6 +398,11 @@ shaka.test.Util = class {
       const codecs = StreamUtils.getCorrectVideoCodecs(
           MimeUtils.getCodecs(mimetype));
       const baseMimeType = MimeUtils.getBasicType(mimetype);
+      if (codecs.startsWith('hvc1.') &&
+          shaka.util.Platform.isWindows() && shaka.util.Platform.isFirefox()) {
+        // It seems that HEVC on Firefox Windows is incomplete.
+        return false;
+      }
       // VideoConfiguration
       mediaDecodingConfig.video = {
         contentType: MimeUtils.getFullOrConvertedType(

@@ -15,7 +15,7 @@
  *   codecs: string,
  *   delaySetup: (boolean|undefined),
  *   language: (string|undefined),
- *   closedCaptions: (!Map.<string, string>|undefined),
+ *   closedCaptions: (!Map<string, string>|undefined),
  *   initData: (string|undefined)
  * }}
  */
@@ -34,7 +34,7 @@ let TextMetadataType;
 /**
  * @typedef {{
  *   delaySetup: (boolean|undefined),
- *   closedCaptions: (!Map.<string, string>|undefined),
+ *   closedCaptions: (!Map<string, string>|undefined),
  *   initData: (string|undefined),
  *   language: (string|undefined)
  * }}
@@ -46,12 +46,12 @@ let ExtraMetadataType;
  *   video: AVMetadataType,
  *   audio: AVMetadataType,
  *   text: TextMetadataType,
- *   videoResolutions: (!Array.<!Array.<number>>|undefined),
- *   audioLanguages: (!Array.<string>|undefined),
- *   textLanguages: (!Array.<string>|undefined),
+ *   videoResolutions: (!Array<!Array<number>>|undefined),
+ *   audioLanguages: (!Array<string>|undefined),
+ *   textLanguages: (!Array<string>|undefined),
  *   duration: number,
- *   licenseServers: (!Object.<string, string>|undefined),
- *   licenseRequestHeaders: (!Object.<string, string>|undefined),
+ *   licenseServers: (!Object<string, string>|undefined),
+ *   licenseRequestHeaders: (!Object<string, string>|undefined),
  *   customizeStream: (function(shaka.test.ManifestGenerator.Stream)|undefined),
  *   sequenceMode: (boolean|undefined),
  *   nextUrl: (string|undefined)
@@ -83,6 +83,7 @@ shaka.test.TestScheme = class {
         originalUri: uri,
         data: new ArrayBuffer(0),
         headers: {'content-type': 'application/x-test-manifest'},
+        originalRequest: request,
       };
       return shaka.util.AbortableOperation.completed(response);
     }
@@ -127,7 +128,13 @@ shaka.test.TestScheme = class {
     }
 
     /** @type {shaka.extern.Response} */
-    const ret = {uri: uri, originalUri: uri, data: responseData, headers: {}};
+    const ret = {
+      uri: uri,
+      originalUri: uri,
+      data: responseData,
+      headers: {},
+      originalRequest: request,
+    };
     return shaka.util.AbortableOperation.completed(ret);
   }
 
@@ -389,11 +396,11 @@ shaka.test.TestScheme = class {
 };
 
 
-/** @const {!Object.<string, shaka.extern.Manifest>} */
+/** @const {!Object<string, shaka.extern.Manifest>} */
 shaka.test.TestScheme.MANIFESTS = {};
 
 
-/** @const {!Object.<string, !Object.<string, !shaka.test.IStreamGenerator>>} */
+/** @const {!Object<string, !Object<string, !shaka.test.IStreamGenerator>>} */
 shaka.test.TestScheme.GENERATORS = {};
 
 
@@ -455,13 +462,14 @@ const sintelEncryptedAudio = {
       'bmVfdGVzdCIIzsW/9dxA3ckyAA==',
 };
 
-/** @type {!Object.<string, string>} */
+/** @type {!Object<string, string>} */
 const widevineDrmServers = {
   'com.widevine.alpha': 'https://cwip-shaka-proxy.appspot.com/no_auth',
 };
 
 /** @type {string} */
 const axinomMultiDrmInitData = [
+  // cspell:disable
   'AAAAXHBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADwSEEBgqGWIeEJnnL+RrluuHnISEE',
   'BgqGWIeEJnnL+RrluuHnISEEBgqGWIeEJnnL+RrluuHnJI49yVmwYAAAImcHNzaAAAAACa',
   'BPB5mEBChquS5lvgiF+VAAACBgYCAAABAAEA/AE8AFcAUgBNAEgARQBBAEQARQBSACAAeA',
@@ -475,6 +483,7 @@ const axinomMultiDrmInitData = [
   'ADwALwBLAEkARAA+ADwAQwBIAEUAQwBLAFMAVQBNAD4AeQB4AGwARwBsAGgAZgBEACsAYQ',
   'BjAD0APAAvAEMASABFAEMASwBTAFUATQA+ADwALwBEAEEAVABBAD4APAAvAFcAUgBNAEgA',
   'RQBBAEQARQBSAD4A',
+  // cspell:enable
 ].join('');
 
 /** @type {AVMetadataType} */
@@ -503,7 +512,7 @@ const axinomMultiDrmAudioSegment = {
   initData: axinomMultiDrmInitData,
 };
 
-/** @type {!Object.<string, string>} */
+/** @type {!Object<string, string>} */
 const axinomDrmServers = {
   // NOTE: These are not Axinom's actual servers.  These are test servers for
   // Widevine and PlayReady that let us specify the known key IDs and keys for
@@ -530,7 +539,7 @@ function inherit(base, overrides) {
   return Object.assign({}, base, overrides);
 }
 
-/** @const {!Object.<string, MetadataType>} */
+/** @const {!Object<string, MetadataType>} */
 shaka.test.TestScheme.DATA = {
   'sintel': {
     video: sintelVideoSegment,
@@ -715,7 +724,7 @@ beforeAll(async () => {
  * streamed or stored offline.  If one test loads the content for streaming,
  * then another test loads the same content for offline storage, the second test
  * would encounter the cached decoding info from the first test, and the
- * negotatied key system would not be set up for the correct session types.
+ * negotiated key system would not be set up for the correct session types.
  * This would lead to a test failure.  This sort of failure would not be seen in
  * real playback (since no supported manifest parser would ever cache variants).
  *

@@ -11,50 +11,48 @@ goog.provide('shaka.ui.VRUtils');
 shaka.ui.VRUtils = class {
   /**
    * @param {number} resolution
-   * @return {{vertices: !Array.<number>, textureCoords: !Array.<number>,
-   *          indices: !Array.<number>}}
+   * @param {boolean=} isSemiSphere
+   * @return {{vertices: !Array<number>, textureCoords: !Array<number>,
+   *          indices: !Array<number>}}
    */
-  static generateSphere(resolution) {
-    /** @type {!Array.<number>} */
+  static generateSphere(resolution, isSemiSphere = false) {
+    /** @type {!Array<number>} */
     const vertices = [];
-    /** @type {!Array.<number>} */
+    /** @type {!Array<number>} */
     const textureCoords = [];
-    /** @type {!Array.<number>} */
+    /** @type {!Array<number>} */
     const indices = [];
 
-    for (let i = 0; i <= resolution; i++) {
-      const v = i / resolution;
-      const phi = v * Math.PI;
-      const sinPhi = Math.sin(phi);
-      const cosPhi = Math.cos(phi);
+    const PI = Math.PI;
+    const HALF_PI = PI / 2;
+    const maxPhi = isSemiSphere ? HALF_PI : PI;
 
-      for (let j = 0; j <= resolution; j++) {
-        const u = j / resolution;
-        const theta = u * Math.PI * 2;
+    for (let latNumber = 0; latNumber <= resolution; latNumber++) {
+      const theta = latNumber * PI / resolution;
+      const sinTheta = Math.sin(theta);
+      const cosTheta = Math.cos(theta);
 
-        const sinTheta = Math.sin(theta);
-        const cosTheta = Math.cos(theta);
+      for (let longNumber = 0; longNumber <= resolution; longNumber++) {
+        const phi = longNumber * 2 * maxPhi / resolution;
+        const sinPhi = Math.sin(phi);
+        const cosPhi = Math.cos(phi);
 
-        const x = -1 * cosTheta * sinPhi;
-        const y = cosPhi;
-        const z = sinTheta * sinPhi;
+        const x = cosPhi * sinTheta;
+        const y = cosTheta;
+        const z = sinPhi * sinTheta;
 
-        vertices.push(x, y, z);
-
-        textureCoords.push(u);
-        textureCoords.push(v);
+        vertices.push(z, y, x);
+        textureCoords.push(longNumber / resolution, latNumber / resolution);
       }
     }
 
-    for (let i = 0; i < resolution; i++) {
-      for (let j = 0; j < resolution; j++) {
-        const a = i * (resolution + 1) + j;
-        const b = a + 1;
-        const c = (i + 1) * (resolution + 1) + j;
-        const d = c + 1;
+    for (let latNumber = 0; latNumber < resolution; latNumber++) {
+      for (let longNumber = 0; longNumber < resolution; longNumber++) {
+        const firstRow = (latNumber * (resolution + 1)) + longNumber;
+        const secondRow = firstRow + resolution + 1;
 
-        indices.push(a, c, b);
-        indices.push(b, c, d);
+        indices.push(firstRow, secondRow, firstRow + 1);
+        indices.push(secondRow, secondRow + 1, firstRow + 1);
       }
     }
 
@@ -62,11 +60,11 @@ shaka.ui.VRUtils = class {
   }
 
   /**
-   * @return {{vertices: !Array.<number>, textureCoords: !Array.<number>,
-   *          indices: !Array.<number>}}
+   * @return {{vertices: !Array<number>, textureCoords: !Array<number>,
+   *          indices: !Array<number>}}
    */
   static generateCube() {
-    /** @type {!Array.<number>} */
+    /** @type {!Array<number>} */
     const vertices = [
       //  order : left top back right bottom front
       // Front face 3
@@ -100,7 +98,7 @@ shaka.ui.VRUtils = class {
       1.0, 1.0, -1.0,
       1.0, -1.0, -1.0,
     ];
-    /** @type {!Array.<number>} */
+    /** @type {!Array<number>} */
     const textureCoords = [
       // Left Face
       2 / 3, 0.5,
@@ -133,7 +131,7 @@ shaka.ui.VRUtils = class {
       2 / 3, 0.5,
       2 / 3, 1.0,
     ];
-    /** @type {!Array.<number>} */
+    /** @type {!Array<number>} */
     const indices = [
       // Front face
       0, 1, 2,
@@ -162,7 +160,7 @@ shaka.ui.VRUtils = class {
 /**
  * Sphere vertex shader.
  *
- * @constant {string}
+ * @const {string}
  */
 shaka.ui.VRUtils.VERTEX_SPHERE_SHADER =
 `attribute vec4 a_vPosition;
@@ -183,7 +181,7 @@ void main()
 /**
  * Sphere fragment shader.
  *
- * @constant {string}
+ * @const {string}
  */
 shaka.ui.VRUtils.FRAGMENT_SPHERE_SHADER =
 `precision highp float;
@@ -204,7 +202,7 @@ highp vec4 texelColor =
 /**
  * Cube vertex shader.
  *
- * @constant {string}
+ * @const {string}
  */
 shaka.ui.VRUtils.VERTEX_CUBE_SHADER =
 `attribute vec4 aVertexPosition;
@@ -221,7 +219,7 @@ void main(void) {
 /**
  * Cube fragment shader.
  *
- * @constant {string}
+ * @const {string}
  */
 shaka.ui.VRUtils.FRAGMENT_CUBE_SHADER =
 `varying highp vec2 vTextureCoord;

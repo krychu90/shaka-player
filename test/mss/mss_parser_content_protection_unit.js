@@ -6,8 +6,6 @@
 
 // Test DRM-related parsing.
 describe('MssParser ContentProtection', () => {
-  const ContentProtection = shaka.mss.ContentProtection;
-
   const strToXml = (str) => {
     return shaka.util.TXml.parseXmlString(str);
   };
@@ -30,7 +28,7 @@ describe('MssParser ContentProtection', () => {
       // record count
       1,
       // type
-      ContentProtection.PLAYREADY_RECORD_TYPES.RIGHTS_MANAGEMENT,
+      shaka.drm.PlayReady.PLAYREADY_RECORD_TYPES.RIGHTS_MANAGEMENT,
       // record size (in num bytes)
       laurl.length * 2,
       // value
@@ -42,7 +40,7 @@ describe('MssParser ContentProtection', () => {
       encodedPrObject,
       '</ProtectionHeader>',
     ].join('\n'));
-    const actual = ContentProtection.getPlayReadyLicenseUrl(input);
+    const actual = shaka.mss.ContentProtection.getPlayReadyLicenseUrl(input);
     expect(actual).toBe('www.example.com');
   });
 });

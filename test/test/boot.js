@@ -47,7 +47,11 @@ function failTestsOnNamespacedElementOrAttributeNames() {
   const patchElementNamespaceFunction = (name) => {
     // eslint-disable-next-line no-restricted-syntax
     const real = Element.prototype[name];
-    /** @this {Element} */
+    /**
+     * @this {Element}
+     * @param {string} arg
+     * @return {*}
+     */
     // eslint-disable-next-line no-restricted-syntax
     Element.prototype[name] = function(arg) {
       // Ignore xml: namespaces since it's builtin.
@@ -55,7 +59,6 @@ function failTestsOnNamespacedElementOrAttributeNames() {
           arg.includes(':')) {
         fail('Use namespace-aware ' + name);
       }
-      // eslint-disable-next-line no-restricted-syntax
       return real.apply(this, arguments);
     };
   };
@@ -168,6 +171,15 @@ function workAroundLegacyEdgePromiseIssues() {
   // polyfill that binds to timer calls the first time it needs to schedule
   // something.
   Promise.resolve().then(() => {});
+}
+
+/**
+ * Work around lab crashes by flagging if we're running in the lab.  This lets
+ * us add lab-specific workarounds for our unique lab environment.  This won't
+ * affect local test runs on developer machines or GitHub Actions workflows.
+ */
+function workAroundLabCrashes() {
+  shaka.debug.RunningInLab = getClientArg('runningInLab');
 }
 
 /**
@@ -456,6 +468,7 @@ async function setupTestEnvironment() {
   failTestsOnUnhandledErrors();
   disableScrollbars();
   workAroundLegacyEdgePromiseIssues();
+  workAroundLabCrashes();
 
   // The spec filter callback occurs before calls to beforeAll, so we need to
   // install polyfills here to ensure that browser support is correctly

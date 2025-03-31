@@ -17,7 +17,7 @@ describe('SimpleAbrManager', () => {
   let abrManager;
   /** @type {shaka.extern.Manifest} */
   let manifest;
-  /** @type {!Array.<shaka.extern.Variant>} */
+  /** @type {!Array<shaka.extern.Variant>} */
   let variants;
 
   beforeEach(() => {
@@ -287,7 +287,7 @@ describe('SimpleAbrManager', () => {
     expect(switchCallback).toHaveBeenCalledWith(jasmine.any(Object), false, 0);
   });
 
-  it('does clear the buffer on upgrade with safemargin to 4', () => {
+  it('does clear the buffer on upgrade with safeMargin to 4', () => {
     // Simulate some segments being downloaded at a high rate, to trigger an
     // upgrade.
     const bandwidth = 5e5;

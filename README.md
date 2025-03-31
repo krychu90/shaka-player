@@ -35,24 +35,23 @@ for the up-to-date list of maintained branches of Shaka Player.
 
 |Browser       |Windows   |Mac      |Linux    |Android  |iOS >= 9  |iOS >= 17.1|iPadOS >= 13|ChromeOS|Other|
 |:------------:|:--------:|:-------:|:-------:|:-------:|:--------:|:---------:|:----------:|:------:|:---:|
-|Chrome¹       |**Y**     |**Y**    |**Y**    |**Y**    |**Native**|**Native** |**Native**  |**Y**   | -   |
-|Firefox¹      |**Y**     |**Y**    |**Y**    |untested⁵|**Native**|**Native** |**Native**  | -      | -   |
-|Edge¹         |**Y**     | -       | -       | -       | -        | -         | -          | -      | -   |
+|Chrome        |**Y**     |**Y**    |**Y**    |**Y**    |**Native**|**Native** |**Native**  |**Y**   | -   |
+|Firefox       |**Y**     |**Y**    |**Y**    |untested⁵|**Native**|**Native** |**Native**  | -      | -   |
+|Edge          |**Y**     | -       | -       | -       | -        | -         | -          | -      | -   |
 |Edge Chromium |**Y**     |**Y**    |**Y**    |untested⁵|**Native**|**Native** |**Native**  | -      | -   |
 |IE            | N        | -       | -       | -       | -        | -         | -          | -      | -   |
-|Safari¹       | -        |**Y**    | -       | -       |**Native**|**Y**      |**Y**       | -      | -   |
-|Opera¹        |**Y**     |**Y**    |**Y**    |untested⁵|**Native**| -         | -          | -      | -   |
-|Chromecast².  | -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
+|Safari        | -        |**Y**    | -       | -       |**Native**|**Y**      |**Y**       | -      | -   |
+|Opera         |**Y**     |**Y**    |**Y**    |untested⁵|**Native**| -         | -          | -      | -   |
+|Chromecast²   | -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
 |Tizen TV³     | -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
 |WebOS⁶        | -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
 |Hisense⁷      | -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
+|Vizio⁷        | -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
 |Xbox One      | -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
 |Playstation 4⁷| -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
 |Playstation 5⁷| -        | -       | -       | -       | -        | -         | -          | -      |**Y**|
 
 NOTES:
- - ¹: On macOS, only Safari 9+ is supported.  On iOS, only iOS 9+ is
-   supported.  Older versions will be rejected.
  - ²: The latest stable Chromecast firmware is tested. Both sender and receiver
    can be implemented with Shaka Player.
  - ³: Tizen 2017 model is actively tested and supported by the Shaka Player
@@ -134,8 +133,8 @@ HLS features supported:
  - MPEG-2 TS support
  - WebVTT and TTML
  - CEA-608/708 captions
- - Encrypted content with PlayReady and Widevine
- - Encrypted content with FairPlay (Safari on macOS and iOS 9+ only)
+ - Encrypted content with PlayReady, Widevine and WisePlay
+ - Encrypted content with FairPlay (Safari on macOS and iOS only)
  - AES-128, AES-256 and AES-256-CTR support on browsers with Web Crypto API support
  - SAMPLE-AES and SAMPLE-AES-CTR (identity) support on browsers with ClearKey support
  - Key rotation
@@ -203,7 +202,7 @@ For details on the HLS format and these tags' meanings, see https://datatracker.
  - MPEG-5 Part2 LCEVC decoding support (decoding provided by [lcevc_dec.js][], must be
    separately included)
 
- - Integration documentation : [docs](docs/design/lcevc-integration.md)
+ - Integration documentation : [docs](docs/design/current/lcevc-integration.md)
 
  - More on [MPEG-5 Part2 LCEVC][]
 
@@ -227,21 +226,23 @@ MSS features **not** supported:
 
 ## DRM support matrix
 
-|Browser       |Widevine  |PlayReady|FairPlay |ClearKey⁶ |
-|:------------:|:--------:|:-------:|:-------:|:--------:|
-|Chrome¹       |**Y**     | -       | -       |**Y**     |
-|Firefox²      |**Y**     | -       | -       |**Y**     |
-|Edge³         | -        |**Y**    | -       | -        |
-|Edge Chromium |**Y**     |**Y**    | -       |**Y**     |
-|Safari        | -        | -       |**Y**    | -        |
-|Opera         |**Y**     | -       | -       |**Y**     |
-|Chromecast    |**Y**     |**Y**    | -       |**Y**     |
-|Tizen TV      |**Y**     |**Y**    | -       |**Y**     |
-|WebOS⁷        |untested⁷ |untested⁷| -       |untested⁷ |
-|Hisense⁷      |untested⁷ |untested⁷| -       |untested⁷ |
-|Xbox One      | -        |**Y**    | -       | -        |
-|Playstation 4⁷| -        |untested⁷| -       |untested⁷ |
-|Playstation 5⁷| -        |untested⁷| -       |untested⁷ |
+|Browser       |Widevine  |PlayReady|FairPlay |WisePlay |ClearKey⁶ |
+|:------------:|:--------:|:-------:|:-------:|:-------:|:--------:|
+|Chrome¹       |**Y**     | -       | -       | -       |**Y**     |
+|Firefox²      |**Y**     | -       | -       | -       |**Y**     |
+|Edge³         | -        |**Y**    | -       | -       | -        |
+|Edge Chromium |**Y**     |**Y**    | -       | -       |**Y**     |
+|Safari        | -        | -       |**Y**    | -       | -        |
+|Opera         |**Y**     | -       | -       | -       |**Y**     |
+|Chromecast    |**Y**     |**Y**    | -       | -       |**Y**     |
+|Tizen TV      |**Y**     |**Y**    | -       | -       |**Y**     |
+|WebOS⁷        |untested⁷ |untested⁷| -       | -       |untested⁷ |
+|Hisense⁷      |untested⁷ |untested⁷| -       | -       |untested⁷ |
+|Vizio⁷        |untested⁷ |untested⁷| -       | -       |untested⁷ |
+|Xbox One      | -        |**Y**    | -       | -       | -        |
+|Playstation 4⁷| -        |untested⁷| -       | -       |untested⁷ |
+|Playstation 5⁷| -        |untested⁷| -       | -       |untested⁷ |
+|Huawei⁷       | -        | -       | -       |untested⁷|untested⁷ |
 
 Other DRM systems should work out of the box if they are interoperable and
 compliant to the EME spec.
@@ -257,11 +258,11 @@ NOTES:
  - ⁷: These are expected to work, but are community-supported and untested by
    us.
 
-|Manifest  |Widevine  |PlayReady|FairPlay |ClearKey  |
-|:--------:|:--------:|:-------:|:-------:|:--------:|
-|DASH      |**Y**     |**Y**    | -       |**Y**     |
-|HLS       |**Y**     |**Y**    |**Y** ¹  | -        |
-|MSS       | -        |**Y**    | -       | -        |
+|Manifest  |Widevine  |PlayReady|FairPlay |WisePlay |ClearKey  |
+|:--------:|:--------:|:-------:|:-------:|:-------:|:--------:|
+|DASH      |**Y**     |**Y**    |**Y**    |**Y**    |**Y**     |
+|HLS       |**Y**     |**Y**    |**Y** ¹  |**Y**    |**Y**     |
+|MSS       | -        |**Y**    | -       | -       | -        |
 
 NOTES:
  - ¹: By default, FairPlay is handled using Apple's native HLS player, when on
@@ -387,12 +388,22 @@ Shaka Player supports VR when:
 
 VR modes supported:
 - Equirectangular projection with 360 degrees of horizontal field of view.
+- Half equirectangular projection with 180 degrees of horizontal field of view.
 - Cubemap projection with 360 degrees of horizontal field of view.
 
 
 NOTES:
   - VR is only supported for clear streams or HLS-AES stream. DRM prevents
     access to the video pixels for transformation.
+
+
+## Builds
+
+Shaka currently provides the following versions:
+- Complete build with UI (`shaka-player.ui.js`)
+- Complete build without UI (`shaka-player.compiled.js`)
+- DASH build without UI, Cast and Offline (`shaka-player.dash.js`)
+- HLS build without UI, Cast and Offline (`shaka-player.hls.js`)
 
 
 ## Documentation & Important Links ##
@@ -405,9 +416,6 @@ NOTES:
  * [Hosted builds on Google Hosted Libraries](https://developers.google.com/speed/libraries/#shaka-player)
  * [Hosted builds on jsDelivr](https://www.jsdelivr.com/package/npm/shaka-player)
  * [Development roadmap](roadmap.md)
- * [Announcement list](https://groups.google.com/forum/#!forum/shaka-player-users)
-     ([join](docs/announcement-list-join-group.png) for infrequent
-      announcements and surveys)
  * Subscribe to releases by following
      [instructions from this blog](https://www.jessesquires.com/blog/2020/07/30/github-tip-watching-releases/)
 

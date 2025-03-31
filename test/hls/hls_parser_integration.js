@@ -111,7 +111,7 @@ describe('HlsParser', () => {
   });
 
   it('supports text discontinuity', async () => {
-    player.setTextTrackVisibility(true);
+    player.configure('autoShowText', shaka.config.AutoShowText.ALWAYS);
 
     await player.load('/base/test/test/assets/hls-text-offset/index.m3u8');
     await video.play();
@@ -132,13 +132,15 @@ describe('HlsParser', () => {
   });
 
   it('supports text without discontinuity', async () => {
-    player.setTextTrackVisibility(true);
+    player.configure('autoShowText', shaka.config.AutoShowText.ALWAYS);
 
-    // eslint-disable-next-line max-len
+    // eslint-disable-next-line @stylistic/max-len
     await player.load('/base/test/test/assets/hls-text-no-discontinuity/index.m3u8');
     await video.play();
 
-    await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 30);
+    // This test sometimes fails on Tizen with missing cues if we use too
+    // small a delay here.
+    await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 3, 30);
 
     const cues = video.textTracks[0].cues;
     expect(cues.length).toBe(3);
@@ -148,6 +150,38 @@ describe('HlsParser', () => {
     expect(cues[1].endTime).toBeCloseTo(6.36, 0);
     expect(cues[2].startTime).toBeCloseTo(6.36, 0);
     expect(cues[2].endTime).toBeCloseTo(10.68, 0);
+
+    await player.unload();
+  });
+
+  it('allow switch between mp4 muxed and ts muxed', async () => {
+    if (!await Util.isTypeSupported(
+        'video/mp4; codecs="av01.0.31M.08"',
+        /* width= */ 1920, /* height= */ 1080)) {
+      pending('Codec AV1 is not supported by the platform.');
+    }
+    player.configure('abr.enabled', false);
+    await player.load('/base/test/test/assets/hls-muxed-mp4-ts/master.m3u8');
+    await video.play();
+
+    expect(player.getVariantTracks().length).toBe(2);
+
+    // We want to test TS --> MP4 and MP4 --> TS, that's why
+    // selectVariantTrack is called twice
+
+    await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 30);
+
+    let nonActiveVariant = player.getVariantTracks().find((v) => !v.active);
+    goog.asserts.assert(nonActiveVariant, 'variant should be non-null!');
+    player.selectVariantTrack(nonActiveVariant, /* clearBuffer= */ true);
+
+    await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 3, 30);
+
+    nonActiveVariant = player.getVariantTracks().find((v) => !v.active);
+    goog.asserts.assert(nonActiveVariant, 'variant should be non-null!');
+    player.selectVariantTrack(nonActiveVariant, /* clearBuffer= */ true);
+
+    await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 5, 30);
 
     await player.unload();
   });

@@ -29,7 +29,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('Ad insertion - join during main content', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: 'main',
@@ -112,7 +112,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('Ad insertion - join during ad', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: 'ad',
@@ -190,7 +190,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('Ad insertion - smaller ad, res not found in main content', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -240,7 +240,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('Ad insertion - larger ad, res not found in main content', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -288,7 +288,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('Language changes during and after an ad', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: 'show1',
@@ -368,7 +368,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('VOD playlist of completely unrelated periods', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: 'show1',
@@ -421,7 +421,7 @@ describe('PeriodCombiner', () => {
     /** @type {shaka.extern.Stream} */
     const video2 = makeVideoStream(480);
     video2.bandwidth = 2;
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -538,7 +538,7 @@ describe('PeriodCombiner', () => {
     const i3 = makeImageStream(240);
     i3.originalId = 'i3';
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -603,6 +603,84 @@ describe('PeriodCombiner', () => {
     }
   });
 
+  it('Filters out duplicates based on keyids', async () => {
+    // v1 and v3 are duplicates
+    const v1 = makeVideoStream(1280);
+    v1.frameRate = 30000/1001;
+    v1.originalId = 'v1';
+    v1.bandwidth = 6200000;
+    v1.keyIds = new Set(['deadbeefdeadbeefdeadbeefdeadbeef']);
+
+    const v2 = makeVideoStream(1280);
+    v2.frameRate = 30000/1001;
+    v2.originalId = 'v2';
+    v2.bandwidth = 6200000;
+    v2.keyIds = new Set(['02030507011013017019023029031037']);
+
+    const v3 = makeVideoStream(1280);
+    v3.frameRate = 30000/1001;
+    v3.originalId = 'v3';
+    v3.bandwidth = 6200000;
+    v3.keyIds = new Set(['deadbeefdeadbeefdeadbeefdeadbeef']);
+
+    // a1 and a2 are duplicates.
+    const a1 = makeAudioStream('en', /* channels= */ 2);
+    a1.originalId = 'a1';
+    a1.bandwidth = 65106;
+    a1.roles = ['role1', 'role2'];
+    a1.codecs = 'mp4a.40.2';
+    a1.keyIds = new Set(['deadbeefdeadbeefdeadbeefdeadbeef']);
+
+    const a2 = makeAudioStream('en', /* channels= */ 2);
+    a2.originalId = 'a2';
+    a2.bandwidth = 65106;
+    a2.roles = ['role1', 'role2'];
+    a2.codecs = 'mp4a.40.2';
+    a2.keyIds = new Set(['deadbeefdeadbeefdeadbeefdeadbeef']);
+
+    const a3 = makeAudioStream('en', /* channels= */ 2);
+    a3.originalId = 'a3';
+    a3.bandwidth = 65106;
+    a3.roles = ['role1', 'role2'];
+    a3.codecs = 'mp4a.40.2';
+    a3.keyIds = new Set(['02030507011013017019023029031037']);
+
+    /** @type {!Array<shaka.extern.Period>} */
+    const periods = [
+      {
+        id: '1',
+        videoStreams: [
+          v1,
+          v2,
+          v3,
+        ],
+        audioStreams: [
+          a1,
+          a2,
+          a3,
+        ],
+        textStreams: [],
+        imageStreams: [],
+      },
+    ];
+
+    await combiner.combinePeriods(periods, /* isDynamic= */ true);
+    const variants = combiner.getVariants();
+    expect(variants.length).toBe(4);
+
+    // v1 should've been filtered out
+    const videoIds = variants.map((v) => v.video.originalId);
+    for (const id of videoIds) {
+      expect(id).not.toBe('v1');
+    }
+
+    // a1 should've been filtered out
+    const audioIds = variants.map((v) => v.audio.originalId);
+    for (const id of audioIds) {
+      expect(id).not.toBe('a1');
+    }
+  });
+
   // Regression test for #6054, where we failed on multi-period content with
   // different numbers of forced-subtitle streams per period.
   it('Does not combine subtitle and forced-subtitle tracks', async () => {
@@ -617,7 +695,7 @@ describe('PeriodCombiner', () => {
     const subtitle = makeTextStream('de');
     subtitle.roles = ['subtitle'];
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -655,7 +733,7 @@ describe('PeriodCombiner', () => {
   // Regression test for #3383, where we failed on multi-period content with
   // multiple image streams per period.
   it('Can handle multiple image streams', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -696,7 +774,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('handles text track gaps', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -763,7 +841,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('handles image track gaps', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -827,7 +905,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('Disjoint audio channels', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -875,7 +953,7 @@ describe('PeriodCombiner', () => {
       return stream;
     };
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -923,7 +1001,7 @@ describe('PeriodCombiner', () => {
       return stream;
     };
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -967,7 +1045,7 @@ describe('PeriodCombiner', () => {
     const newCodec = makeVideoStream(720);
     newCodec.codecs = 'foo.abcd';
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -1019,7 +1097,7 @@ describe('PeriodCombiner', () => {
     stream4.codecs = 'mp4a.40.2';
     stream4.roles = ['description'];
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '0',
@@ -1083,7 +1161,7 @@ describe('PeriodCombiner', () => {
     stream4.codecs = 'mp4a.40.2';
     stream4.label = 'description';
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '0',
@@ -1165,7 +1243,7 @@ describe('PeriodCombiner', () => {
     stream8.bandwidth = 120000;
     stream8.codecs = 'vp09.01.20.08.01';
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '0',
@@ -1225,7 +1303,7 @@ describe('PeriodCombiner', () => {
     stream4.bandwidth = 120000;
     stream4.codecs = 'dvh1.05.01';
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '0',
@@ -1290,7 +1368,7 @@ describe('PeriodCombiner', () => {
     stream3.bandwidth = 3835000;
     stream3.codecs = 'avc1.640028';
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -1346,7 +1424,7 @@ describe('PeriodCombiner', () => {
     const stream4 = makeAudioStreamWithRoles(['role1']);
     stream4.originalId = 'stream4';
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -1388,7 +1466,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('Matches streams with roles in common', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -1461,7 +1539,7 @@ describe('PeriodCombiner', () => {
     stream4.roles = ['main'];
     stream4.originalId = 'stream4';
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -1508,7 +1586,7 @@ describe('PeriodCombiner', () => {
   });
 
   it('Matches streams with mismatched roles', async () => {
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '0',
@@ -1685,7 +1763,7 @@ describe('PeriodCombiner', () => {
     v20.frameRate = 24000/1001;
     v20.bandwidth = 570005990000;
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       {
         id: '1',
@@ -1774,7 +1852,7 @@ describe('PeriodCombiner', () => {
   it('creates 4k content streams with a pre-roll 1080p ad', async () => {
     // This test is based on the content from b/337064527
 
-    /** @type {!Array.<shaka.extern.Period>} */
+    /** @type {!Array<shaka.extern.Period>} */
     const periods = [
       // pre-roll ad at 1080p max, 16:9 aspect ratio
       {
@@ -1990,6 +2068,7 @@ describe('PeriodCombiner', () => {
    * @param {number} height
    * @param {string} language
    * @param {number=} channels
+   * @param {!Array<string>=} roles
    * @return {shaka.extern.Variant}
    */
   function makeAVVariant(height, language, channels = 2, roles = []) {

@@ -7,9 +7,11 @@
 
 +../../lib/config/auto_show_text.js
 +../../lib/config/codec_switching_strategy.js
++../../lib/config/cross_boundary_strategy.js
 
 +../../lib/debug/asserts.js
 +../../lib/debug/log.js
++../../lib/debug/running_in_lab.js
 
 +../../lib/dependencies/all.js
 
@@ -17,21 +19,25 @@
 +../../lib/deprecate/enforcer.js
 +../../lib/deprecate/version.js
 
++../../lib/drm/drm_engine.js
++../../lib/drm/drm_utils.js
++../../lib/drm/fairplay.js
++../../lib/drm/playready.js
+
 +../../lib/media/adaptation_set.js
 +../../lib/media/adaptation_set_criteria.js
 +../../lib/media/buffering_observer.js
 +../../lib/media/closed_caption_parser.js
 +../../lib/media/content_workarounds.js
-+../../lib/media/drm_engine.js
 +../../lib/media/gap_jumping_controller.js
 +../../lib/media/manifest_filterer.js
 +../../lib/media/manifest_parser.js
 +../../lib/media/media_source_capabilities.js
 +../../lib/media/media_source_engine.js
-+../../lib/media/mp4_segment_index_parser.js
 +../../lib/media/play_rate_controller.js
 +../../lib/media/playhead.js
 +../../lib/media/playhead_observer.js
++../../lib/media/preference_based_criteria.js
 +../../lib/media/preload_manager.js
 +../../lib/media/presentation_timeline.js
 +../../lib/media/quality_observer.js
@@ -39,13 +45,11 @@
 +../../lib/media/region_timeline.js
 +../../lib/media/segment_index.js
 +../../lib/media/segment_reference.js
-+../../lib/media/stall_detector.js
 +../../lib/media/streaming_engine.js
 +../../lib/media/segment_prefetch.js
 +../../lib/media/segment_utils.js
 +../../lib/media/time_ranges_utils.js
 +../../lib/media/video_wrapper.js
-+../../lib/media/webm_segment_index_parser.js
 
 +../../lib/net/backoff.js
 +../../lib/net/networking_engine.js
@@ -80,8 +84,6 @@
 +../../lib/util/delayed_tick.js
 +../../lib/util/destroyer.js
 +../../lib/util/dom_utils.js
-+../../lib/util/drm_utils.js
-+../../lib/util/ebml_parser.js
 +../../lib/util/error.js
 +../../lib/util/event_manager.js
 +../../lib/util/exp_golomb.js
@@ -105,6 +107,7 @@
 +../../lib/util/multi_map.js
 +../../lib/util/mutex.js
 +../../lib/util/networking.js
++../../lib/util/number_utils.js
 +../../lib/util/object_utils.js
 +../../lib/util/operation_manager.js
 +../../lib/util/periods.js

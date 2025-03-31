@@ -52,7 +52,7 @@ describe('Player Src Equals', () => {
     await loadWithSrcEquals(SMALL_MP4_CONTENT_URI, /* startTime= */ null);
   });
 
-  // This test verifys that we can successfully unload content that required
+  // This test verifies that we can successfully unload content that required
   // |src=| to load.
   it('unloads content', async () => {
     await loadWithSrcEquals(SMALL_MP4_CONTENT_URI, /* startTime= */ null);
@@ -469,7 +469,8 @@ describe('Player Src Equals', () => {
           expect(thumbnail2.positionX).toBe(160);
           expect(thumbnail2.positionY).toBe(0);
           expect(thumbnail2.width).toBe(160);
-          const thumbnail3 = await player.getThumbnails(newTrack.id, 40);
+          const thumbnail3 =
+              await player.getThumbnails(/* trackId= */ null, 40);
           expect(thumbnail3.startTime).toBe(30);
           expect(thumbnail3.duration).toBe(30);
           expect(thumbnail3.height).toBe(90);
@@ -479,6 +480,9 @@ describe('Player Src Equals', () => {
 
           const thumbnails = await player.getAllThumbnails(newTrack.id);
           expect(thumbnails.length).toBe(3);
+
+          const allThumbnails = await player.getAllThumbnails();
+          expect(allThumbnails.length).toBe(3);
         });
 
     it('appends thumbnails for external thumbnails without sprites',
@@ -501,12 +505,16 @@ describe('Player Src Equals', () => {
           const thumbnail2 = await player.getThumbnails(newTrack.id, 10);
           expect(thumbnail2.startTime).toBe(5);
           expect(thumbnail2.duration).toBe(25);
-          const thumbnail3 = await player.getThumbnails(newTrack.id, 40);
+          const thumbnail3 =
+              await player.getThumbnails(/* trackId= */ null, 40);
           expect(thumbnail3.startTime).toBe(30);
           expect(thumbnail3.duration).toBe(30);
 
           const thumbnails = await player.getAllThumbnails(newTrack.id);
           expect(thumbnails.length).toBe(3);
+
+          const allThumbnails = await player.getAllThumbnails();
+          expect(allThumbnails.length).toBe(3);
         });
   }); // describe('addThumbnailsTrack')
 

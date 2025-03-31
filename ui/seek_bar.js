@@ -106,11 +106,17 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
     this.thumbnailImage_.draggable = false;
 
     /** @private {!HTMLElement} */
+    this.thumbnailTimeContainer_ = shaka.util.Dom.createHTMLElement('div');
+    this.thumbnailTimeContainer_.id =
+        'shaka-player-ui-thumbnail-time-container';
+
+    /** @private {!HTMLElement} */
     this.thumbnailTime_ = shaka.util.Dom.createHTMLElement('div');
     this.thumbnailTime_.id = 'shaka-player-ui-thumbnail-time';
+    this.thumbnailTimeContainer_.appendChild(this.thumbnailTime_);
 
     this.thumbnailContainer_.appendChild(this.thumbnailImage_);
-    this.thumbnailContainer_.appendChild(this.thumbnailTime_);
+    this.thumbnailContainer_.appendChild(this.thumbnailTimeContainer_);
     this.container.appendChild(this.thumbnailContainer_);
 
     this.timeContainer_ = shaka.util.Dom.createHTMLElement('div');
@@ -143,7 +149,7 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
       this.hideThumbnail_();
     });
 
-    /** @private {!Array.<!shaka.extern.AdCuePoint>} */
+    /** @private {!Array<!shaka.extern.AdCuePoint>} */
     this.adCuePoints_ = [];
 
     this.eventManager.listen(this.localization,
@@ -313,7 +319,7 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
 
   /**
    * @override
-  */
+   */
   isShowing() {
     // It is showing by default, so it is hidden if shaka-hidden is in the list.
     return !this.container.classList.contains('shaka-hidden');
@@ -442,12 +448,12 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
 
   /**
    * @param {string} color
-   * @param {number} fract
+   * @param {number} fraction
    * @return {string}
    * @private
    */
-  makeColor_(color, fract) {
-    return color + ' ' + (fract * 100) + '%';
+  makeColor_(color, fraction) {
+    return color + ' ' + (fraction * 100) + '%';
   }
 
 
@@ -538,23 +544,12 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
    * @private
    */
   async showThumbnail_(pixelPosition, value) {
-    const thumbnailTrack = this.getThumbnailTrack_();
-    if (!thumbnailTrack) {
-      this.hideThumbnail_();
-      return;
-    }
     if (value < 0) {
       value = 0;
     }
     const seekRange = this.player.seekRange();
     const playerValue = Math.max(Math.ceil(seekRange.start),
         Math.min(Math.floor(seekRange.end), value));
-    const thumbnail =
-        await this.player.getThumbnails(thumbnailTrack.id, playerValue);
-    if (!thumbnail || !thumbnail.uris.length) {
-      this.hideThumbnail_();
-      return;
-    }
     if (this.player.isLive()) {
       const totalSeconds = seekRange.end - value;
       if (totalSeconds < 1) {
@@ -566,6 +561,17 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
       }
     } else {
       this.thumbnailTime_.textContent = this.timeFormatter_(value);
+    }
+    const thumbnail =
+        await this.player.getThumbnails(/* trackId= */ null, playerValue);
+    if (!thumbnail || !thumbnail.uris.length) {
+      this.hideThumbnail_();
+      return;
+    }
+    if (thumbnail.width < thumbnail.height) {
+      this.thumbnailContainer_.classList.add('portrait-thumbnail');
+    } else {
+      this.thumbnailContainer_.classList.remove('portrait-thumbnail');
     }
     const offsetTop = -10;
     const width = this.thumbnailContainer_.clientWidth;
@@ -588,7 +594,7 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
         this.lastThumbnailPendingRequest_.abort();
         this.lastThumbnailPendingRequest_ = null;
       }
-      if (thumbnailTrack.codecs == 'mjpg' || uri.startsWith('offline:')) {
+      if (thumbnail.codecs == 'mjpg' || uri.startsWith('offline:')) {
         this.thumbnailImage_.src = shaka.ui.SeekBar.Transparent_Image_;
         try {
           const requestType = shaka.net.NetworkingEngine.RequestType.SEGMENT;
@@ -603,7 +609,7 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
               .request(requestType, request, {type});
           const response = await this.lastThumbnailPendingRequest_.promise;
           this.lastThumbnailPendingRequest_ = null;
-          if (thumbnailTrack.codecs == 'mjpg') {
+          if (thumbnail.codecs == 'mjpg') {
             const parser = new shaka.util.Mp4Parser()
                 .box('mdat', shaka.util.Mp4Parser.allData((data) => {
                   const blob = new Blob([data], {type: 'image/jpeg'});
@@ -611,7 +617,7 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
                 }));
             parser.parse(response.data, /* partialOkay= */ false);
           } else {
-            const mimeType = thumbnailTrack.mimeType || 'image/jpeg';
+            const mimeType = thumbnail.mimeType || 'image/jpeg';
             const blob = new Blob([response.data], {type: mimeType});
             uri = URL.createObjectURL(blob);
           }
@@ -665,46 +671,10 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
 
 
   /**
-   * @return {?shaka.extern.Track} The thumbnail track.
-   * @private
-   */
-  getThumbnailTrack_() {
-    const imageTracks = this.player.getImageTracks();
-    if (!imageTracks.length) {
-      return null;
-    }
-    const mimeTypesPreference = [
-      'image/avif',
-      'image/webp',
-      'image/jpeg',
-      'image/png',
-      'image/svg+xml',
-    ];
-    for (const mimeType of mimeTypesPreference) {
-      const estimatedBandwidth = this.player.getStats().estimatedBandwidth;
-      const bestOptions = imageTracks.filter((track) => {
-        return track.mimeType.toLowerCase() === mimeType &&
-            track.bandwidth < estimatedBandwidth * 0.01;
-      }).sort((a, b) => {
-        return b.bandwidth - a.bandwidth;
-      });
-      if (bestOptions && bestOptions.length) {
-        return bestOptions[0];
-      }
-    }
-    const mjpgTrack = imageTracks.find((track) => {
-      return track.mimeType == 'application/mp4' && track.codecs == 'mjpg';
-    });
-    return mjpgTrack || imageTracks[0];
-  }
-
-
-  /**
    * @private
    */
   hideThumbnail_() {
     this.thumbnailContainer_.style.visibility = 'hidden';
-    this.thumbnailTime_.textContent = '';
   }
 
 

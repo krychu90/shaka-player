@@ -13,19 +13,33 @@ Candidate features for future release cycles:
    https://github.com/shaka-project/shaka-player/issues/879
  - A method to stitch together clips
    https://github.com/shaka-project/shaka-player/issues/764
- - Predict next segment in DASH SegmentTimeline
-   https://github.com/shaka-project/shaka-player/issues/898
- - Smaller, more modular binary
  - CMCD v2
 
 v5.0
- - Conversion to Typescript
+ - Conversion to Typescript (Smaller, more modular binary)
+ - Remove shaka.cast APIs, have UI talk directly to generic receivers
+   https://github.com/shaka-project/shaka-player/issues/4214
 
-v4.13 - 2025 Q1
- - Time ID3, emsg, and metadata events to the presentation timeline
-   https://github.com/shaka-project/shaka-player/issues/7556
+v4.15 - 2025 Q2
+  TBD
 
 =====
+
+v4.14 - 2025 Q1
+ - Time ID3, emsg, and metadata events to the presentation timeline
+   https://github.com/shaka-project/shaka-player/issues/7556
+ - New API for audio: `getAudioTracks` and `selectAudioTrack`
+   https://github.com/shaka-project/shaka-player/issues/3544
+ - DASH: LCEVC Dual track support
+
+v4.13 - 2025 Q1
+ - WisePlay DRM support
+ - Support for multiple robustness levels in drm
+ - Clearkey download support
+ - Stop setting playbackRate to 0 to control buffering state when streaming.rebufferingGoal = 0
+   https://github.com/shaka-project/shaka-player/issues/7602
+ - Use MSE clearLiveSeekableRange and setLiveSeekableRange when available
+   https://github.com/shaka-project/shaka-player/issues/3153
 
 v4.12 - 2024 Q4
  - Performance improvements

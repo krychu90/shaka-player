@@ -61,14 +61,14 @@ shaka.extern.UIVolumeBarColors;
  * The UI's configuration options.
  *
  * @typedef {{
- *   controlPanelElements: !Array.<string>,
- *   overflowMenuButtons: !Array.<string>,
- *   contextMenuElements: !Array.<string>,
- *   statisticsList: !Array.<string>,
- *   adStatisticsList: !Array.<string>,
- *   playbackRates: !Array.<number>,
- *   fastForwardRates: !Array.<number>,
- *   rewindRates: !Array.<number>,
+ *   controlPanelElements: !Array<string>,
+ *   overflowMenuButtons: !Array<string>,
+ *   contextMenuElements: !Array<string>,
+ *   statisticsList: !Array<string>,
+ *   adStatisticsList: !Array<string>,
+ *   playbackRates: !Array<number>,
+ *   fastForwardRates: !Array<number>,
+ *   rewindRates: !Array<number>,
  *   addSeekBar: boolean,
  *   addBigPlayButton: boolean,
  *   customContextMenu: boolean,
@@ -81,6 +81,7 @@ shaka.extern.UIVolumeBarColors;
  *   trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat,
  *   textTrackLabelFormat: shaka.ui.Overlay.TrackLabelFormat,
  *   fadeDelay: number,
+ *   closeMenusDelay: number,
  *   doubleClickForFullscreen: boolean,
  *   singleClickForPlayAndPause: boolean,
  *   enableKeyboardPlaybackControls: boolean,
@@ -98,24 +99,26 @@ shaka.extern.UIVolumeBarColors;
  *   displayInVrMode: boolean,
  *   defaultVrProjectionMode: string,
  *   setupMediaSession: boolean,
- *   preferVideoFullScreenInVisionOS: boolean
+ *   preferVideoFullScreenInVisionOS: boolean,
+ *   showAudioCodec: boolean,
+ *   showVideoCodec: boolean
  * }}
  *
- * @property {!Array.<string>} controlPanelElements
+ * @property {!Array<string>} controlPanelElements
  *   The ordered list of control panel elements of the UI.
- * @property {!Array.<string>} overflowMenuButtons
+ * @property {!Array<string>} overflowMenuButtons
  *   The ordered list of the overflow menu buttons.
- * @property {!Array.<string>} contextMenuElements
+ * @property {!Array<string>} contextMenuElements
  *   The ordered list of buttons in the context menu.
- * @property {!Array.<string>} statisticsList
+ * @property {!Array<string>} statisticsList
  *   The ordered list of statistics present in the statistics container.
- * @property {!Array.<string>} adStatisticsList
+ * @property {!Array<string>} adStatisticsList
  *   The ordered list of ad statistics present in the ad statistics container.
- * @property {!Array.<number>} playbackRates
+ * @property {!Array<number>} playbackRates
  *   The ordered list of rates for playback selection.
-  * @property {!Array.<number>} fastForwardRates
+ * @property {!Array<number>} fastForwardRates
  *   The ordered list of rates for fast forward selection.
- * @property {!Array.<number>} rewindRates
+ * @property {!Array<number>} rewindRates
  *   The ordered list of rates for rewind selection.
  * @property {boolean} addSeekBar
  *   Whether or not a seek bar should be part of the UI.
@@ -131,7 +134,7 @@ shaka.extern.UIVolumeBarColors;
  * @property {boolean} clearBufferOnQualityChange
  *   Only applicable if the resolution selection is part of the UI.
  *   Whether buffer should be cleared when changing resolution
- *   via UI. Clearing buffer would result in immidiate change of quality,
+ *   via UI. Clearing buffer would result in immediate change of quality,
  *   but playback may flicker/stall for a sec as the content in new
  *   resolution is being buffered. Not clearing the buffer will mean
  *   we play the content in the previously selected resolution that we
@@ -180,6 +183,9 @@ shaka.extern.UIVolumeBarColors;
  *   interacting with them.  We recommend setting this to 3 on your cast
  *   receiver UI.
  *   Defaults to 0.
+ * @property {number} closeMenusDelay
+ *   The delay (in seconds) before close the opened menus when the UI is hidden.
+ *   Defaults to 2.
  * @property {boolean} doubleClickForFullscreen
  *   Whether or not double-clicking on the UI should cause it to enter
  *   fullscreen.
@@ -248,7 +254,8 @@ shaka.extern.UIVolumeBarColors;
  *   Defaults to false.
  * @property {string} defaultVrProjectionMode
  *   Indicate the default VR projection mode.
- *   Possible values: <code>'equirectangular'</code> or <code>'cubemap'</code>.
+ *   Possible values: <code>'equirectangular'</code> or
+ *   <code>'halfequirectangular'</code> or <code>'cubemap'</code>.
  *   Defaults to <code>'equirectangular'</code>.
  * @property {boolean} setupMediaSession
  *   If true, MediaSession controls will be managed by the UI. It will also use
@@ -261,6 +268,12 @@ shaka.extern.UIVolumeBarColors;
  *   experiences that are only allowed with the fullscreen of the video element
  *   itself.
  *   Defaults to false.
+ * @property {boolean} showAudioCodec
+ *   Show the audio codec if the language has more than one audio codec.
+ *   Defaults to true.
+ * @property {boolean} showVideoCodec
+ *   Show the video codec if the resolution has more than one video codec.
+ *   Defaults to true.
  * @exportDoc
  */
 shaka.extern.UIConfiguration;
@@ -368,8 +381,8 @@ shaka.extern.IUIRangeElement = class {
   /**
    * @param {!HTMLElement} parent
    * @param {!shaka.ui.Controls} controls
-   * @param {!Array.<string>} containerClassNames
-   * @param {!Array.<string>} barClassNames
+   * @param {!Array<string>} containerClassNames
+   * @param {!Array<string>} barClassNames
    */
   constructor(parent, controls, containerClassNames, barClassNames) {
     /**
@@ -482,7 +495,7 @@ shaka.extern.IUISettingsMenu = class {
 
 /**
  * Interface for SeekBars. SeekBars should inherit from the concrete base
- * class shaka.ui.Element. If you do not need to totaly rebuild the
+ * class shaka.ui.Element. If you do not need to totally rebuild the
  * SeekBar, you should consider using shaka.ui.RangeElement or
  * shaka.ui.SeekBar as your base class.
  *

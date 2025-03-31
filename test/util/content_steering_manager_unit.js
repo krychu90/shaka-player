@@ -23,8 +23,6 @@ describe('ContentSteeringManager', () => {
       onEvent: fail,
       onError: fail,
       isLowLatencyMode: fail,
-      isAutoLowLatencyMode: fail,
-      enableLowLatencyMode: fail,
       updateDuration: fail,
       newDrmInfo: fail,
       onManifestUpdated: fail,
@@ -395,7 +393,7 @@ describe('ContentSteeringManager', () => {
       expect(locations[2]).toBe('http://cdn-c');
     });
 
-    it('use baseuris if no locations', () => {
+    it('use base uris if no locations', () => {
       manager.clearPreviousLocations();
       const locations = manager.getLocations('foo');
       expect(locations.length).toBe(1);

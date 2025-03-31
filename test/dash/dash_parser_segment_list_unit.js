@@ -261,7 +261,7 @@ describe('DashParser SegmentList', () => {
   });
 
   describe('Segment start', () => {
-    it('shoud be adjusted with presentationTimeOffset', async () => {
+    it('should be adjusted with presentationTimeOffset', async () => {
       const source = [
         '<MPD mediaPresentationDuration="PT70S">',
         '  <Period>',
@@ -346,8 +346,6 @@ describe('DashParser SegmentList', () => {
       onEvent: fail,
       onError: fail,
       isLowLatencyMode: () => false,
-      isAutoLowLatencyMode: () => false,
-      enableLowLatencyMode: () => {},
       updateDuration: () => {},
       newDrmInfo: (stream) => {},
       onManifestUpdated: () => {},

@@ -139,9 +139,9 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
       }
     };
 
-      const noParse = (name) => {
-          return this.currentStats_[name];
-      };
+    const noParse = (name) => {
+      return this.currentStats_[name];
+    };
 
     /** @private {!Map<string, function(string): string>} */
     this.parseFrom_ = new Map()
@@ -303,7 +303,10 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
     }
   }
 
-  /** @private */
+  /**
+   @return {shaka.extern.Stats}
+   @private
+   */
   getStats_() {
     const stats = this.player.getStats();
     const variant = this.player.getCurrentVariant();

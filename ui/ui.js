@@ -176,12 +176,12 @@ shaka.ui.Overlay = class {
 
     goog.asserts.assert(this.player_ != null, 'Should have a player!');
 
-    const diff = shaka.util.ConfigUtils.getDifferenceFromConfigObjects(
+    /* const diff = shaka.util.ConfigUtils.getDifferenceFromConfigObjects(
         newConfig, this.config_);
     if (!Object.keys(diff).length) {
       // No changes
       return;
-    }
+    } */
 
     this.config_ = newConfig;
 

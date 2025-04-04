@@ -1048,28 +1048,20 @@ shaka.ui.Controls = class extends shaka.util.FakeEventTarget {
     spinner.classList.add('shaka-spinner');
     this.spinnerContainer_.appendChild(spinner);
 
-    // Svg elements have to be created with the svg xml namespace.
-    const xmlns = 'http://www.w3.org/2000/svg';
-
-    const svg =
-      /** @type {!HTMLElement} */(document.createElementNS(xmlns, 'svg'));
-    svg.classList.add('shaka-spinner-svg');
-    svg.setAttribute('viewBox', '0 0 30 30');
-    spinner.appendChild(svg);
-
-    // These coordinates are relative to the SVG viewBox above.  This is
-    // distinct from the actual display size in the page, since the "S" is for
-    // "Scalable." The radius of 14.5 is so that the edges of the 1-px-wide
-    // stroke will touch the edges of the viewBox.
-    const spinnerCircle = document.createElementNS(xmlns, 'circle');
-    spinnerCircle.classList.add('shaka-spinner-path');
-    spinnerCircle.setAttribute('cx', '15');
-    spinnerCircle.setAttribute('cy', '15');
-    spinnerCircle.setAttribute('r', '14.5');
-    spinnerCircle.setAttribute('fill', 'none');
-    spinnerCircle.setAttribute('stroke-width', '1');
-    spinnerCircle.setAttribute('stroke-miterlimit', '10');
-    svg.appendChild(spinnerCircle);
+    const str = `<svg focusable="false" stroke="currentColor"
+         viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg"
+         width="50px" height="50px" class="q-spinner text-grey-9">
+      <g transform="translate(1 1)" stroke-width="6" fill="none"
+        fill-rule="evenodd">
+        <circle stroke-opacity=".5" cx="18" cy="18" r="16"></circle>
+        <path d="M34 18c0-9.94-8.06-16-16-16">
+          <animateTransform attributeName="transform" type="rotate"
+            from="0 18 18" to="360 18 18" dur="1s" repeatCount="indefinite">
+          </animateTransform>
+        </path>
+      </g>
+    </svg>`;
+    spinner.insertAdjacentHTML('beforeend', str);
   }
 
   /**

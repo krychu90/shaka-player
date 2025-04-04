@@ -102,21 +102,21 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
 
   /** @private */
   updateResolutionLabels_() {
-    const variant = this.player.getCurrentVariant();
-    if (!variant) {
+    const tracks = this.player.getVariantTracks();
+    const track = tracks.find((track) => track.active);
+    if (!track) {
       return;
     }
-
     const abrEnabled = this.player.getConfiguration().abr.enabled;
     if (abrEnabled) {
-      this.autoQuality.textContent = variant.video.height + 'p';
+      this.autoQuality.textContent = this.getResolutionLabel_(track, tracks);
       this.autoQuality.style.display = '';
     } else {
       this.autoQuality.style.display = 'none';
     }
 
     /** @type {string} */
-    const mark = this.getQualityMark_(variant.video.height);
+    const mark = this.getQualityMark_(track.height);
     this.qualityMark.textContent = this.overflowQualityMark.textContent = mark;
     this.qualityMark.style.display = this.overflowQualityMark.style.display =
         mark !== '' ? '' : 'none';

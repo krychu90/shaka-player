@@ -279,7 +279,7 @@ shaka.ui.SeekBar = class extends shaka.ui.RangeElement {
     //
     // Calling |start| on an already pending timer will cancel the old request
     // and start the new one.
-    this.seekTimer_.tickAfter(/* seconds= */ 0.125);
+    this.seekTimer_.tickAfter(/* seconds= */ 0.5);
 
     if (this.player.getImageTracks().length) {
       const min = parseFloat(this.bar.min);

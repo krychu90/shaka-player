@@ -412,7 +412,7 @@
   align-items: center;
 }
 
-@spinner-size-percentage: 15.6%;
+@spinner-size-percentage: 3.9%;
 
 .shaka-spinner {
   /* This uses the same trickery as the big play button define
@@ -428,10 +428,6 @@
   padding: calc(@spinner-size-percentage / 2);
   width: 0;
   height: 0;
-
-  /* Add a bit of a white shadow to keep our black spinner visible
-  on a black background. */
-  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 50%));
 }
 
 .shaka-hidden-fast-forward-container,

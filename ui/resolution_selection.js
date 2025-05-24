@@ -375,7 +375,8 @@ shaka.ui.ResolutionSelection = class extends shaka.ui.SettingsMenu {
       text += ' (3D)';
     }
     const hasDuplicateResolution = tracks.some((otherTrack) => {
-      return otherTrack != track && otherTrack.height == track.height;
+      return otherTrack != track && otherTrack.height == track.height &&
+          otherTrack.videoId !== track.videoId;
     });
     if (hasDuplicateResolution) {
       const hasDuplicateBandwidth = tracks.some((otherTrack) => {

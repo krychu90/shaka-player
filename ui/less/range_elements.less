@@ -26,8 +26,8 @@
  * the element is inherently accessible. */
 
 /* These control the color and size of the various pieces. */
-@thumb-color: white;
-@track-default-color: white;
+@thumb-color: @general-font-color;
+@track-default-color: @general-font-color;
 @thumb-size: 12px;
 @track-height: 4px;
 
@@ -49,6 +49,9 @@
 
   /* Until we set a gradient background in JS, this will be the track color. */
   background: @track-default-color;
+
+  /* Override box-sizing to avoid other box-sizing rules break this element */
+  box-sizing: content-box;
 }
 
 /* The "track" is the pseudo-element inside the range element which represents
@@ -142,6 +145,42 @@
 .shaka-volume-bar-container {
   width: 100px;
   padding: 0;
+  transition-property: opacity, width;
+  transition-duration: 250ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+
+  &:hover {
+    width: 100px !important;
+    opacity: 1 !important;
+  }
+}
+
+@media (max-width: 474px) {
+  .shaka-volume-bar-container {
+    width: 50px;
+
+    &:hover {
+      width: 50px !important;
+    }
+  }
+
+  .shaka-mute-button:hover + .shaka-volume-bar-container-allow-hiding {
+    width: 50px;
+    opacity: 1;
+  }
+}
+
+/* stylelint-disable-next-line max-line-length */
+.shaka-mute-button + .shaka-volume-bar-container-allow-hiding:not(:focus-within) {
+  width: 0;
+  opacity: 0;
+}
+
+@media (min-width: 475px) {
+  .shaka-mute-button:hover + .shaka-volume-bar-container-allow-hiding {
+    width: 100px;
+    opacity: 1;
+  }
 }
 
 .shaka-range-element {

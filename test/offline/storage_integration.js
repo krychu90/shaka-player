@@ -14,9 +14,7 @@ function drmStorageSupport() {
   if (!shaka.offline.Storage.support()) {
     return false;
   }
-
-  const widevineSupport = shakaSupport.drm['com.widevine.alpha'];
-  return !!(widevineSupport && widevineSupport.persistentState);
+  return checkWidevinePersistentSupport();
 }
 
 filterDescribe('Storage', storageSupport, () => {
@@ -1378,6 +1376,7 @@ filterDescribe('Storage', storageSupport, () => {
       language: language,
       originalLanguage: language,
       label: null,
+      videoLabel: null,
       kind: null,
       width: height * (16 / 9),
       height: height,
@@ -1395,6 +1394,7 @@ filterDescribe('Storage', storageSupport, () => {
       primary: false,
       roles: [],
       audioRoles: [],
+      videoRoles: [],
       forced: false,
       videoId: videoId,
       audioId: audioId,
@@ -1427,6 +1427,7 @@ filterDescribe('Storage', storageSupport, () => {
       language: language,
       originalLanguage: language,
       label: null,
+      videoLabel: null,
       kind: null,
       width: null,
       height: null,
@@ -1444,6 +1445,7 @@ filterDescribe('Storage', storageSupport, () => {
       primary: false,
       roles: [],
       audioRoles: null,
+      videoRoles: null,
       forced: false,
       videoId: null,
       audioId: null,

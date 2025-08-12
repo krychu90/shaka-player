@@ -120,6 +120,8 @@ application:
     - `streaming.forceHTTP` has been renamed to `networking.forceHTTP` (deprecated in v4.15.0)
     - `streaming.forceHTTPS` has been renamed to `networking.forceHTTPS` (deprecated in v4.15.0)
     - `streaming.minBytesForProgressEvents` has been renamed to `networking.minBytesForProgressEvents` (deprecated in v4.15.0)
+    - `manifest.dash.enableAudioGroups` has been renamed to `manifest.enableAudioGroups`
+    - `preferredVariantRole` has been renamed to `preferredAudioRole` (deprecated in v4.16.0)
 
   - Plugin changes:
     - `TextDisplayer` plugins must implement the `configure()` method.
@@ -131,3 +133,4 @@ application:
     - The `TimelineRegionInfo.eventElement` has been replaced with `TimelineRegionInfo.eventNode` property, the new property type is `shaka.externs.xml.Node` instead of `Element`
     - New API for audio: `getAudioTracks` and `selectAudioTrack`, we also deprecated in v4.14 `getAudioLanguages`, `getAudioLanguagesAndRoles` and `selectAudioLanguage`.
     - `shaka.util.FairPlayUtils` is moved to `shaka.drm.FairPlay` (Deprecated in v4.14)
+    - `getChapters` is replaced by `getChaptersAsync` (Deprecated in v4.15)

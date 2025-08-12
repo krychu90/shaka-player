@@ -175,11 +175,11 @@ shaka.test.TextLayoutTests = class extends shaka.test.LayoutTests {
 
   /** @override */
   static async supported() {
-    // We only trust Safari for native text layout tests if explicitly flagged.
     // We only do this in our lab, where we control device a11y settings that
     // impact these tests heavily.
-    if (shaka.util.Platform.isApple() &&
-        !getClientArg('trustSafariNativeTextLayout')) {
+    if (deviceDetected.getBrowserEngine() ===
+        shaka.device.IDevice.BrowserEngine.WEBKIT &&
+        getClientArg('runningInVM')) {
       return false;
     }
 
@@ -330,10 +330,33 @@ shaka.test.NativeTextLayoutTests = class extends shaka.test.TextLayoutTests {
 
     /** @type {shaka.test.Waiter} */
     this.waiter = null;
+
+    /** @type {Object} **/
+    this.player = null;
   }
 
   /** @override */
   async beforeAll() {
+    /** @type {!Array<shaka.extern.TextTrack>} */
+    const textTracks= [{
+      id: 0,
+      active: true,
+    }];
+    this.player = {
+      addEventListener: () => { },
+      removeEventListener: () => { },
+      getMediaElement: () => this.video,
+      getLoadMode: () => shaka.Player.LoadMode.MEDIA_SOURCE,
+      getTextTracks: () => textTracks,
+      selectTextTrack: ({id}) => {
+        const track = textTracks.find((t) => t.id === id);
+        expect(track).toBeTruthy();
+        track.active = true;
+      },
+      setTextTrackVisibility: (visible) =>
+        this.textDisplayer.setTextVisibility(visible),
+    };
+
     this.video = shaka.test.UiUtils.createVideoElement();
 
     // On some platforms, such as Chrome on Android, we may see a "cast"
@@ -369,8 +392,9 @@ shaka.test.NativeTextLayoutTests = class extends shaka.test.TextLayoutTests {
 
   /** @override */
   recreateTextDisplayer() {
-    this.textDisplayer = new shaka.text.SimpleTextDisplayer(
-        this.video, shaka.Player.TextTrackLabel);
+    /** @suppress {checkTypes} */
+    this.textDisplayer = new shaka.text.NativeTextDisplayer(this.player);
+    this.textDisplayer.enableTextDisplayer();
     this.textDisplayer.setTextVisibility(true);
   }
 

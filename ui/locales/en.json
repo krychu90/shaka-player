@@ -38,6 +38,8 @@
   "SEEK": "Seek",
   "SKIP_AD": "Skip Ad",
   "SKIP_TO_LIVE": "Skip ahead to live",
+  "SKIP_NEXT": "Next",
+  "SKIP_PREVIOUS": "Previous",
   "STATISTICS": "Statistics",
   "SUBTITLE_FORCED": "Forced",
   "SURROUND": "Surround",

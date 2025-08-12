@@ -15,13 +15,13 @@ describe('CastUtils', () => {
     const ignoredMembers = [
       'constructor',  // JavaScript added field
       'getAdManager',  // Handled specially
+      'getQueueManager',  // Handled specially
       'getSharedConfiguration',  // Handled specially
       'getNetworkingEngine',  // Handled specially
       'getDrmEngine',  // Handled specially
       'getMediaElement',  // Handled specially
       'setMaxHardwareResolution',
       'destroy',  // Should use CastProxy.destroy instead
-      'getAllThumbnails', // Too large to proxy.
       'drmInfo',  // Too large to proxy
       'getManifest', // Too large to proxy
       'getManifestParserFactory',  // Would not serialize.
@@ -223,7 +223,8 @@ describe('CastUtils', () => {
         function onError() {
           fail('Error code ' + (video.error ? video.error.code : 0));
         }
-
+        const config =
+            shaka.util.PlayerConfiguration.createDefault().mediaSource;
         mediaSourceEngine = new shaka.media.MediaSourceEngine(
             video,
             new shaka.test.FakeTextDisplayer(),
@@ -233,10 +234,8 @@ describe('CastUtils', () => {
               onEmsg: () => {},
               onEvent: () => {},
               onManifestUpdate: () => {},
-            });
-        const config =
-            shaka.util.PlayerConfiguration.createDefault().mediaSource;
-        mediaSourceEngine.configure(config);
+            },
+            config);
 
         const ContentType = shaka.util.ManifestParserUtils.ContentType;
         const initObject = new Map();

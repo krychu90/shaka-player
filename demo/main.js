@@ -21,7 +21,6 @@ goog.require('shakaDemo.VisualizerButton');
  * configuration, etc).
  */
 shakaDemo.Main = class {
-  /** */
   constructor() {
     /** @private {HTMLVideoElement} */
     this.video_ = null;
@@ -385,8 +384,6 @@ shakaDemo.Main = class {
           return element != 'rewind' && element != 'fast_forward';
         });
     if (this.trickPlayControlsEnabled_) {
-      // Trick mode controls don't have a seek bar.
-      uiConfig.addSeekBar = false;
       // Replace the position the play_pause button was at with a full suite of
       // trick play controls, including rewind and fast-forward.
       const index = uiConfig.controlPanelElements.indexOf('play_pause');
@@ -394,7 +391,8 @@ shakaDemo.Main = class {
           index, 1, 'rewind', 'play_pause', 'fast_forward');
     }
     if (!uiConfig.controlPanelElements.includes('close')) {
-      uiConfig.controlPanelElements.push('close');
+      uiConfig.controlPanelElements.splice(
+          uiConfig.controlPanelElements.length - 1, 0, 'close');
     }
     if (!uiConfig.overflowMenuButtons.includes('visualizer')) {
       uiConfig.overflowMenuButtons.push('visualizer');
@@ -445,6 +443,22 @@ shakaDemo.Main = class {
 
     const onErrorEvent = (event) => this.onErrorEvent_(event);
     this.player_.addEventListener('error', onErrorEvent);
+
+    this.player_.addEventListener('loaded', () => {
+      if (this.player_.isAudioOnly()) {
+        if (this.video_.poster == shakaDemo.Main.mainPoster_) {
+          this.video_.poster = shakaDemo.Main.audioOnlyPoster_;
+        }
+      } else {
+        if (this.video_.poster == shakaDemo.Main.audioOnlyPoster_) {
+          this.video_.poster = shakaDemo.Main.mainPoster_;
+        }
+      }
+    });
+
+    this.player_.addEventListener('unloading', () => {
+      this.video_.poster = shakaDemo.Main.mainPoster_;
+    });
 
     // Listen to events on controls.
     this.controls_ = ui.getControls();
@@ -595,7 +609,7 @@ shakaDemo.Main = class {
         return;
       }
       try {
-        await this.drmConfiguration_(asset, storage);
+        this.drmConfiguration_(asset, storage);
         const metadata = {
           'identifier': this.getIdentifierFromAsset_(asset),
           'downloaded': new Date(),
@@ -713,23 +727,30 @@ shakaDemo.Main = class {
 
     if (!asset.isClear() && !asset.isAes128()) {
       const hasSupportedDRM = asset.drm.some((drm) => {
-        return this.support_.drm[shakaAssets.identifierForKeySystem(drm)];
+        for (const identifier of shakaAssets.identifiersForKeySystem(drm)) {
+          if (this.support_.drm[identifier]) {
+            return true;
+          }
+        }
+        return false;
       });
       if (!hasSupportedDRM) {
         return 'Your browser does not support the required key systems.';
       }
       if (needOffline) {
         const hasSupportedOfflineDRM = asset.drm.some((drm) => {
-          const identifier = shakaAssets.identifierForKeySystem(drm);
-          // Special case when using clear keys.
-          if (identifier == 'org.w3.clearkey') {
-            const licenseServers = asset.getLicenseServers();
-            if (!licenseServers.has(identifier)) {
-              return this.support_.drm[identifier];
+          for (const identifier of shakaAssets.identifiersForKeySystem(drm)) {
+            // Special case when using clear keys.
+            if (identifier == 'org.w3.clearkey') {
+              const licenseServers = asset.getLicenseServers();
+              if (!licenseServers.has(identifier)) {
+                return this.support_.drm[identifier];
+              }
+            } else if (this.support_.drm[identifier]) {
+              return this.support_.drm[identifier].persistentState;
             }
           }
-          return this.support_.drm[identifier] &&
-                 this.support_.drm[identifier].persistentState;
+          return false;
         });
         if (!hasSupportedOfflineDRM) {
           return 'Your browser does not support offline licenses for the ' +
@@ -766,6 +787,14 @@ shakaDemo.Main = class {
     if (asset.features.includes(shakaAssets.Feature.CONTAINERLESS)) {
       mimeTypes.push('audio/aac');
     }
+    if (asset.features.includes(shakaAssets.Feature.DOLBY_VISION_P8_1)) {
+      mimeTypes.push('video/mp4; codecs="hvc1.2.4.L120.b0"');
+      mimeTypes.push('video/mp4; codecs="dvh1.08.01"');
+    }
+    if (asset.features.includes(shakaAssets.Feature.DOLBY_VISION_P8_4)) {
+      mimeTypes.push('video/mp4; codecs="hvc1.2.4.L123.b0"');
+      mimeTypes.push('video/mp4; codecs="dvh1.08.01"');
+    }
     if (asset.features.includes(shakaAssets.Feature.DOLBY_VISION_P5)) {
       mimeTypes.push('video/mp4; codecs="dvh1.05.01"');
     }
@@ -774,6 +803,12 @@ shakaDemo.Main = class {
     }
     if (asset.features.includes(shakaAssets.Feature.AV1)) {
       mimeTypes.push('video/mp4; codecs="av01.0.01M.08"');
+    }
+    if (asset.features.includes(shakaAssets.Feature.MV_HEVC)) {
+      mimeTypes.push('video/mp4; codecs="hvc1.2.20000000.L153.B0"');
+    }
+    if (asset.features.includes(shakaAssets.Feature.APAC)) {
+      mimeTypes.push('audio/mp4; codecs="apac.31.00"');
     }
     let hasSupportedMimeType = mimeTypes.some((type) => {
       return this.support_.media[type];
@@ -900,44 +935,8 @@ shakaDemo.Main = class {
   getLastAssetFromHash_() {
     const params = this.getParams_();
 
-    const manifest = params.get('asset');
     const assetBase64 = params.get('assetBase64');
-    if (manifest) {
-      const adTagUri = params.get('adTagUri');
-      // See if it's a default asset.
-      for (const asset of shakaAssets.testAssets) {
-        if (asset.manifestUri == manifest && asset.adTagUri == adTagUri) {
-          return asset;
-        }
-      }
-
-      // See if it's a custom asset saved here.
-      for (const asset of shakaDemoCustom.assets()) {
-        if (asset.manifestUri == manifest) {
-          return asset;
-        }
-      }
-
-      // Construct a new asset.
-      const asset = new ShakaDemoAssetInfo(
-          /* name= */ 'loaded asset',
-          /* iconUri= */ '',
-          /* manifestUri= */ manifest,
-          /* source= */ shakaAssets.Source.CUSTOM);
-      if (params.has('license')) {
-        let drmSystems = shakaDemo.Main.commonDrmSystems;
-        if (params.has('drmSystem')) {
-          drmSystems = [params.get('drmSystem')];
-        }
-        for (const drmSystem of drmSystems) {
-          asset.addLicenseServer(drmSystem, params.get('license'));
-        }
-      }
-      if (params.has('certificate')) {
-        asset.addCertificateUri(params.get('certificate'));
-      }
-      return asset;
-    } else if (assetBase64) {
+    if (assetBase64) {
       // See if it's a default asset.
       for (const asset of shakaAssets.testAssets) {
         if (asset.toBase64() == assetBase64) {
@@ -982,7 +981,11 @@ shakaDemo.Main = class {
       const config = this.player_.getConfiguration();
       shakaDemo.Utils.runThroughHashParams(readParam, config);
       const advanced = this.getCurrentConfigValue('drm.advanced');
-      if (advanced) {
+      let isAvailable = !!advanced;
+      if (isAvailable && typeof advanced == 'object') {
+        isAvailable = Object.keys(/** @type {!Object} */(advanced)).length > 0;
+      }
+      if (isAvailable) {
         for (const drmSystem of shakaDemo.Main.commonDrmSystems) {
           if (!advanced[drmSystem]) {
             advanced[drmSystem] = shakaDemo.Main.defaultAdvancedDrmConfig();
@@ -1050,7 +1053,7 @@ shakaDemo.Main = class {
     }
 
     if (params.has('watermarkText')) {
-      this.watermarkText_ = params.get('watermarkText');
+      this.setWatermarkText(params.get('watermarkText'));
     }
 
     if (params.has('visualizer')) {
@@ -1207,19 +1210,6 @@ shakaDemo.Main = class {
     return this.desiredConfig_;
   }
 
-  /**
-   * @param {string} uri
-   * @param {!shaka.net.NetworkingEngine} netEngine
-   * @return {!Promise<!ArrayBuffer>}
-   * @private
-   */
-  async requestCertificate_(uri, netEngine) {
-    const requestType = shaka.net.NetworkingEngine.RequestType.APP;
-    const request = /** @type {shaka.extern.Request} */ ({uris: [uri]});
-    const response = await netEngine.request(requestType, request).promise;
-    return response.data;
-  }
-
   /** @return {boolean} */
   getIsVisualizerActive() {
     if (this.visualizer_) {
@@ -1253,20 +1243,10 @@ shakaDemo.Main = class {
     this.hideElement_(videoBar);
     this.video_.poster = shakaDemo.Main.mainPoster_;
 
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    }
-    if (this.video_.webkitDisplayingFullscreen) {
-      this.video_.webkitExitFullscreen();
-    }
-    if (document.pictureInPictureElement) {
-      document.exitPictureInPicture();
-    }
-    if (window.documentPictureInPicture &&
-        window.documentPictureInPicture.window) {
-      window.documentPictureInPicture.window.close();
-    }
     this.player_.unload();
+
+    const queueManager = this.player_.getQueueManager();
+    queueManager.removeAllItems();
 
     // The currently-selected asset changed, so update asset cards.
     this.dispatchEventWithName_('shaka-main-selected-asset-changed');
@@ -1281,12 +1261,19 @@ shakaDemo.Main = class {
   }
 
   /**
+   * @return {boolean}
+   */
+  isPlaying() {
+    const videoBar = document.getElementById('video-bar');
+    return !videoBar.classList.contains('hidden');
+  }
+
+  /**
    * @param {ShakaDemoAssetInfo} asset
    * @param {shaka.offline.Storage=} storage
-   * @return {!Promise}
    * @private
    */
-  async drmConfiguration_(asset, storage) {
+  drmConfiguration_(asset, storage) {
     const netEngine = storage ?
                       storage.getNetworkingEngine() :
                       this.player_.getNetworkingEngine();
@@ -1303,36 +1290,6 @@ shakaDemo.Main = class {
       this.player_.resetConfiguration();
       this.readHash_();
       this.player_.configure(assetConfig);
-    }
-
-    const config = storage ?
-                   storage.getConfiguration() :
-                   this.player_.getConfiguration();
-
-    // Change the config's serverCertificate fields based on
-    // asset.certificateUri.
-    if (asset.certificateUri) {
-      // Fetch the certificate, and apply it to the configuration.
-      const certificate = await this.requestCertificate_(
-          asset.certificateUri, netEngine);
-      const certArray = shaka.util.BufferUtils.toUint8(certificate);
-      for (const drmSystem of asset.licenseServers.keys()) {
-        config.drm.advanced[drmSystem] = config.drm.advanced[drmSystem] || {};
-        config.drm.advanced[drmSystem].serverCertificate = certArray;
-      }
-    } else {
-      // Remove any server certificates.
-      for (const drmSystem of asset.licenseServers.keys()) {
-        if (config.drm.advanced[drmSystem]) {
-          delete config.drm.advanced[drmSystem].serverCertificate;
-        }
-      }
-    }
-
-    if (storage) {
-      storage.configure(config);
-    } else {
-      this.player_.configure('drm.advanced', config.drm.advanced);
     }
     this.remakeHash();
   }
@@ -1359,7 +1316,7 @@ shakaDemo.Main = class {
    * @param {ShakaDemoAssetInfo} asset
    */
   async preloadAsset(asset) {
-    await this.drmConfiguration_(asset);
+    this.drmConfiguration_(asset);
     const manifestUri = await this.getManifestUri_(asset);
     asset.preloadManager = await this.player_.preload(manifestUri);
   }
@@ -1405,7 +1362,7 @@ shakaDemo.Main = class {
       if (this.nativeControlsEnabled_) {
         this.controls_.setEnabledShakaControls(false);
         this.controls_.setEnabledNativeControls(true);
-        // This will force the player to use SimpleTextDisplayer.
+        // This will force the player to use NativeTextDisplayer.
         this.player_.setVideoContainer(null);
       } else {
         this.controls_.setEnabledShakaControls(true);
@@ -1414,7 +1371,7 @@ shakaDemo.Main = class {
         this.player_.setVideoContainer(this.container_);
       }
 
-      await this.drmConfiguration_(asset);
+      this.drmConfiguration_(asset);
       this.controls_.getCastProxy().setAppData({'asset': asset});
       const ui = this.video_['ui'];
       if (asset.extraUiConfig) {
@@ -1425,6 +1382,9 @@ shakaDemo.Main = class {
         };
         ui.configure(uiConfig);
       }
+
+      const queueManager = this.player_.getQueueManager();
+      await queueManager.removeAllItems();
 
       if (asset.hasAds()) {
         // The player internally, if another stream is loaded, calls
@@ -1469,52 +1429,11 @@ shakaDemo.Main = class {
       }
 
       // Finally, the asset can be loaded.
-      if (asset.preloadManager) {
-        const preloadManager = asset.preloadManager;
-        asset.preloadManager = null;
-        await this.player_.load(preloadManager);
-      } else {
-        const manifestUri = await this.getManifestUri_(asset);
-        let mimeType = undefined;
-        if (asset.mimeType &&
-            manifestUri && !manifestUri.startsWith('offline:')) {
-          mimeType = asset.mimeType;
-        }
-        await this.player_.load(
-            manifestUri,
-            /* startTime= */ null,
-            mimeType);
-      }
+      const queueItem = await this.getQueueItem_(asset);
+      queueManager.insertItems([queueItem]);
+      await queueManager.playItem(0);
 
-      if (this.player_.isAudioOnly() &&
-          this.video_.poster == shakaDemo.Main.mainPoster_) {
-        this.video_.poster = shakaDemo.Main.audioOnlyPoster_;
-      }
-
-      if (!(asset.storedContent && asset.storedContent.offlineUri)) {
-        for (const extraText of asset.extraText) {
-          if (extraText.mime) {
-            this.player_.addTextTrackAsync(extraText.uri, extraText.language,
-                extraText.kind, extraText.mime, extraText.codecs);
-          } else {
-            this.player_.addTextTrackAsync(extraText.uri, extraText.language,
-                extraText.kind);
-          }
-        }
-        for (const extraThumbnail of asset.extraThumbnail) {
-          this.player_.addThumbnailsTrack(extraThumbnail);
-        }
-      }
-
-      for (const extraChapter of asset.extraChapter) {
-        if (extraChapter.mime) {
-          this.player_.addChaptersTrack(
-              extraChapter.uri, extraChapter.language, extraChapter.mime);
-        } else {
-          this.player_.addChaptersTrack(
-              extraChapter.uri, extraChapter.language);
-        }
-      }
+      asset.preloadManager = null;
 
       // Set media session title, but only if the browser supports that API.
       if (navigator.mediaSession) {
@@ -1542,6 +1461,48 @@ shakaDemo.Main = class {
 
     // Remake hash, to change the current asset.
     this.remakeHash();
+  }
+
+  /**
+   * @param {ShakaDemoAssetInfo} asset
+   */
+  async addToQueue(asset) {
+    const queueManager = this.player_.getQueueManager();
+    const queueItem = await this.getQueueItem_(asset);
+    queueManager.insertItems([queueItem]);
+  }
+
+  /**
+   * @param {ShakaDemoAssetInfo} asset
+   * @return {!Promise<shaka.extern.QueueItem>}
+   * @private
+   */
+  async getQueueItem_(asset) {
+    const manifestUri = await this.getManifestUri_(asset);
+    let mimeType = null;
+    if (asset.mimeType &&
+        manifestUri && !manifestUri.startsWith('offline:')) {
+      mimeType = asset.mimeType;
+    }
+    const itemConfig = shaka.util.ObjectUtils.cloneObject(this.defaultConfig_);
+    const assetConfig = asset.getConfiguration();
+    shaka.util.PlayerConfiguration.mergeConfigObjects(
+        itemConfig, this.desiredConfig_, itemConfig);
+    shaka.util.PlayerConfiguration.mergeConfigObjects(
+        itemConfig, assetConfig, itemConfig);
+    const isOffline = asset.storedContent && asset.storedContent.offlineUri;
+    /** @type {shaka.extern.QueueItem} */
+    const queueItem = {
+      manifestUri: manifestUri,
+      preloadManager: asset.preloadManager,
+      startTime: null,
+      mimeType: mimeType,
+      config: itemConfig,
+      extraText: isOffline ? null : asset.extraText,
+      extraThumbnail: isOffline ? null : asset.extraThumbnail,
+      extraChapter: asset.extraChapter,
+    };
+    return queueItem;
   }
 
   /** Remakes the location's hash. */

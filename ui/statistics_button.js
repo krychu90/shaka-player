@@ -89,6 +89,10 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
       return this.currentStats_[name] + ' (px)';
     };
 
+    const parseString = (name) => {
+      return this.currentStats_[name];
+    };
+
     const parsePercent = (name) => {
       return this.currentStats_[name] + ' (%)';
     };
@@ -149,6 +153,7 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
         .set('audioCodecs', noParse)
         .set('width', parsePx)
         .set('height', parsePx)
+        .set('currentCodecs', parseString)
         .set('completionPercent', parsePercent)
         .set('bufferingTime', parseSeconds)
         .set('drmTimeSeconds', parseSeconds)
@@ -293,11 +298,12 @@ shaka.ui.StatisticsButton = class extends shaka.ui.Element {
       const element = this.displayedElements_.get(name);
       element.textContent = this.parseFrom_.get(name)(name);
       if (element && element.parentElement) {
+        const value = this.currentStats_[name];
         shaka.ui.Utils.setDisplay(
             element.parentElement,
             ['videoCodecs', 'audioCodecs', 'audioNormalization']
-                .includes(name) ? this.currentStats_[name] !== null :
-                !isNaN(this.currentStats_[name]),
+                .includes(name) ? value !== null :
+                (typeof value == 'string' ? value != '' : !isNaN(value)),
         );
       }
     }

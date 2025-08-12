@@ -30,6 +30,9 @@ shaka.ui.SettingsMenu = class extends shaka.ui.Element {
   constructor(parent, controls, iconText) {
     super(parent, controls);
 
+    /** @private {HTMLElement } */
+    this.videoContainer_ = this.controls.getVideoContainer();
+
     this.addButton_(iconText);
 
     this.addMenu_();
@@ -37,8 +40,34 @@ shaka.ui.SettingsMenu = class extends shaka.ui.Element {
     this.inOverflowMenu_();
 
     this.eventManager.listen(this.button, 'click', () => {
+      if (!this.controls.isOpaque()) {
+        return;
+      }
       this.onButtonClick_();
     });
+
+    /** @private {ResizeObserver} */
+    this.resizeObserver_ = null;
+
+    const resize = () => this.computeMaxHeight_();
+
+    // Use ResizeObserver if available, fallback to window resize event
+    if (window.ResizeObserver) {
+      this.resizeObserver_ = new ResizeObserver(resize);
+      this.resizeObserver_.observe(this.controls.getVideoContainer());
+    } else {
+      // Fallback for older browsers
+      this.eventManager.listen(window, 'resize', resize);
+    }
+  }
+
+  /** @override */
+  release() {
+    if (this.resizeObserver_) {
+      this.resizeObserver_.disconnect();
+      this.resizeObserver_ = null;
+    }
+    super.release();
   }
 
 
@@ -132,6 +161,8 @@ shaka.ui.SettingsMenu = class extends shaka.ui.Element {
 
         // Make sure controls are displayed
         this.controls.computeOpacity();
+
+        this.computeMaxHeight_();
       });
     }
   }
@@ -143,8 +174,25 @@ shaka.ui.SettingsMenu = class extends shaka.ui.Element {
       this.controls.dispatchEvent(new shaka.util.FakeEvent('submenuopen'));
       shaka.ui.Utils.setDisplay(this.menu, true);
       shaka.ui.Utils.focusOnTheChosenItem(this.menu);
+      this.computeMaxHeight_();
     } else {
       shaka.ui.Utils.setDisplay(this.menu, false);
     }
+  }
+
+
+  /**
+   * @private
+   */
+  computeMaxHeight_() {
+    const rectMenu = this.menu.getBoundingClientRect();
+    const styleMenu = window.getComputedStyle(this.menu);
+    const paddingTop = parseFloat(styleMenu.paddingTop);
+    const paddingBottom = parseFloat(styleMenu.paddingBottom);
+    const rectContainer = this.videoContainer_.getBoundingClientRect();
+    const heightIntersection =
+        rectMenu.bottom - rectContainer.top - paddingTop - paddingBottom;
+
+    this.menu.style.maxHeight = heightIntersection + 'px';
   }
 };

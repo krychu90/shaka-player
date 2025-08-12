@@ -13,6 +13,9 @@
   overflow-x: hidden;
   overflow-y: auto;
 
+  scrollbar-color: @general-font-color @general-background-color;
+  scrollbar-width: thin;
+
   /* Don't wrap text to the next line. */
   white-space: nowrap;
 
@@ -30,6 +33,7 @@
    * vertical column. */
   display: flex;
   flex-direction: column;
+  align-items: stretch;
 
   /* Where the menu appears. */
   position: absolute;
@@ -82,11 +86,9 @@
     }
   }
 
-  /* If the seekbar is missing, this is positioned lower.
-   * TODO: Solve with flex layout instead? */
+  // If the seekbar is missing, this is positioned lower.
   &.shaka-low-position {
-    /* TODO(b/116651454): eliminate hard-coded offsets */
-    bottom: 15px;
+    bottom: @material-icons-width;
   }
 }
 
@@ -126,6 +128,12 @@
   background-size: 24px 24px;
 }
 
+.shaka-simple-overflow-button-label-inline {
+  box-sizing: border-box;
+  flex-direction: row;
+  justify-content: space-between;
+  width: calc(100% - 50px);
+}
 /* This is the specific span element which shows the current selection from some
  * submenu.  For example, it would contain the currently-selected subtitle
  * language, the currently-selected resolution, etc. */
@@ -152,7 +160,8 @@
   line-height: 6px;
 }
 
-.shaka-overflow-quality-mark {
+.shaka-overflow-quality-mark,
+.shaka-overflow-playback-rate-mark {
   background: #f00;
   color: #fff;
   border-radius: 2px;
@@ -205,10 +214,8 @@
   &:hover {
     background: transparent !important;
   }
-}
 
-/* The menu item for resolutions which contains "auto". */
-.shaka-auto-span {
-  /* TODO(b/116651454): eliminate hard-coded offsets */
-  left: 17px;
+  &:hover {
+    background: transparent !important;
+  }
 }

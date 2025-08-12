@@ -563,6 +563,100 @@ describe('DashParser SegmentTemplate', () => {
       });
       await Dash.testSegmentIndex(source, references);
     });
+
+    it('create correct index Uris with supplementalCodecs', async () => {
+      const source = [
+        '<MPD type="static" xmlns:scte214="urn:scte:dash:scte214-extensions">',
+        '  <Period duration="PT60S">',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <BaseURL>http://example.com</BaseURL>',
+        '      <SegmentTemplate timescale="1000" startNumber="1"',
+        '         initialization="init-$RepresentationID$.mp4"',
+        '          media="segment-$RepresentationID$-$Number$.m4s">',
+        '        <SegmentTimeline>',
+        '           <S t="0" d="6000" r="1176" />',
+        '         <S d="4520" />',
+        '       </SegmentTimeline>',
+        '      </SegmentTemplate>',
+        '      <Representation id="test1" bandwidth="100" codecs="my_codec"',
+        '          scte214:supplementalCodecs="my_supplemental_codec" />',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', source);
+      const actual = await parser.start('dummy://foo', playerInterface);
+      expect(actual).toBeTruthy();
+
+      const variants = actual.variants;
+      expect(variants.length).toBe(2);
+
+      expect(variants[0].video.codecs).toBe('my_codec');
+      expect(variants[1].video.codecs).toBe('my_supplemental_codec');
+
+      await variants[0].video.createSegmentIndex();
+      await variants[1].video.createSegmentIndex();
+
+      const firstSegment = (variant) => {
+        return Array.from(variant.video.segmentIndex)[0];
+      };
+
+      expect(firstSegment(variants[0]).initSegmentReference.getUris()).toEqual(
+          ['http://example.com/init-test1.mp4']);
+      expect(firstSegment(variants[0]).getUris()).toEqual(
+          ['http://example.com/segment-test1-1.m4s']);
+
+      expect(firstSegment(variants[1]).initSegmentReference.getUris()).toEqual(
+          ['http://example.com/init-test1.mp4']);
+      expect(firstSegment(variants[1]).getUris()).toEqual(
+          ['http://example.com/segment-test1-1.m4s']);
+    });
+
+    it('create correct duration Uris with supplementalCodecs', async () => {
+      const source = [
+        '<MPD type="static" xmlns:scte214="urn:scte:dash:scte214-extensions">',
+        '  <Period duration="PT60S">',
+        '    <AdaptationSet mimeType="video/mp4">',
+        '      <BaseURL>http://example.com</BaseURL>',
+        '      <SegmentTemplate timescale="1000" duration="4000"',
+        '          initialization="init-$RepresentationID$.mp4"',
+        '          media="segment-$RepresentationID$-$Number$.m4s"',
+        '          startNumber="1" />',
+        '      <Representation id="test1" bandwidth="100" codecs="my_codec"',
+        '          scte214:supplementalCodecs="my_supplemental_codec" />',
+        '    </AdaptationSet>',
+        '  </Period>',
+        '</MPD>',
+      ].join('\n');
+
+      fakeNetEngine.setResponseText('dummy://foo', source);
+      const actual = await parser.start('dummy://foo', playerInterface);
+      expect(actual).toBeTruthy();
+
+      const variants = actual.variants;
+      expect(variants.length).toBe(2);
+
+      expect(variants[0].video.codecs).toBe('my_codec');
+      expect(variants[1].video.codecs).toBe('my_supplemental_codec');
+
+      await variants[0].video.createSegmentIndex();
+      await variants[1].video.createSegmentIndex();
+
+      const firstSegment = (variant) => {
+        return Array.from(variant.video.segmentIndex)[0];
+      };
+
+      expect(firstSegment(variants[0]).initSegmentReference.getUris()).toEqual(
+          ['http://example.com/init-test1.mp4']);
+      expect(firstSegment(variants[0]).getUris()).toEqual(
+          ['http://example.com/segment-test1-1.m4s']);
+
+      expect(firstSegment(variants[1]).initSegmentReference.getUris()).toEqual(
+          ['http://example.com/init-test1.mp4']);
+      expect(firstSegment(variants[1]).getUris()).toEqual(
+          ['http://example.com/segment-test1-1.m4s']);
+    });
   });
 
   describe('rejects streams with', () => {
@@ -821,6 +915,19 @@ describe('DashParser SegmentTemplate', () => {
         const index = await makeTimelineSegmentIndex(info);
         const ref = index.get(-12);
         expect(ref).toBeNull();
+      });
+
+      it('clamps last segment time to period duration', async () => {
+        const info = makeTemplateInfo(makeRanges(0, 2.0, 10));
+        const index = await makeTimelineSegmentIndex(info);
+        // Modify last segment end time after creating TSI, but before making
+        // any operation on it.
+        info.timeline[info.timeline.length - 1].end = 100;
+        const ref = index.get(9);
+        // Last segment end time is clamped to period duration.
+        expect(ref.endTime).toBe(21);
+        // True end time is unaffected by period duration.
+        expect(ref.trueEndTime).toBe(100);
       });
     });
 

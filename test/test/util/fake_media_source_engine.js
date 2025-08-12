@@ -64,6 +64,9 @@ shaka.test.FakeMediaSourceEngine = class {
     this.ended = jasmine.createSpy('ended').and.returnValue(false);
 
     /** @type {!jasmine.Spy} */
+    this.closed = jasmine.createSpy('closed').and.returnValue(false);
+
+    /** @type {!jasmine.Spy} */
     this.endOfStream =
         jasmine.createSpy('endOfStream').and.returnValue(Promise.resolve());
 
@@ -325,9 +328,10 @@ shaka.test.FakeMediaSourceEngine = class {
    * @param {string} type
    * @param {number} start
    * @param {number} end
+   * @param {Array<number>=} continuityTimelines
    * @return {!Promise}
    */
-  removeImpl(type, start, end) {
+  removeImpl(type, start, end, continuityTimelines) {
     if (!this.segments[type]) {
       throw new Error('unexpected type');
     }

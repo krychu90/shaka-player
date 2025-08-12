@@ -14,6 +14,7 @@ goog.require('shaka.ui.Enums');
 goog.require('shaka.ui.Locales');
 goog.require('shaka.ui.Localization');
 goog.require('shaka.ui.OverflowMenu');
+goog.require('shaka.ui.Utils');
 goog.require('shaka.util.Dom');
 goog.require('shaka.util.Timer');
 goog.requireType('shaka.ui.Controls');
@@ -47,6 +48,7 @@ shaka.ui.LoopButton = class extends shaka.ui.Element {
     const label = shaka.util.Dom.createHTMLElement('label');
     label.classList.add('shaka-overflow-button-label');
     label.classList.add('shaka-overflow-menu-only');
+    label.classList.add('shaka-simple-overflow-button-label-inline');
     this.nameSpan_ = shaka.util.Dom.createHTMLElement('span');
     this.nameSpan_.textContent = this.localization.resolve(LocIds.LOOP);
     label.appendChild(this.nameSpan_);
@@ -73,6 +75,9 @@ shaka.ui.LoopButton = class extends shaka.ui.Element {
         });
 
     this.eventManager.listen(this.button_, 'click', () => {
+      if (!this.controls.isOpaque()) {
+        return;
+      }
       this.onClick_();
     });
 
@@ -100,6 +105,22 @@ shaka.ui.LoopButton = class extends shaka.ui.Element {
     });
 
     this.timer_.tickEvery(1);
+
+    this.eventManager.listen(this.player, 'unloading', () => {
+      this.checkAvailability_();
+    });
+
+    this.eventManager.listen(this.player, 'loaded', () => {
+      this.checkAvailability_();
+    });
+
+    this.eventManager.listen(this.player, 'manifestupdated', () => {
+      this.checkAvailability_();
+    });
+
+    this.eventManager.listen(this.video, 'durationchange', () => {
+      this.checkAvailability_();
+    });
   }
 
   /**
@@ -153,6 +174,14 @@ shaka.ui.LoopButton = class extends shaka.ui.Element {
         LocIds.EXIT_LOOP_MODE : LocIds.ENTER_LOOP_MODE;
 
     this.button_.ariaLabel = this.localization.resolve(ariaText);
+  }
+
+
+  /**
+   * @private
+   */
+  checkAvailability_() {
+    shaka.ui.Utils.setDisplay(this.button_, !this.player.isLive());
   }
 };
 

@@ -130,6 +130,9 @@ jasmine.Matchers.prototype.toBeTruthy = function() {};
 
 jasmine.Matchers.prototype.toBeUndefined = function() {};
 
+/** @param {*} value */
+jasmine.Matchers.prototype.toBeInstanceOf = function(value) {};
+
 
 /** @param {*} value */
 jasmine.Matchers.prototype.toContain = function(value) {};
@@ -235,6 +238,12 @@ jasmine.SpyStrategy.prototype.exec = function(varArgs) {};
 
 /** @return {!jasmine.Spy} */
 jasmine.SpyStrategy.prototype.callThrough = function() {};
+
+/**
+ * @param {*=} value
+ * @return {!jasmine.Spy}
+ */
+jasmine.SpyStrategy.prototype.resolveTo = function(value) {};
 
 
 /**

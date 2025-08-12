@@ -8,6 +8,7 @@
 goog.provide('shaka.ui.RemoteButton');
 
 goog.require('shaka.Player');
+goog.require('shaka.device.DeviceFactory');
 goog.require('shaka.ui.Controls');
 goog.require('shaka.ui.Element');
 goog.require('shaka.ui.Enums');
@@ -16,7 +17,6 @@ goog.require('shaka.ui.Localization');
 goog.require('shaka.ui.OverflowMenu');
 goog.require('shaka.ui.Utils');
 goog.require('shaka.util.Dom');
-goog.require('shaka.util.Platform');
 goog.requireType('shaka.ui.Controls');
 
 
@@ -34,7 +34,7 @@ shaka.ui.RemoteButton = class extends shaka.ui.Element {
     super(parent, controls);
 
     /** @private {boolean} */
-    this.isAirPlay_ = shaka.util.Platform.isApple();
+    this.isAirPlay_ = shaka.device.DeviceFactory.getDevice().supportsAirPlay();
 
     /** @private {!HTMLButtonElement} */
     this.remoteButton_ = shaka.util.Dom.createButton();
@@ -90,7 +90,10 @@ shaka.ui.RemoteButton = class extends shaka.ui.Element {
       });
 
       this.eventManager.listen(this.remoteButton_, 'click', () => {
-        this.video.remote.prompt();
+        if (!this.controls.isOpaque()) {
+          return;
+        }
+        this.video.remote.prompt().catch(() => {});
       });
 
       this.eventManager.listen(this.video.remote, 'connect', () => {
@@ -133,8 +136,8 @@ shaka.ui.RemoteButton = class extends shaka.ui.Element {
    * @private
    */
   async updateRemoteState_(force = false) {
-    if (this.controls.getCastProxy().canCast() &&
-        this.controls.isCastAllowed()) {
+    if ((this.controls.getCastProxy().canCast() &&
+        this.controls.isCastAllowed()) || !this.video.remote) {
       shaka.ui.Utils.setDisplay(this.remoteButton_, false);
       if (this.callbackId_ != -1) {
         this.video.remote.cancelWatchAvailability(this.callbackId_);
@@ -145,7 +148,7 @@ shaka.ui.RemoteButton = class extends shaka.ui.Element {
         if (this.player) {
           const disableRemote = this.video.disableRemotePlayback;
           let canCast = true;
-          if (shaka.util.Platform.isApple()) {
+          if (shaka.device.DeviceFactory.getDevice().supportsAirPlay()) {
             const loadMode = this.player.getLoadMode();
             const mseMode = loadMode == shaka.Player.LoadMode.MEDIA_SOURCE;
             if (mseMode && this.player.getManifestType() != 'HLS') {
@@ -173,11 +176,14 @@ shaka.ui.RemoteButton = class extends shaka.ui.Element {
       } catch (e) {
         handleAvailabilityChange(/* availability= */ true);
       }
-    } else if (this.callbackId_ != -1) {
-      // If remote device is connecting or connected, we should stop
-      // watching remote device availability to save power.
-      await this.video.remote.cancelWatchAvailability(this.callbackId_);
-      this.callbackId_ = -1;
+    } else {
+      shaka.ui.Utils.setDisplay(this.remoteButton_, true);
+      if (this.callbackId_ != -1) {
+        // If remote device is connecting or connected, we should stop
+        // watching remote device availability to save power.
+        await this.video.remote.cancelWatchAvailability(this.callbackId_);
+        this.callbackId_ = -1;
+      }
     }
   }
 

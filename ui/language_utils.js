@@ -22,6 +22,27 @@ goog.requireType('shaka.ui.Localization');
 shaka.ui.LanguageUtils = class {
   /**
    * @param {!Array<shaka.extern.AudioTrack>} tracks
+   * @return {boolean}
+   * @private
+   */
+  static areAudioTracksEqualExceptLabel_(tracks) {
+    const basicTrack = (track) => {
+      return {
+        codecs: track.codecs,
+        channelCount: track.channelCount,
+        language: track.language,
+        roles: track.roles,
+        spatialAudio: track.spatialAudio,
+      };
+    };
+    const reference = basicTrack(tracks[0]);
+    return tracks.every((track) => {
+      return JSON.stringify(basicTrack(track)) === JSON.stringify(reference);
+    });
+  }
+
+  /**
+   * @param {!Array<shaka.extern.AudioTrack>} tracks
    * @param {!HTMLElement} langMenu
    * @param {function(!shaka.extern.AudioTrack)} onTrackSelected
    * @param {boolean} updateChosen
@@ -41,6 +62,12 @@ shaka.ui.LanguageUtils = class {
     const selectedTrack = tracks.find((track) => {
       return track.active == true;
     });
+
+    if (tracks.length > 1 && tracks[0].label &&
+        trackLabelFormat != shaka.ui.Overlay.TrackLabelFormat.LABEL &&
+        shaka.ui.LanguageUtils.areAudioTracksEqualExceptLabel_(tracks)) {
+      trackLabelFormat = shaka.ui.Overlay.TrackLabelFormat.LABEL;
+    }
 
     /** @type {!Map<string, !Set<string>>} */
     const codecsByLanguage = new Map();
@@ -125,7 +152,9 @@ shaka.ui.LanguageUtils = class {
     const selectedCombination = selectedTrack ? getCombination(
         selectedTrack.language, getRolesString(selectedTrack),
         selectedTrack.label, selectedTrack.channelsCount,
-        selectedTrack.codecs, selectedTrack.spatialAudio) : '';
+        selectedTrack.codecs &&
+        shaka.util.MimeUtils.getNormalizedCodec(selectedTrack.codecs),
+        selectedTrack.spatialAudio) : '';
 
     for (const track of tracks) {
       const language = track.language;
@@ -392,10 +421,9 @@ shaka.ui.LanguageUtils = class {
     // "unknown"), we should append the original language code.
     // Otherwise, there may be multiple identical-looking items in the list.
     if (locale in mozilla.LanguageMapping) {
-      return mozilla.LanguageMapping[locale].nativeName;
+      return mozilla.LanguageMapping[locale];
     } else if (language in mozilla.LanguageMapping) {
-      return mozilla.LanguageMapping[language].nativeName +
-          ' (' + locale + ')';
+      return mozilla.LanguageMapping[language] + ' (' + locale + ')';
     } else {
       return resolve(shaka.ui.Locales.Ids.UNRECOGNIZED_LANGUAGE) +
           ' (' + locale + ')';

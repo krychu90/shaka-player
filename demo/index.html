@@ -35,7 +35,6 @@
     <link rel="stylesheet" href="../dist/demo.css">
     <link rel="stylesheet" href="../dist/controls.css">
 
-    <script defer src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"></script>
     <!-- MSS support is enabled by including this: -->
     <script defer src="../node_modules/codem-isoboxer/dist/iso_boxer.min.js"></script>
     <!-- MPEG-5 Part2 LCEVC support is enabled by including this: -->
@@ -78,8 +77,6 @@ UNCOMPILED_JS = [
   '../dist/deps.js',
   // This is required for goog.asserts.
   '../lib/debug/asserts.js',
-  // Compiled into Shaka Player, but outside of the Closure deps system.
-  '../node_modules/eme-encryption-scheme-polyfill/index.js',
   // This file contains goog.require calls for all exported library classes.
   '../shaka-player.uncompiled.js',
   // Enable less, the CSS pre-processor.

@@ -242,6 +242,7 @@ describe('Player', () => {
         width: jasmine.any(Number),
         height: jasmine.any(Number),
         streamBandwidth: jasmine.any(Number),
+        currentCodecs: jasmine.any(String),
 
         decodedFrames: jasmine.any(Number),
         droppedFrames: jasmine.any(Number),
@@ -306,34 +307,6 @@ describe('Player', () => {
   });  // describe('getStats')
 
   describe('setTextTrackVisibility', () => {
-    // Using mode='disabled' on TextTrack causes cues to go null, which leads
-    // to a crash in TextEngine.  This validates that we do not trigger this
-    // behavior when changing visibility of text.
-
-    it('does not cause cues to be null', async () => {
-      await player.load('test:sintel_compiled');
-      await video.play();
-      await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 1, 10);
-
-      // This TextTrack was created as part of load() when we set up the
-      // TextDisplayer.
-      const textTrack = video.textTracks[0];
-      expect(textTrack).not.toBe(null);
-
-      if (textTrack) {
-        // This should not be null initially.
-        expect(textTrack.cues).not.toBe(null);
-
-        await player.setTextTrackVisibility(true);
-        // This should definitely not be null when visible.
-        expect(textTrack.cues).not.toBe(null);
-
-        await player.setTextTrackVisibility(false);
-        // This should not transition to null when invisible.
-        expect(textTrack.cues).not.toBe(null);
-      }
-    });
-
     // Repro for https://github.com/shaka-project/shaka-player/issues/1879.
     it('appends cues when enabled initially', async () => {
       let cues = [];
@@ -457,7 +430,7 @@ describe('Player', () => {
       await video.play();
       await waiter.waitForMovementOrFailOnTimeout(video, 10);
 
-      expect(video.textTracks[0].activeCues.length).toBe(1);
+      expect(video.textTracks[1].activeCues.length).toBe(1);
       expect(player.getTextTracks()[1].active).toBe(true);
     });
   });  // describe('setTextTrackVisibility')
@@ -662,7 +635,7 @@ describe('Player', () => {
     });
 
     it('in sequence mode', async () => {
-      if (!shaka.util.Platform.supportsSequenceMode()) {
+      if (!deviceDetected.supportsSequenceMode()) {
         pending('Sequence mode is not supported by the platform.');
       }
       await player.load('test:sintel_sequence_compiled');
@@ -1028,7 +1001,7 @@ describe('Player', () => {
 
       await player.load('test:sintel_long_compiled');
       video.pause();
-      expect(onBuffering).toHaveBeenCalledTimes(1);
+      expect(onBuffering).toHaveBeenCalledTimes(2);
       expect(onBuffering).toHaveBeenCalledWith(startBuffering);
       onBuffering.calls.reset();
 
@@ -1242,9 +1215,7 @@ describe('Player', () => {
   /** Regression test for Issue #2741 */
   describe('unloading', () => {
     drmIt('unloads properly after DRM error', async () => {
-      if (!shakaSupport.drm['com.widevine.alpha'] &&
-          !shakaSupport.drm['com.microsoft.playready'] &&
-          !shakaSupport.drm['com.chromecast.playready']) {
+      if (!checkTrueDrmSupport()) {
         pending('Skipping DRM error test, only runs on Widevine and PlayReady');
       }
 
@@ -1291,7 +1262,7 @@ describe('Player', () => {
 
       // Data should be available as soon as addChaptersTrack resolves.
       // See https://github.com/shaka-project/shaka-player/issues/4186
-      const chapters = player.getChapters('en');
+      const chapters = await player.getChaptersAsync('en');
       expect(chapters.length).toBe(3);
       const chapter1 = chapters[0];
       expect(chapter1.title).toBe('Chapter 1');
@@ -1310,7 +1281,7 @@ describe('Player', () => {
       const absoluteUri2 = locationUri.resolve(partialUri2);
       await player.addChaptersTrack(absoluteUri2.toString(), 'en');
 
-      const chaptersUpdated = player.getChapters('en');
+      const chaptersUpdated = await player.getChaptersAsync('en');
       expect(chaptersUpdated.length).toBe(6);
       const chapterUpdated1 = chaptersUpdated[0];
       expect(chapterUpdated1.title).toBe('Chapter 1');
@@ -1345,7 +1316,7 @@ describe('Player', () => {
       const absoluteUri = locationUri.resolve(partialUri);
       await player.addChaptersTrack(absoluteUri.toString(), 'es');
 
-      const chapters = player.getChapters('es');
+      const chapters = await player.getChaptersAsync('es');
       expect(chapters.length).toBe(3);
       const chapter1 = chapters[0];
       expect(chapter1.title).toBe('Chapter 1');

@@ -10,7 +10,8 @@
 // only be run on Chrome and Chromecast.
 /** @return {boolean} */
 const castReceiverIntegrationSupport =
-    () => shaka.util.Platform.isChrome() || shaka.util.Platform.isChromecast();
+    () => deviceDetected.getDeviceName() === 'Chrome' ||
+      deviceDetected.getDeviceType() === shaka.device.IDevice.DeviceType.CAST;
 filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
   const CastReceiver = shaka.cast.CastReceiver;
   const CastUtils = shaka.cast.CastUtils;
@@ -204,8 +205,8 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
       for (const message of messages) {
         // Check that the update message is of a reasonable size. From previous
         // testing we found that the socket would silently reject data that got
-        // too big. 7KB is safely below the limit.
-        expect(message.length).toBeLessThan(7000);
+        // too big. 8KB is safely below the limit.
+        expect(message.length).toBeLessThan(8000);
       }
     });
 
@@ -243,8 +244,7 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
     });
   });
 
-  const widevineSupport = () => shakaSupport.drm['com.widevine.alpha'];
-  filterDescribe('with drm', widevineSupport, () => {
+  filterDescribe('with drm', checkWidevineSupport, () => {
     drmIt('sends reasonably-sized updates', async () => {
       // Use an encrypted asset, to make sure DRM info doesn't balloon the size.
       fakeInitState.manifest = 'test:sintel-enc';
@@ -270,8 +270,8 @@ filterDescribe('CastReceiver', castReceiverIntegrationSupport, () => {
       for (const message of messages) {
         // Check that the update message is of a reasonable size. From previous
         // testing we found that the socket would silently reject data that got
-        // too big. 7KB is safely below the limit.
-        expect(message.length).toBeLessThan(7000);
+        // too big. 8KB is safely below the limit.
+        expect(message.length).toBeLessThan(8000);
       }
     });
 

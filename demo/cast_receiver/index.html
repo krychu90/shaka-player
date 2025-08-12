@@ -47,8 +47,6 @@ UNCOMPILED_JS = [
   // Bootstrap the Shaka Player library through the Closure library.
   '../../node_modules/google-closure-library/closure/goog/base.js',
   '../../dist/deps.js',
-  // Compiled into Shaka Player, but outside of the Closure deps system.
-  '../../node_modules/eme-encryption-scheme-polyfill/index.js',
   // This file contains goog.require calls for all exported library classes.
   '../../shaka-player.uncompiled.js',
   // These are the individual parts of the receiver app.
@@ -66,10 +64,6 @@ UNCOMPILED_JS = [
       <video autoplay data-shaka-player id="video"></video>
     </div>
     <!-- Covers everything else while idle -->
-    <div id="idle" class="overlay">
-      <h1>Ready to try Shaka's Chromecast support?</h1>
-      <h2>Select an asset in your browser and click "Load".
-          Control the video using the controls in your browser.</h2>
-    </div>
+    <div id="welcome"></div>
   </body>
 </html>

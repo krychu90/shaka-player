@@ -12,7 +12,7 @@
   /* Set the background and the color, otherwise it might be overwritten by
    * the css styles in demo. */
   background-color: transparent;
-  color: white;
+  color: @general-font-color;
   cursor: default;
 }
 
@@ -66,6 +66,10 @@
   &[icon="pause"] {
     background-image: data-uri("images/pause.svg");
   }
+
+  &[icon="replay"] {
+    background-image: data-uri("images/replay.svg");
+  }
 }
 
 /* This button contains the current time and duration of the video.
@@ -73,8 +77,8 @@
  * edge. Otherwise, the button is disabled.
  */
 .shaka-current-time {
-  font-size: 14px;
-  color: white;
+  font-size: @general-font-size;
+  color: @general-font-color;
   cursor: pointer;
   width: auto;
   padding: 0 5px;

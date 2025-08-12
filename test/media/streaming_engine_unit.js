@@ -459,6 +459,7 @@ describe('StreamingEngine', () => {
       // We don't want to evict segments in tests where there is no need to
       // test them.
       config.evictionGoal = 30;
+      config.crossBoundaryStrategy = shaka.config.CrossBoundaryStrategy.KEEP;
     }
 
     if (defaultConfig.segmentPrefetchLimit == config.segmentPrefetchLimit) {
@@ -481,6 +482,7 @@ describe('StreamingEngine', () => {
       onInitSegmentAppended: () => {},
       beforeAppendSegment: Util.spyFunc(beforeAppendSegment),
       disableStream: Util.spyFunc(disableStream),
+      shouldPrefetchNextSegment: () => true,
     };
     streamingEngine = new shaka.media.StreamingEngine(
         /** @type {shaka.extern.Manifest} */(manifest), playerInterface);
@@ -2670,22 +2672,26 @@ describe('StreamingEngine', () => {
           shaka.test.FakeMediaSourceEngine.prototype.removeImpl
               .bind(mediaSourceEngine);
 
-      mediaSourceEngine.remove.and.callFake((type, start, end) => {
-        expect(presentationTimeInSeconds).toBeGreaterThanOrEqual(20);
-        expect(start).toBe(0);
-        expect(end).toBe(10);
+      mediaSourceEngine.remove.and.callFake(
+          (type, start, end, continuityTimelines) => {
+            expect(presentationTimeInSeconds).toBeGreaterThanOrEqual(20);
+            expect(start).toBe(0);
+            expect(end).toBe(10);
 
-        if (mediaSourceEngine.remove.calls.count() == 3) {
-          mediaSourceEngine.remove.and.callFake((type, start, end) => {
-            expect(presentationTimeInSeconds).toBeGreaterThanOrEqual(30);
-            expect(start).toBe(10);
-            expect(end).toBe(20);
-            return originalRemove(type, start, end);
+            if (mediaSourceEngine.remove.calls.count() == 3) {
+              mediaSourceEngine.remove.and.callFake(
+                  (type, start, end, continuityTimelines) => {
+                    expect(presentationTimeInSeconds)
+                        .toBeGreaterThanOrEqual(30);
+                    expect(start).toBe(10);
+                    expect(end).toBe(20);
+                    return originalRemove(
+                        type, start, end, continuityTimelines);
+                  });
+            }
+
+            return originalRemove(type, start, end, continuityTimelines);
           });
-        }
-
-        return originalRemove(type, start, end);
-      });
 
       // Here we go!
       streamingEngine.switchVariant(variant);
@@ -2702,19 +2708,19 @@ describe('StreamingEngine', () => {
       expect(mediaSourceEngine.endOfStream).toHaveBeenCalled();
 
       expect(mediaSourceEngine.remove)
-          .toHaveBeenCalledWith(ContentType.AUDIO, 0, 10);
+          .toHaveBeenCalledWith(ContentType.AUDIO, 0, 10, undefined);
       expect(mediaSourceEngine.remove)
-          .toHaveBeenCalledWith(ContentType.AUDIO, 10, 20);
+          .toHaveBeenCalledWith(ContentType.AUDIO, 10, 20, undefined);
 
       expect(mediaSourceEngine.remove)
-          .toHaveBeenCalledWith(ContentType.VIDEO, 0, 10);
+          .toHaveBeenCalledWith(ContentType.VIDEO, 0, 10, undefined);
       expect(mediaSourceEngine.remove)
-          .toHaveBeenCalledWith(ContentType.VIDEO, 10, 20);
+          .toHaveBeenCalledWith(ContentType.VIDEO, 10, 20, undefined);
 
       expect(mediaSourceEngine.remove)
-          .toHaveBeenCalledWith(ContentType.TEXT, 0, 10);
+          .toHaveBeenCalledWith(ContentType.TEXT, 0, 10, undefined);
       expect(mediaSourceEngine.remove)
-          .toHaveBeenCalledWith(ContentType.TEXT, 10, 20);
+          .toHaveBeenCalledWith(ContentType.TEXT, 10, 20, undefined);
 
       // Verify buffers.
       expect(mediaSourceEngine.initSegments).toEqual({

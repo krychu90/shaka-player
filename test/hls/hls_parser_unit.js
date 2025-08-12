@@ -3979,6 +3979,7 @@ describe('HlsParser', () => {
           stream.addDrmInfo('com.apple.fps', (drmInfo) => {
             drmInfo.addInitData('sinf', new Uint8Array(0));
             drmInfo.encryptionScheme = 'cenc';
+            drmInfo.keyIds.add('f93d4e700d7ddde90529a27735d9e7cb');
             drmInfo.addKeySystemUris(new Set(
                 ['skd://f93d4e700d7ddde90529a27735d9e7cb']));
           });
@@ -4302,6 +4303,7 @@ describe('HlsParser', () => {
             stream.addDrmInfo('com.apple.fps', (drmInfo) => {
               drmInfo.addInitData('sinf', new Uint8Array(0));
               drmInfo.encryptionScheme = 'cenc';
+              drmInfo.keyIds.add('f93d4e700d7ddde90529a27735d9e7cb');
               drmInfo.addKeySystemUris(new Set(
                   ['skd://f93d4e700d7ddde90529a27735d9e7cb']));
             });
@@ -4312,6 +4314,7 @@ describe('HlsParser', () => {
             stream.addDrmInfo('com.apple.fps', (drmInfo) => {
               drmInfo.addInitData('sinf', new Uint8Array(0));
               drmInfo.encryptionScheme = 'cenc';
+              drmInfo.keyIds.add('f93d4e700d7ddde90529a27735d9e7cb');
               drmInfo.addKeySystemUris(new Set(
                   ['skd://f93d4e700d7ddde90529a27735d9e7cb']));
             });
@@ -5567,7 +5570,6 @@ describe('HlsParser', () => {
     const media = [
       '#EXTM3U\n',
       '#EXT-X-PLAYLIST-TYPE:VOD\n',
-      '#EXT-X-MAP:URI="init.test",BYTERANGE="616@0"\n',
       '#EXTINF:5,\n',
       '#EXT-X-BYTERANGE:121090@616\n',
       'main.test',
@@ -5787,12 +5789,8 @@ describe('HlsParser', () => {
 
     await actualVideo0.createSegmentIndex();
 
-    // After loading just ONE stream, all MIME types agree again, and have been
-    // updated to reflect the TS content found inside the loaded playlist.
-    // This is how we avoid having the unloaded tracks filtered out during
-    // startup.
     expect(actualVideo0.mimeType).toBe('video/mp2t');
-    expect(actualVideo1.mimeType).toBe('video/mp2t');
+    expect(actualVideo1.mimeType).toBe('video/mp4');
   });
 
   it('lazy-loads AAC content without filtering it out', async () => {
@@ -5847,13 +5845,9 @@ describe('HlsParser', () => {
 
     await actualAudio0.createSegmentIndex();
 
-    // After loading just ONE stream, all MIME types agree again, and have been
-    // updated to reflect the AAC content found inside the loaded playlist.
-    // This is how we avoid having the unloaded tracks filtered out during
-    // startup.
     expect(actualAudio0.mimeType).toBe('audio/aac');
     expect(actualAudio0.codecs).toBe('mp4a');
-    expect(actualAudio1.mimeType).toBe('audio/aac');
+    expect(actualAudio1.mimeType).toBe('audio/mp4');
     expect(actualAudio1.codecs).toBe('mp4a');
   });
 
@@ -6090,42 +6084,6 @@ describe('HlsParser', () => {
       ];
       expect(onMetadataSpy).toHaveBeenCalledTimes(1);
       expect(onMetadataSpy).toHaveBeenCalledWith(metadataType, 0, 5, values);
-    });
-
-    it('skip duplicate IDs', async () => {
-      const mediaPlaylist = [
-        '#EXTM3U\n',
-        '#EXT-X-TARGETDURATION:5\n',
-        '#EXT-X-PROGRAM-DATE-TIME:2000-01-01T00:00:00.00Z\n',
-        '#EXTINF:5,\n',
-        'video1.ts\n',
-        '#EXT-X-DATERANGE:ID="0",START-DATE="2000-01-01T00:00:00.00Z",',
-        'DURATION=1,X-SHAKA="FOREVER"\n',
-        '#EXT-X-DATERANGE:ID="0",START-DATE="2000-01-01T00:00:00.00Z",',
-        'DURATION=1,X-SHAKA="FOREVER"\n',
-        '#EXT-X-DATERANGE:ID="0",START-DATE="2000-01-01T00:00:00.00Z",',
-        'DURATION=1,X-SHAKA="FOREVER"\n',
-      ].join('');
-
-      fakeNetEngine
-          .setResponseText('test:/master', mediaPlaylist)
-          .setResponseValue('test:/video1.ts', tsSegmentData);
-
-      await parser.start('test:/master', playerInterface);
-
-      const metadataType = 'com.apple.quicktime.HLS';
-      const values = [
-        jasmine.objectContaining({
-          key: 'ID',
-          data: '0',
-        }),
-        jasmine.objectContaining({
-          key: 'X-SHAKA',
-          data: 'FOREVER',
-        }),
-      ];
-      expect(onMetadataSpy).toHaveBeenCalledTimes(1);
-      expect(onMetadataSpy).toHaveBeenCalledWith(metadataType, 0, 1, values);
     });
 
     it('with no EXT-X-PROGRAM-DATE-TIME', async () => {

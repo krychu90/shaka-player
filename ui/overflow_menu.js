@@ -39,6 +39,9 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
     /** @private {HTMLElement} */
     this.controlsContainer_ = this.controls.getControlsContainer();
 
+    /** @private {HTMLElement } */
+    this.videoContainer_ = this.controls.getVideoContainer();
+
     /** @private {!Array<shaka.extern.IUIElement>} */
     this.children_ = [];
 
@@ -86,6 +89,9 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
         });
 
     this.eventManager.listen(this.overflowMenuButton_, 'click', () => {
+      if (!this.controls.isOpaque()) {
+        return;
+      }
       this.onOverflowMenuButtonClick_();
     });
 
@@ -94,6 +100,20 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
     if (this.ad && this.ad.isLinear()) {
       // There was already an ad.
       shaka.ui.Utils.setDisplay(this.overflowMenuButton_, false);
+    }
+
+    /** @private {ResizeObserver} */
+    this.resizeObserver_ = null;
+
+    const resize = () => this.computeMaxHeight_();
+
+    // Use ResizeObserver if available, fallback to window resize event
+    if (window.ResizeObserver) {
+      this.resizeObserver_ = new ResizeObserver(resize);
+      this.resizeObserver_.observe(this.controls.getVideoContainer());
+    } else {
+      // Fallback for older browsers
+      this.eventManager.listen(window, 'resize', resize);
     }
   }
 
@@ -106,6 +126,11 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
     }
 
     this.children_ = [];
+
+    if (this.resizeObserver_) {
+      this.resizeObserver_.disconnect();
+      this.resizeObserver_ = null;
+    }
     super.release();
   }
 
@@ -191,6 +216,7 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
           Iterables.filter(this.overflowMenu_.childNodes, isDisplayed);
         /** @type {!HTMLElement} */ (visibleElements[0]).focus();
       }
+      this.computeMaxHeight_();
     }
   }
 
@@ -202,6 +228,22 @@ shaka.ui.OverflowMenu = class extends shaka.ui.Element {
     const LocIds = shaka.ui.Locales.Ids;
     this.overflowMenuButton_.ariaLabel =
         this.localization.resolve(LocIds.MORE_SETTINGS);
+  }
+
+
+  /**
+   * @private
+   */
+  computeMaxHeight_() {
+    const rectMenu = this.overflowMenu_.getBoundingClientRect();
+    const styleMenu = window.getComputedStyle(this.overflowMenu_);
+    const paddingTop = parseFloat(styleMenu.paddingTop);
+    const paddingBottom = parseFloat(styleMenu.paddingBottom);
+    const rectContainer = this.videoContainer_.getBoundingClientRect();
+    const heightIntersection =
+        rectMenu.bottom - rectContainer.top - paddingTop - paddingBottom;
+
+    this.overflowMenu_.style.maxHeight = heightIntersection + 'px';
   }
 };
 

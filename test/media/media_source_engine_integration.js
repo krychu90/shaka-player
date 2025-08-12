@@ -178,6 +178,7 @@ describe('MediaSourceEngine', () => {
     onEmsg = jasmine.createSpy('onEmsg');
     onEvent = jasmine.createSpy('onEvent');
     onManifestUpdate = jasmine.createSpy('onManifestUpdate');
+    const config = shaka.util.PlayerConfiguration.createDefault().mediaSource;
 
     mediaSourceEngine = new shaka.media.MediaSourceEngine(
         video,
@@ -188,9 +189,8 @@ describe('MediaSourceEngine', () => {
           onEmsg: Util.spyFunc(onEmsg),
           onEvent: Util.spyFunc(onEvent),
           onManifestUpdate: Util.spyFunc(onManifestUpdate),
-        });
-    const config = shaka.util.PlayerConfiguration.createDefault().mediaSource;
-    mediaSourceEngine.configure(config);
+        },
+        config);
 
     mediaSource = /** @type {?} */(mediaSourceEngine)['mediaSource_'];
     expect(video.getElementsByTagName('source').length).toBe(1);
@@ -710,7 +710,7 @@ describe('MediaSourceEngine', () => {
 
   it('extracts ID3 metadata from AAC', async () => {
     if (!MediaSource.isTypeSupported('audio/aac') ||
-        !shaka.util.Platform.supportsSequenceMode()) {
+        !deviceDetected.supportsSequenceMode()) {
       pending('Raw AAC codec is not supported by the platform.');
     }
     metadata = shaka.test.TestScheme.DATA['id3-metadata_aac'];

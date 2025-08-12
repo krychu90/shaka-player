@@ -130,6 +130,8 @@ describe('Playhead', () => {
     timeline.getSeekRangeStart.and.returnValue(5);
     timeline.getSeekRangeEnd.and.returnValue(60);
     timeline.getDuration.and.returnValue(60);
+    timeline.getInitialProgramDateTime.and.returnValue(
+        new Date(2005, 3, 2, 21, 37).getTime() / 1000.0);
 
     // These tests should not cause these methods to be invoked.
     timeline.getSegmentAvailabilityStart.and.throwError(new Error());
@@ -171,9 +173,10 @@ describe('Playhead', () => {
 
   function calculateGap(time) {
     let jumpTo = time;
-    if (shaka.util.Platform.isLegacyEdge() ||
-        shaka.util.Platform.isXboxOne() ||
-        shaka.util.Platform.isTizen()) {
+    if (deviceDetected.getBrowserEngine() ===
+        shaka.device.IDevice.BrowserEngine.EDGE ||
+        deviceDetected.getDeviceName() === 'Xbox' ||
+        deviceDetected.getDeviceName() === 'Tizen') {
       const gapPadding = shaka.util.PlayerConfiguration.createDefault()
           .streaming.gapPadding;
       jumpTo = Math.ceil((jumpTo + gapPadding) * 100) / 100;
@@ -330,6 +333,24 @@ describe('Playhead', () => {
           Util.spyFunc(onEvent));
 
       expect(playhead.getTime()).toBe(45);
+    });
+
+    it('playback using Date for live', () => {
+      video.readyState = HTMLMediaElement.HAVE_METADATA;
+      timeline.isLive.and.returnValue(true);
+      timeline.getDuration.and.returnValue(Infinity);
+      timeline.getSeekRangeStart.and.returnValue(0);
+      timeline.getSeekRangeEnd.and.returnValue(60);
+
+      playhead = new shaka.media.MediaSourcePlayhead(
+          video,
+          manifest,
+          config,
+          /* startTime= */ new Date(2005, 3, 2, 21, 37, 20),
+          Util.spyFunc(onSeek),
+          Util.spyFunc(onEvent));
+
+      expect(playhead.getTime()).toBe(20);
     });
 
     it('playback from segment seek range start time', () => {
@@ -675,7 +696,7 @@ describe('Playhead', () => {
   });  // does not clamp playhead if setLiveSeekableRange is used
 
   it('doesn\'t repeatedly re-seek in seeking slow platforms', () => {
-    if (!shaka.util.Platform.isSeekingSlow()) {
+    if (!deviceDetected.seekDelay()) {
       pending('No seeking slow platform');
     }
     video.readyState = HTMLMediaElement.HAVE_METADATA;

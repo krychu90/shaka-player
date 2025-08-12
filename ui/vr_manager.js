@@ -7,13 +7,15 @@
 
 goog.provide('shaka.ui.VRManager');
 
+goog.require('shaka.device.DeviceFactory');
+goog.require('shaka.device.IDevice');
 goog.require('shaka.log');
 goog.require('shaka.ui.VRWebgl');
+goog.require('shaka.util.Dom');
 goog.require('shaka.util.EventManager');
 goog.require('shaka.util.FakeEvent');
 goog.require('shaka.util.FakeEventTarget');
 goog.require('shaka.util.IReleasable');
-goog.require('shaka.util.Platform');
 
 goog.requireType('shaka.Player');
 
@@ -54,7 +56,7 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
     this.eventManager_ = new shaka.util.EventManager();
 
     /** @private {?WebGLRenderingContext} */
-    this.gl_ = this.getGL_();
+    this.gl_ = this.getGL_(this.canvas_);
 
     /** @private {?shaka.ui.VRWebgl} */
     this.vrWebgl_ = null;
@@ -92,6 +94,13 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
       const spatialInfo = event['detail'];
       let unsupported = false;
       switch (spatialInfo.projection) {
+        case 'rect':
+          // Rectilinear content is the flat rectangular media.
+          this.vrAsset_ = null;
+          break;
+        case 'equi':
+          this.vrAsset_ = 'equirectangular';
+          break;
         case 'hequ':
           switch (spatialInfo.hfov) {
             case 360:
@@ -101,16 +110,23 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
               this.vrAsset_ = 'halfequirectangular';
               break;
             default:
-              unsupported = true;
+              if (spatialInfo.hfov == null) {
+                this.vrAsset_ = 'halfequirectangular';
+              } else {
+                this.vrAsset_ = null;
+                unsupported = true;
+              }
               break;
           }
           break;
         case 'fish':
-          this.vrAsset_ = 'equirectangular';
-          unsupported = true;
+          // It's not really the same thing, but the difference is very subtle
+          // and allows us to tolerate it.
+          this.vrAsset_ = 'halfequirectangular';
           break;
         default:
           this.vrAsset_ = null;
+          unsupported = true;
           break;
       }
       if (unsupported) {
@@ -167,7 +183,12 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
    * @return {boolean}
    */
   canPlayVR() {
-    return !!this.gl_;
+    if (this.canvas_) {
+      return !!this.gl_;
+    }
+    const canvas =
+        shaka.util.Dom.asHTMLCanvasElement(document.createElement('canvas'));
+    return !!this.getGL_(canvas);
   }
 
   /**
@@ -306,10 +327,15 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
    * @private
    */
   checkVrStatus_() {
-    if (!this.canvas_) {
-      return;
-    }
     if ((this.config_.displayInVrMode || this.vrAsset_)) {
+      if (!this.canvas_) {
+        this.canvas_ = shaka.util.Dom.asHTMLCanvasElement(
+            document.createElement('canvas'));
+        this.canvas_.classList.add('shaka-vr-canvas-container');
+        this.video_.parentElement.insertBefore(
+            this.canvas_, this.video_.nextElementSibling);
+        this.gl_ = this.getGL_(this.canvas_);
+      }
       const newProjectionMode =
           this.vrAsset_ || this.config_.defaultVrProjectionMode;
       if (!this.vrWebgl_) {
@@ -328,7 +354,7 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
         }
       }
     } else if (!this.config_.displayInVrMode && !this.vrAsset_ &&
-        this.vrWebgl_) {
+        this.canvas_ && this.vrWebgl_) {
       this.canvas_.style.display = 'none';
       this.eventManager_.removeAll();
       this.vrWebgl_.release();
@@ -352,16 +378,21 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
   }
 
   /**
+   * @param {?HTMLCanvasElement} canvas
    * @return {?WebGLRenderingContext}
    * @private
    */
-  getGL_() {
-    if (!this.canvas_) {
+  getGL_(canvas) {
+    if (!canvas) {
       return null;
     }
     // The user interface is not intended for devices that are controlled with
     // a remote control, and WebGL may run slowly on these devices.
-    if (shaka.util.Platform.isSmartTV()) {
+    const device = shaka.device.DeviceFactory.getDevice();
+    const deviceType = device.getDeviceType();
+    if (deviceType == shaka.device.IDevice.DeviceType.TV ||
+        deviceType == shaka.device.IDevice.DeviceType.CONSOLE ||
+        deviceType == shaka.device.IDevice.DeviceType.CAST) {
       return null;
     }
     const webglContexts = [
@@ -369,7 +400,7 @@ shaka.ui.VRManager = class extends shaka.util.FakeEventTarget {
       'webgl',
     ];
     for (const webgl of webglContexts) {
-      const gl = this.canvas_.getContext(webgl);
+      const gl = canvas.getContext(webgl);
       if (gl) {
         return /** @type {!WebGLRenderingContext} */(gl);
       }

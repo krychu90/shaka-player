@@ -22,14 +22,6 @@ describe('HlsParser', () => {
   /** @type {!shaka.test.Waiter} */
   let waiter;
 
-  function checkClearKeySupport() {
-    const clearKeySupport = shakaSupport.drm['org.w3.clearkey'];
-    if (!clearKeySupport) {
-      return false;
-    }
-    return clearKeySupport.encryptionSchemes.includes('cenc');
-  }
-
   beforeAll(async () => {
     video = shaka.test.UiUtils.createVideoElement();
     document.body.appendChild(video);
@@ -44,6 +36,8 @@ describe('HlsParser', () => {
 
     // Disable stall detection, which can interfere with playback tests.
     player.configure('streaming.stallEnabled', false);
+    // Disable gapPadding, which can interfere with playback tests.
+    player.configure('streaming.gapPadding', 0);
 
     // Grab event manager from the uncompiled library:
     eventManager = new shaka.util.EventManager();

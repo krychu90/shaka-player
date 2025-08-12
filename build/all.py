@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2016 Google LLC
 #
@@ -119,12 +119,12 @@ def main(args):
   build_args_without_ui = ['--name', 'compiled', '+@complete', '-@ui']
   build_args_only_dash_without_ui = [
     '--name', 'dash',
-    '+@complete', '-@ui', '-@polyfillForUI',
+    '+@complete', '-@ui', '-@polyfillForUI', '-@queue',
     '-@hls', '-@transmuxer', '-@mss', '-@offline', '-@cast', '-@optionalText', '-@ads',
   ]
   build_args_only_hls_without_ui = [
     '--name', 'hls',
-    '+@complete', '-@ui', '-@polyfillForUI',
+    '+@complete', '-@ui', '-@polyfillForUI', '-@queue',
     '-@dash', '-@mss', '-@offline', '-@cast', '-@optionalText', '-@ads',
   ]
 

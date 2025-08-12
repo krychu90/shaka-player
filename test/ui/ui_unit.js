@@ -405,7 +405,9 @@ describe('UI', () => {
         UiUtils.confirmElementFound(videoContainer, 'shaka-seek-bar');
 
         // The default settings vary in mobile/desktop context.
-        if (shaka.util.Platform.isMobile()) {
+        const deviceType = deviceDetected.getDeviceType();
+        if (deviceType == shaka.device.IDevice.DeviceType.MOBILE ||
+            deviceType == shaka.device.IDevice.DeviceType.TV) {
           UiUtils.confirmElementFound(videoContainer,
               'shaka-play-button-container');
           UiUtils.confirmElementFound(videoContainer, 'shaka-play-button');
@@ -588,7 +590,7 @@ describe('UI', () => {
         await player.load(
             /* uri= */ 'fake', /* startTime= */ 0, fakeMimeType);
 
-        const selectVariantTrack = spyOn(player, 'selectVariantTrack');
+        const selectVideoTrack = spyOn(player, 'selectVideoTrack');
 
         // There should be at least one explicit quality button.
         const qualityButton =
@@ -596,11 +598,11 @@ describe('UI', () => {
         expect(qualityButton).toBeDefined();
 
         // Clicking this should select a track and clear the buffer.
-        expect(selectVariantTrack).not.toHaveBeenCalled();
+        expect(selectVideoTrack).not.toHaveBeenCalled();
         qualityButton.click();
 
         // The second argument is "clearBuffer", and should be true.
-        expect(selectVariantTrack).toHaveBeenCalledWith(
+        expect(selectVideoTrack).toHaveBeenCalledWith(
             jasmine.any(Object), true);
       });
 
@@ -708,7 +710,7 @@ describe('UI', () => {
             });
             manifest.addVariant(1, (variant) => {
               variant.addAudio(1);
-              variant.bandwidth = 200000;
+              variant.bandwidth = 2500000;
             });
           });
 
@@ -723,7 +725,7 @@ describe('UI', () => {
         const qualityOptions =
             Array.from(qualityButtons).map((btn) => btn.innerText);
 
-        expect(qualityOptions).toEqual(['200 kbits/s', '100 kbits/s']);
+        expect(qualityOptions).toEqual(['2.5 Mbps', '100 Kbps']);
       });
 
       /**
@@ -744,7 +746,7 @@ describe('UI', () => {
           if (elem instanceof shaka.ui.OverflowMenu) {
             for (const child of elem.children_) {
               if (child instanceof shaka.ui.ResolutionSelection) {
-                child.updateResolutionSelection_();
+                child.updateSelection_();
                 found = true;
               }
             }
@@ -961,7 +963,7 @@ describe('UI', () => {
     const videos = container.getElementsByTagName('video');
     expect(videos.length).not.toBe(0);
 
-    UiUtils.confirmElementFound(container, 'shaka-spinner-svg');
+    UiUtils.confirmElementFound(container, 'shaka-spinner');
     UiUtils.confirmElementFound(container, 'shaka-overflow-menu');
     UiUtils.confirmElementFound(container, 'shaka-controls-button-panel');
   }

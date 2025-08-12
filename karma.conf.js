@@ -211,13 +211,12 @@ module.exports = (config) => {
       // codem-isoboxer module next
       'node_modules/codem-isoboxer/dist/iso_boxer.min.js',
 
-      // EME encryption scheme polyfill, compiled into Shaka Player, but outside
-      // of the Closure deps system, so not in shaka-player.uncompiled.js.  This
-      // is specifically the compiled, minified, cross-browser build of it.  It
-      // is necessary to use the compiled version to avoid problems on older
-      // TVs.
-      // eslint-disable-next-line @stylistic/max-len
-      'node_modules/eme-encryption-scheme-polyfill/dist/eme-encryption-scheme-polyfill.js',
+      // LCEVC decoder libraries (.wasm & .js)
+      {
+        pattern: 'node_modules/lcevc_dec.js/dist/liblcevc_dpi.wasm',
+        included: false,
+      },
+      'node_modules/lcevc_dec.js/dist/lcevc_dec.min.js',
 
       // load closure base, the deps tree, and the uncompiled library
       'test/test/closure-boot.js',
@@ -254,8 +253,10 @@ module.exports = (config) => {
       {pattern: 'test/**/*.js', included: false},
       {pattern: 'test/test/assets/*', included: false},
       {pattern: 'test/test/assets/clear-encrypted/*', included: false},
+      {pattern: 'test/test/assets/clear-encrypted-hls/*', included: false},
       {pattern: 'test/test/assets/dash-multi-codec/*', included: false},
       {pattern: 'test/test/assets/dash-multi-codec-ec3/*', included: false},
+      {pattern: 'test/test/assets/dash-multitype-variant/*', included: false},
       {pattern: 'test/test/assets/3675/*', included: false},
       {pattern: 'test/test/assets/7401/*', included: false},
       {pattern: 'test/test/assets/6339/*', included: false},
@@ -264,7 +265,8 @@ module.exports = (config) => {
       {pattern: 'test/test/assets/dash-clearkey/*', included: false},
       {pattern: 'test/test/assets/dash-mpd-alternate/*', included: false},
       {pattern: 'test/test/assets/dash-vr/*', included: false},
-      {pattern: 'test/test/assets/dv-p8-hevc/*', included: false},
+      {pattern: 'test/test/assets/dv-p8-1-hevc/*', included: false},
+      {pattern: 'test/test/assets/dv-p8-4-hevc/*', included: false},
       {pattern: 'test/test/assets/dv-p10-av1/*', included: false},
       {pattern: 'test/test/assets/hls-aes-256/*', included: false},
       {pattern: 'test/test/assets/hls-interstitial/*', included: false},
@@ -279,6 +281,7 @@ module.exports = (config) => {
       {pattern: 'test/test/assets/hls-text-offset/*', included: false},
       {pattern: 'test/test/assets/hls-ts-aac/*', included: false},
       {pattern: 'test/test/assets/hls-ts-ac3/*', included: false},
+      {pattern: 'test/test/assets/hls-ts-b-frames/*', included: false},
       {pattern: 'test/test/assets/hls-ts-ec3/*', included: false},
       {pattern: 'test/test/assets/hls-ts-h264/*', included: false},
       {pattern: 'test/test/assets/hls-ts-h265/*', included: false},
@@ -295,6 +298,10 @@ module.exports = (config) => {
       {pattern: 'test/test/assets/hls-ts-muxed-opus-h264/*', included: false},
       {pattern: 'test/test/assets/hls-ts-raw-aac/*', included: false},
       {pattern: 'test/test/assets/hls-ts-rollover/*', included: false},
+      {pattern: 'test/test/assets/lcevc-sei/*', included: false},
+      {pattern: 'test/test/assets/lcevc-sei-ts/*', included: false},
+      {pattern: 'test/test/assets/mss-clear/*', included: false},
+      {pattern: 'test/test/assets/mss-playready/*', included: false},
       {pattern: 'dist/shaka-player.ui.js', included: false},
       {pattern: 'dist/locales.js', included: false},
       {pattern: 'demo/**/*.js', included: false},
@@ -367,13 +374,11 @@ module.exports = (config) => {
         // Overrides the default test timeout value.
         testTimeout: settings.test_timeout,
 
-        // Without this flag, we don't trust Safari to run native layout tests.
-        // Rendering on these is super inconsistent from device to device, so
-        // this flag is used in our lab environment explicitly.
-        trustSafariNativeTextLayout: settings.trust_safari_native_text_layout,
-
         // True if the test.py --grid_config option was used.
         runningInLab: !!settings.grid_config,
+
+        // True if the test.py --running_in_vm option was used.
+        runningInVM: !!settings.running_in_vm,
       }],
     },
 

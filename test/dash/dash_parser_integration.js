@@ -22,14 +22,6 @@ describe('DashParser', () => {
   /** @type {!shaka.test.Waiter} */
   let waiter;
 
-  function checkClearKeySupport() {
-    const clearKeySupport = shakaSupport.drm['org.w3.clearkey'];
-    if (!clearKeySupport) {
-      return false;
-    }
-    return clearKeySupport.encryptionSchemes.includes('cenc');
-  }
-
   beforeAll(async () => {
     video = shaka.test.UiUtils.createVideoElement();
     document.body.appendChild(video);
@@ -104,6 +96,19 @@ describe('DashParser', () => {
     // Play for 8 seconds, but stop early if the video ends.  If it takes
     // longer than 30 seconds, fail the test.
     await waiter.waitUntilPlayheadReachesOrFailOnTimeout(video, 8, 30);
+
+    await player.unload();
+  });
+
+  it('support multi type variants', async () => {
+    if (!await Util.isTypeSupported('video/webm; codecs="vp9"')) {
+      pending('Codec VP9 is not supported by the platform.');
+    }
+    await player.load('/base/test/test/assets/dash-multitype-variant/dash.mpd');
+    await video.play();
+    expect(player.isLive()).toBe(false);
+
+    await waiter.timeoutAfter(30).waitForEnd(video);
 
     await player.unload();
   });

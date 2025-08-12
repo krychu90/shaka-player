@@ -1,8 +1,6 @@
 # UI library.
 
-+../../third_party/language-mapping-list/language-mapping-list.js
-+../../ui/ad_counter.js
-+../../ui/ad_position.js
++../../ui/ad_info.js
 +../../ui/ad_statistics_button.js
 +../../ui/audio_language_selection.js
 +../../ui/externs/ui.js
@@ -14,7 +12,6 @@
 +../../ui/chapter_selection.js
 +../../ui/context_menu.js
 +../../ui/controls.js
-+../../ui/constants.js
 +../../ui/enums.js
 +../../ui/element.js
 +../../ui/fast_forward_button.js
@@ -40,6 +37,8 @@
 +../../ui/settings_menu.js
 +../../ui/small_play_button.js
 +../../ui/skip_ad_button.js
++../../ui/skip_next_button.js
++../../ui/skip_previous_button.js
 +../../ui/spacer.js
 +../../ui/statistics_button.js
 +../../ui/text_selection.js

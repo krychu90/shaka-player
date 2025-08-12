@@ -100,6 +100,7 @@ shakaDemo.Config = class {
     this.addCmsdSection_();
     this.addLcevcSection_();
     this.addAdsSection_();
+    this.addQueueManagerSection_();
   }
 
   /**
@@ -230,7 +231,8 @@ shakaDemo.Config = class {
             'manifest.ignoreSupplementalCodecs')
         .addNumberInput_('Override the Update time of the manifest',
             'manifest.updatePeriod')
-        .addBoolInput_('Ignore DRM Info', 'manifest.ignoreDrmInfo');
+        .addBoolInput_('Ignore DRM Info', 'manifest.ignoreDrmInfo')
+        .addBoolInput_('Enable Audio Groups', 'manifest.enableAudioGroups');
   }
 
   /** @private */
@@ -249,8 +251,6 @@ shakaDemo.Config = class {
             'manifest.dash.ignoreEmptyAdaptationSet')
         .addBoolInput_('Ignore DASH maxSegmentDuration',
             'manifest.dash.ignoreMaxSegmentDuration')
-        .addBoolInput_('Allow DASH multi type variants',
-            'manifest.dash.multiTypeVariantsAllowed')
         .addTextInput_('Clock Sync URI', 'manifest.dash.clockSyncUri')
         .addBoolInput_('Ignore Min Buffer Time',
             'manifest.dash.ignoreMinBufferTime')
@@ -343,7 +343,9 @@ shakaDemo.Config = class {
             /* canBeDecimal= */ true,
             /* canBeZero= */ true)
         .addBoolInput_('Prefer Network Information bandwidth',
-            'abr.preferNetworkInformationBandwidth');
+            'abr.preferNetworkInformationBandwidth')
+        .addBoolInput_('Remove latency from first packet time',
+            'abr.removeLatencyFromFirstPacketTime');
     this.addRestrictionsSection_('abr', 'Adaptation Restrictions');
   }
 
@@ -393,7 +395,8 @@ shakaDemo.Config = class {
         .addBoolInput_('LCEVC Dynamic Performance scaling',
             'lcevc.dynamicPerformanceScaling')
         .addNumberInput_('LCEVC Log Level', 'lcevc.logLevel')
-        .addBoolInput_('Draw LCEVC Logo', 'lcevc.drawLogo');
+        .addBoolInput_('Draw LCEVC Logo', 'lcevc.drawLogo')
+        .addBoolInput_('Enable LCEVC Poster', 'lcevc.poster');
   }
 
   /** @private */
@@ -414,6 +417,29 @@ shakaDemo.Config = class {
             'ads.allowPreloadOnDomElements')
         .addBoolInput_('Allow start in the middle of an interstitial',
             'ads.allowStartInMiddleOfInterstitial');
+  }
+
+  /** @private */
+  addQueueManagerSection_() {
+    const repeatModeOptions = shaka.config.RepeatMode;
+    const repeatModeOptionNames = {
+      'OFF': 'Off',
+      'ALL': 'All',
+      'SINGLE': 'Single',
+    };
+
+    const docLink = this.resolveExternLink_('.QueueConfiguration');
+    this.addSection_('Queue Manager', docLink)
+        .addNumberInput_('Time window at end to preload next Queue item',
+            'queue.preloadNextUrlWindow',
+            /* canBeDecimal= */ true,
+            /* canBeZero= */ true)
+        .addBoolInput_('Allow preload prev item',
+            'queue.preloadPrevItem')
+        .addSelectInput_('Repeat mode',
+            'queue.repeatMode',
+            repeatModeOptions,
+            repeatModeOptionNames);
   }
 
   /**
@@ -623,7 +649,10 @@ shakaDemo.Config = class {
             'streaming.avoidEvictionOnQuotaExceededError')
         .addSelectInput_('Cross Boundary Strategy',
             'streaming.crossBoundaryStrategy',
-            strategyOptions, strategyOptionsNames);
+            strategyOptions, strategyOptionsNames)
+        .addBoolInput_(
+            'Return to end of live window when outside of live window',
+            'streaming.returnToEndOfLiveWindowWhenOutside');
     this.addRetrySection_('streaming', 'Streaming Retry Parameters');
     this.addLiveSyncSection_();
   }
@@ -691,13 +720,19 @@ shakaDemo.Config = class {
         .addBoolInput_('Force Transmux', 'mediaSource.forceTransmux')
         .addBoolInput_('Insert fake encryption in init segments when needed ' +
             'by the platform.', 'mediaSource.insertFakeEncryptionInInit')
+        .addBoolInput_('Force enca.ChannelCount to 2 for EC-3 audio if ' +
+          'needed by the platform.', 'mediaSource.correctEc3Enca')
         .addSelectInput_(
             'Codec Switching Strategy',
             'mediaSource.codecSwitchingStrategy',
             strategyOptions,
             strategyOptionsNames)
         .addBoolInput_('Dispatch all emsg boxes',
-            'mediaSource.dispatchAllEmsgBoxes');
+            'mediaSource.dispatchAllEmsgBoxes')
+        .addBoolInput_('Uses source elements',
+            'mediaSource.useSourceElements')
+        .addBoolInput_('Expect updateEnd when duration is truncated',
+            'mediaSource.durationReductionEmitsUpdateEnd');
   }
 
   /** @private */
@@ -716,7 +751,8 @@ shakaDemo.Config = class {
         .addTextInput_('Preferred Audio Language', 'preferredAudioLanguage')
         .addTextInput_('Preferred Audio Label', 'preferredAudioLabel')
         .addTextInput_('Preferred Video Label', 'preferredVideoLabel')
-        .addTextInput_('Preferred Variant Role', 'preferredVariantRole')
+        .addTextInput_('Preferred Audio Role', 'preferredAudioRole')
+        .addTextInput_('Preferred Video Role', 'preferredVideoRole')
         .addTextInput_('Preferred Text Language', 'preferredTextLanguage')
         .addTextInput_('Preferred Text Role', 'preferredTextRole')
         .addSelectInput_('Auto-Show Text',
